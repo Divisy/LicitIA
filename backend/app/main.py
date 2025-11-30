@@ -42,14 +42,19 @@ async def startup_event():
     # Schedule the tender fetching job
     from apscheduler.triggers.interval import IntervalTrigger
     from app.core.scheduler import scheduler
+    from datetime import datetime
     
+    # Add job that runs immediately on startup, then every 2 hours
     scheduler.add_job(
         fetch_and_store_new_tenders,
         trigger=IntervalTrigger(hours=settings.FETCH_INTERVAL_HOURS),
         id="fetch_tenders",
         name="Fetch and store new tenders from SECOP",
         replace_existing=True,
+        next_run_time=datetime.utcnow(),  # Run immediately on startup
     )
+    
+    logger.info(f"Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (starting immediately)")
     
     # Pre-load semantic AI model in background to avoid blocking first request
     import threading

@@ -1,7 +1,8 @@
 """Experience matching service - matches tenders against company experiences."""
+from __future__ import annotations
 import json
 import re
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from datetime import datetime
 from app.models.tender import Tender
 from app.models.company_experience import CompanyExperience
@@ -19,6 +20,7 @@ try:
     logger.info("Semantic AI (sentence-transformers) is available")
 except (ImportError, AttributeError, Exception) as e:
     SEMANTIC_AI_AVAILABLE = False
+    np = None  # Set to None if not available
     logger.warning(f"Semantic AI (sentence-transformers) not available: {e}. System will use rules-based matching only.")
 
 # Matching weights for hybrid approach (sum should be ~1.0)
@@ -374,6 +376,10 @@ def calculate_location_score(
 # Global model cache for semantic AI
 _semantic_model = None
 
+# Global cache for experience embeddings (key: experience_id, value: embedding)
+_experience_embeddings_cache = {}
+_experience_cache_timestamp = {}
+
 
 def get_semantic_model():
     """Get or load the semantic model (cached)."""
@@ -393,9 +399,54 @@ def get_semantic_model():
     return _semantic_model
 
 
-def calculate_semantic_similarity(text1: str, text2: str) -> float:
+def get_experience_embedding(experience_id: str, experience_text: str) -> Optional[Any]:
+    """
+    Get cached embedding for an experience, or calculate and cache it.
+    
+    Returns embedding as numpy array, or None if error.
+    """
+    global _experience_embeddings_cache, _experience_cache_timestamp
+    
+    if not SEMANTIC_AI_AVAILABLE or not experience_text:
+        return None
+    
+    # Check cache
+    if experience_id in _experience_embeddings_cache:
+        return _experience_embeddings_cache[experience_id]
+    
+    # Calculate and cache
+    model = get_semantic_model()
+    if not model:
+        return None
+    
+    try:
+        max_length = 128
+        text_truncated = experience_text[:max_length] if len(experience_text) > max_length else experience_text
+        
+        embedding = model.encode(
+            [text_truncated],
+            show_progress_bar=False,
+            convert_to_numpy=True,
+            normalize_embeddings=True
+        )[0]
+        
+        # Cache it
+        _experience_embeddings_cache[experience_id] = embedding
+        _experience_cache_timestamp[experience_id] = datetime.utcnow()
+        
+        return embedding
+    except Exception as e:
+        logger.error(f"Error calculating experience embedding: {e}")
+        return None
+
+
+def calculate_semantic_similarity(text1: str, text2: str, 
+                                  cached_embedding2: Optional[Any] = None) -> float:
     """
     Calculate semantic similarity between two texts using embeddings.
+    
+    If cached_embedding2 is provided, reuse it instead of recalculating.
+    This is the key optimization: cache experience embeddings.
     
     Returns score between 0.0 and 1.0.
     """
@@ -411,21 +462,32 @@ def calculate_semantic_similarity(text1: str, text2: str) -> float:
     
     try:
         # Truncate texts if too long (models have token limits)
-        # Drastically reduced for speed (AI is the bottleneck)
-        max_length = 128  # Reduced to 128 for much faster processing (was 256, 384)
+        max_length = 128
         text1_truncated = text1[:max_length] if len(text1) > max_length else text1
-        text2_truncated = text2[:max_length] if len(text2) > max_length else text2
         
-        # Generate embeddings (batch processing is faster)
-        embeddings = model.encode(
-            [text1_truncated, text2_truncated], 
-            show_progress_bar=False,
-            convert_to_numpy=True,  # Faster than tensors
-            normalize_embeddings=True  # Normalize for cosine similarity
-        )
+        # Use cached embedding for text2 if available, otherwise calculate
+        if cached_embedding2 is not None:
+            embedding1 = model.encode(
+                [text1_truncated],
+                show_progress_bar=False,
+                convert_to_numpy=True,
+                normalize_embeddings=True
+            )[0]
+            embedding2 = cached_embedding2
+        else:
+            # Fallback: calculate both (slower)
+            text2_truncated = text2[:max_length] if len(text2) > max_length else text2
+            embeddings = model.encode(
+                [text1_truncated, text2_truncated],
+                show_progress_bar=False,
+                convert_to_numpy=True,
+                normalize_embeddings=True
+            )
+            embedding1 = embeddings[0]
+            embedding2 = embeddings[1]
         
         # Calculate cosine similarity (faster with normalized embeddings)
-        similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+        similarity = cosine_similarity([embedding1], [embedding2])[0][0]
         
         # Ensure it's between 0 and 1
         similarity = max(0.0, min(1.0, float(similarity)))

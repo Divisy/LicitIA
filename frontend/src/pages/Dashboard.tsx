@@ -11,9 +11,8 @@ const Dashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
   
-  // Filter state
+  // Filter state (removed is_relevant as it's no longer used)
   const [filters, setFilters] = useState<TenderFilters>({
-    is_relevant: true,
     limit: 50,
     offset: 0,
   })
@@ -23,6 +22,7 @@ const Dashboard: React.FC = () => {
   const [department, setDepartment] = useState<string>('')
   const [companyName, setCompanyName] = useState<string>('')
   const [matchExperience, setMatchExperience] = useState<boolean>(false)
+  const [onlyInterventoria, setOnlyInterventoria] = useState<boolean>(false)
   const [showAll, setShowAll] = useState<boolean>(false)
   
   const fetchTenders = async (loadAll: boolean = false) => {
@@ -48,10 +48,14 @@ const Dashboard: React.FC = () => {
       if (department) {
         params.department = department
       }
+      // OPTIMIZATION: Filter by interventoría keywords BEFORE matching (reduces AI processing time)
+      if (onlyInterventoria) {
+        params.only_interventoria = true
+      }
       // If matchExperience is enabled, use companyName or default to "BEC"
       if (matchExperience) {
         params.match_experience = true
-        params.min_match_score = 0.6  // 60% threshold
+        params.min_match_score = 0.55  // 55% threshold (balanced for quality)
         // Use provided company name or default to "BEC" if empty
         params.company_name = companyName.trim() || "BEC"
       } else if (companyName) {
@@ -92,11 +96,13 @@ const Dashboard: React.FC = () => {
         department={department}
         companyName={companyName}
         matchExperience={matchExperience}
+        onlyInterventoria={onlyInterventoria}
         onDateFromChange={setDateFrom}
         onDateToChange={setDateTo}
         onDepartmentChange={setDepartment}
         onCompanyNameChange={setCompanyName}
         onMatchExperienceChange={setMatchExperience}
+        onOnlyInterventoriaChange={setOnlyInterventoria}
         onSubmit={handleFilterSubmit}
       />
       

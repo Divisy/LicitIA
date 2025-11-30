@@ -88,20 +88,17 @@ async def list_tenders(
     # - But we still limit to most recent to avoid timeout with AI processing
     # Process in smaller batches for better performance
     if match_experience and experiences:
-        # CRITICAL: Limit to very few tenders due to AI processing time (~11s per tender with 11 experiences)
-        # Each tender processes against all experiences, so we need to limit drastically
-        # Test shows: 10 tenders = ~113s, so we limit to 8 for safety
-        if only_interventoria:
-            MAX_TENDERS_FOR_MATCHING = 8  # Very limited: ~8 tenders × 11s = ~88s (safe margin)
-        else:
-            MAX_TENDERS_FOR_MATCHING = 5  # Very limited without interventoría filter
+        # OPTIMIZATION: Process 100 most recent tenders (as per SOLUCION_TIMEOUT_504.md)
+        # With optimizations (truncated text, normalized embeddings, batches), this should be manageable
+        # Processing in batches of 50 to avoid memory issues
+        MAX_TENDERS_FOR_MATCHING = 100  # Process 100 most recent tenders as per optimization doc
         all_tenders = query.order_by(
             Tender.publication_date.desc().nulls_last()
         ).limit(MAX_TENDERS_FOR_MATCHING).all()
         
         # Match and filter tenders (process in batches for better performance)
         matched_items = []
-        BATCH_SIZE = 5  # Very small batches due to AI processing time (~18s per tender)
+        BATCH_SIZE = 50  # Process in batches of 50 as per SOLUCION_TIMEOUT_504.md
         
         # Process in batches and stop early if we have enough matches
         for i in range(0, len(all_tenders), BATCH_SIZE):
@@ -119,22 +116,23 @@ async def list_tenders(
                     matched_items.append(tender_response)
             
             # Early exit if we have enough matches (optimization)
-            # Stop early to avoid timeout - we have enough matches for pagination
-            if len(matched_items) >= limit:  # Stop as soon as we have enough for one page
-                logger.info(f"Early exit: Found {len(matched_items)} matches (target: {limit})")
+            # Only stop early if we have significantly more than needed (2x limit) to ensure good results
+            # This allows pagination to work properly
+            if len(matched_items) >= limit * 2:  # Stop when we have 2x the limit for better pagination
+                logger.info(f"Early exit: Found {len(matched_items)} matches (target: {limit * 2})")
                 break
         
-        # Sort by publication date (most recent first), then by match score as secondary criteria
+        # Sort by closing_date (most distant in future first), then by match score (highest first)
         # Handle None dates by putting them at the end
         # Use a tuple where first element is 0 for None dates (so they sort last when reverse=True)
         # and 1 for dates (so they sort first)
         matched_items.sort(
             key=lambda x: (
-                0 if x.publication_date is None else 1,  # Put None dates last
-                x.publication_date if x.publication_date is not None else datetime.min,
-                x.experience_match_score or 0.0
+                0 if x.closing_date is None else 1,  # Put None closing dates last
+                x.closing_date if x.closing_date is not None else datetime.min,  # Most distant future first
+                -(x.experience_match_score or 0.0)  # Negative for descending (highest match first)
             ),
-            reverse=True
+            reverse=True  # Reverse to get most distant future dates first
         )
         
         # Now apply pagination to matched results
@@ -143,10 +141,12 @@ async def list_tenders(
         
     else:
         # Normal flow: paginate first, then match (for display purposes only)
-        # Order by publication_date DESC, with NULL values last
+        # Order by closing_date DESC (most distant future first), with NULL values last
         total = query.count()
+        # Order by closing date DESC (most distant future first), then by entity name ASC
         tenders = query.order_by(
-            Tender.publication_date.desc().nulls_last()
+            Tender.closing_date.desc().nulls_last(),
+            Tender.entity_name.asc()
         ).offset(offset).limit(limit).all()
         
         # Build response with match scores (optional, for display)
@@ -162,6 +162,16 @@ async def list_tenders(
                 tender_response.matching_experiences = matching_experiences if matching_experiences else None
             
             items.append(tender_response)
+        
+        # Sort items by closing_date (most distant future first), then by match score (highest first)
+        items.sort(
+            key=lambda x: (
+                0 if x.closing_date is None else 1,  # Put None closing dates last
+                x.closing_date if x.closing_date is not None else datetime.min,  # Most distant future first
+                -(x.experience_match_score or 0.0)  # Negative for descending (highest match first)
+            ),
+            reverse=True  # Reverse to get most distant future dates first
+        )
     
     return TenderListResponse(
         items=items,

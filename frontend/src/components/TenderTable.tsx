@@ -53,6 +53,7 @@ const TenderTable: React.FC<TenderTableProps> = ({ tenders }) => {
         <thead>
           <tr>
             <th>Fecha Publicación</th>
+            <th>Fecha Presentación Ofertas</th>
             <th>Entidad</th>
             <th>Departamento</th>
             <th>Monto</th>
@@ -65,6 +66,7 @@ const TenderTable: React.FC<TenderTableProps> = ({ tenders }) => {
           {tenders.map((tender) => (
             <tr key={tender.id}>
               <td>{formatDate(tender.publication_date)}</td>
+              <td>{formatDate(tender.closing_date)}</td>
               <td className="entity-cell">
                 <div className="entity-name">{tender.entity_name}</div>
                 <div className="object-preview">
