@@ -21,9 +21,12 @@ const Profile: React.FC = () => {
     try {
       const data = await getExperiences(companyName.trim())
       setExperiences(data.items)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al cargar experiencias')
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.detail || err?.message || 'Error al cargar experiencias'
+      setError(errorMessage)
       console.error('Error fetching experiences:', err)
+      // Still set loading to false even on error
+      setLoading(false)
     } finally {
       setLoading(false)
     }

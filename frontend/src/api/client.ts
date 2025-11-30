@@ -7,6 +7,7 @@ const client = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 120000, // 2 minutes timeout for experience matching (can take time with AI)
 })
 
 export interface MatchingExperience {
@@ -61,6 +62,7 @@ export interface TenderFilters {
   date_from?: string
   date_to?: string
   match_experience?: boolean
+  only_interventoria?: boolean
   company_name?: string
   min_match_score?: number
   limit?: number
@@ -87,6 +89,9 @@ export async function getTenders(filters: TenderFilters = {}): Promise<TenderLis
   }
   if (filters.match_experience !== undefined) {
     params.append('match_experience', filters.match_experience.toString())
+  }
+  if (filters.only_interventoria !== undefined) {
+    params.append('only_interventoria', filters.only_interventoria.toString())
   }
   if (filters.company_name) {
     params.append('company_name', filters.company_name)

@@ -5,6 +5,7 @@ from app.core.logging import get_logger
 from app.models.tender import Tender, TenderSource
 from app.models.subscription import Subscription
 from app.services.secop_client import fetch_recent_tenders
+from app.config import settings
 # Classification removed - experience matching is the main approach
 from app.services.notifications import send_email_alert, send_whatsapp_alert
 
@@ -19,22 +20,43 @@ def fetch_and_store_new_tenders() -> None:
     """
     db = SessionLocal()
     try:
-        logger.info("Starting tender fetch job")
+        logger.info("=" * 60)
+        logger.info("🔄 STARTING TENDER FETCH JOB (Scheduled every 2 hours)")
+        logger.info("=" * 60)
         
         # Extract licitaciones published from 60 days ago
         since_timestamp = datetime.utcnow() - timedelta(days=60)
         
-        logger.info(f"Fetching tenders published in the last 60 days (since {since_timestamp})")
+        logger.info(f"📅 Fetching tenders published in the last 60 days (since {since_timestamp.strftime('%Y-%m-%d %H:%M:%S')})")
         
-        # Fetch from SECOP with UNSPSC code filter only
-        # Filter by UNSPSC code 81101500 (Ingeniería Civil y Arquitectura)
-        logger.info("Fetching tenders with UNSPSC code 81101500 (Ingeniería Civil y Arquitectura)")
-        secop_tenders = fetch_recent_tenders(
-            since_timestamp=since_timestamp,
-            unspsc_code="81101500",
-        )
+        # Fetch from SECOP with UNSPSC code filters
+        # Include multiple UNSPSC codes related to civil engineering, construction, supervision, and project management
+        # 81101500: Ingeniería Civil y Arquitectura
+        # 80101600: Gerencia de proyectos
+        # 80111600: Servicios de ingeniería especializados
+        # 72141100: Construcción de carreteras y pavimentos (includes interventoría de pavimentos)
+        # 81101600: Ingeniería de construcción
+        unspsc_codes = ["81101500", "80101600", "80111600", "72141100", "81101600"]
         
-        logger.info(f"Found {len(secop_tenders)} tenders with UNSPSC 81101500 from last 60 days")
+        all_tenders = []
+        for code in unspsc_codes:
+            logger.info(f"Fetching tenders with UNSPSC code {code}")
+            code_tenders = fetch_recent_tenders(
+                since_timestamp=since_timestamp,
+                unspsc_code=code,
+            )
+            logger.info(f"Found {len(code_tenders)} tenders with UNSPSC {code}")
+            all_tenders.extend(code_tenders)
+        
+        # Remove duplicates based on external_id
+        seen_ids = set()
+        secop_tenders = []
+        for tender in all_tenders:
+            if tender.external_id not in seen_ids:
+                seen_ids.add(tender.external_id)
+                secop_tenders.append(tender)
+        
+        logger.info(f"Total unique tenders found: {len(secop_tenders)} (after removing duplicates)")
         
         new_tenders = []
         updated_count = 0
@@ -144,7 +166,7 @@ def fetch_and_store_new_tenders() -> None:
                     logger.error(f"Final commit error: {final_e}")
                     db.rollback()
         
-        logger.info(f"Stored {len(new_tenders)} new tenders, updated {updated_count} existing")
+        logger.info(f"✅ Stored {len(new_tenders)} new tenders, updated {updated_count} existing")
         
         # Note: Classification with OpenAI is no longer performed
         # The system now focuses on experience matching, which is more accurate and specific
@@ -153,7 +175,9 @@ def fetch_and_store_new_tenders() -> None:
         # Commit all changes
         db.commit()
         
-        logger.info(f"Tender ingestion completed. Experience matching is the main approach for filtering.")
+        logger.info(f"✅ Tender ingestion completed successfully. Experience matching is the main approach for filtering.")
+        logger.info(f"⏰ Next fetch scheduled in {settings.FETCH_INTERVAL_HOURS} hours")
+        logger.info("=" * 60)
         
         # Send notifications (optional - only if subscriptions are configured)
         # Note: Notifications can still use experience matching if needed
@@ -191,10 +215,12 @@ def fetch_and_store_new_tenders() -> None:
                 logger.error(f"Error sending notifications for tender {tender.id}: {e}")
                 continue
         
-        logger.info("Tender fetch job completed successfully")
+        logger.info("✅ Tender fetch job completed successfully")
     
     except Exception as e:
-        logger.error(f"Error in fetch_and_store_new_tenders: {e}", exc_info=True)
+        logger.error("=" * 60)
+        logger.error(f"❌ ERROR in fetch_and_store_new_tenders: {e}", exc_info=True)
+        logger.error("=" * 60)
         db.rollback()
     finally:
         db.close()

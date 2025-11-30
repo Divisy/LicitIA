@@ -21,6 +21,10 @@ class CompanyExperience(Base):
     category = Column(String(200), nullable=True)  # CATEGORÍA
     engineering_area = Column(String(200), nullable=True)  # ÁREA DE LA INGENIERÍA CIVIL
     
+    # Geographic location (for improved matching)
+    department = Column(String(100), nullable=True)  # Departamento
+    municipality = Column(String(100), nullable=True)  # Municipio
+    
     # Extracted keywords for matching (computed from project_description)
     keywords = Column(Text, nullable=True)  # JSON array of extracted keywords
     

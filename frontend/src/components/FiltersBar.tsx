@@ -7,11 +7,13 @@ interface FiltersBarProps {
   department: string
   companyName: string
   matchExperience: boolean
+  onlyInterventoria: boolean
   onDateFromChange: (value: string) => void
   onDateToChange: (value: string) => void
   onDepartmentChange: (value: string) => void
   onCompanyNameChange: (value: string) => void
   onMatchExperienceChange: (value: boolean) => void
+  onOnlyInterventoriaChange: (value: boolean) => void
   onSubmit: () => void
 }
 
@@ -21,11 +23,13 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
   department,
   companyName,
   matchExperience,
+  onlyInterventoria,
   onDateFromChange,
   onDateToChange,
   onDepartmentChange,
   onCompanyNameChange,
   onMatchExperienceChange,
+  onOnlyInterventoriaChange,
   onSubmit,
 }) => {
   return (
@@ -78,6 +82,22 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
               value={companyName}
               onChange={(e) => onCompanyNameChange(e.target.value)}
             />
+          </div>
+          
+          <div className="filter-group checkbox-group">
+            <label>
+              <input
+                type="checkbox"
+                checked={onlyInterventoria}
+                onChange={(e) => onOnlyInterventoriaChange(e.target.checked)}
+              />
+              Solo interventoría/supervisión (reduce tiempo de análisis)
+            </label>
+            {onlyInterventoria && (
+              <span className="checkbox-hint">
+                (Filtra antes del matching con IA - más rápido)
+              </span>
+            )}
           </div>
           
           <div className="filter-group checkbox-group">
