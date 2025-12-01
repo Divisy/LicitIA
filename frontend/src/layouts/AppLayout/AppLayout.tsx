@@ -89,7 +89,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   }
 
   const navigationItems = [
-    { id: 'dashboard', label: 'Inicio', icon: DashboardIcon, path: '/', exact: true },
+    { id: 'dashboard', label: 'Inicio', icon: DashboardIcon, path: '/dashboard', exact: true },
     { id: 'experiences', label: 'Experiencias', icon: DocumentAdd, path: '/experiences' },
     { id: 'profile', label: 'Perfil', icon: User, path: '/profile' },
     { id: 'feedback', label: 'Feedback', icon: Chat, path: '/feedback' },
@@ -146,7 +146,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 const Icon = item.icon
                 const isActive = item.exact 
                   ? location.pathname === item.path
-                  : location.pathname.startsWith(item.path) && item.path !== '/'
+                  : location.pathname.startsWith(item.path) && item.path !== '/dashboard'
                 
                 return (
                   <button
