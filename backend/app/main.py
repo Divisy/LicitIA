@@ -1,9 +1,10 @@
 """FastAPI application entry point."""
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.scheduler import start_scheduler, shutdown_scheduler
 from app.core.logging import setup_logging, get_logger
-from app.api.v1 import health, tenders, subscriptions, experiences
+from app.api.v1 import health, tenders, subscriptions, experiences, leads, support, feedback
 from app.services.tender_ingestion import fetch_and_store_new_tenders
 from app.config import settings
 
@@ -19,9 +20,13 @@ app = FastAPI(
 )
 
 # CORS middleware (allow frontend to call backend)
+# CORS origins - support both local and production
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+cors_origins = [origin.strip() for origin in cors_origins]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # Vite default ports
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,6 +37,9 @@ app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(tenders.router, prefix="/api/v1", tags=["tenders"])
 app.include_router(subscriptions.router, prefix="/api/v1", tags=["subscriptions"])
 app.include_router(experiences.router, prefix="/api/v1", tags=["experiences"])
+app.include_router(leads.router, prefix="/api/v1", tags=["leads"])
+app.include_router(support.router, prefix="/api/v1", tags=["support"])
+app.include_router(feedback.router, prefix="/api/v1", tags=["feedback"])
 
 
 @app.on_event("startup")

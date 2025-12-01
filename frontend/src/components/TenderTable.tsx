@@ -1,6 +1,8 @@
-import React from 'react'
+import React, { useMemo } from 'react'
+import { DataTable, Table, TableHead, TableRow, TableHeader, TableBody, TableCell, Tag, Link, Tile } from '@carbon/react'
 import { Tender } from '../api/client'
-import './TenderTable.css'
+import { WatsonMachineLearning, Launch } from '@carbon/icons-react'
+import './TenderTable.scss'
 
 interface TenderTableProps {
   tenders: Tender[]
@@ -10,7 +12,11 @@ const TenderTable: React.FC<TenderTableProps> = ({ tenders }) => {
   const formatDate = (dateString: string | null): string => {
     if (!dateString) return 'N/A'
     try {
-      return new Date(dateString).toLocaleDateString('es-CO')
+      return new Date(dateString).toLocaleDateString('es-CO', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      })
     } catch {
       return 'N/A'
     }
@@ -26,91 +32,136 @@ const TenderTable: React.FC<TenderTableProps> = ({ tenders }) => {
     }).format(amount)
   }
   
-  const getEstadoBadgeClass = (estado: string): string => {
+  const getEstadoTagKind = (estado: string): 'green' | 'red' | 'yellow' | 'gray' => {
     const estadoLower = estado.toLowerCase()
     if (estadoLower === 'publicado' || estadoLower === 'abierto' || estadoLower === 'aprobado') {
-      return 'estado-abierto'
+      return 'green'
     } else if (estadoLower === 'cerrado' || estadoLower === 'cancelado' || estadoLower === 'seleccionado') {
-      return 'estado-cerrado'
+      return 'red'
     } else if (estadoLower === 'borrador' || estadoLower === 'en aprobación') {
-      return 'estado-pendiente'
+      return 'yellow'
     } else {
-      return 'estado-unknown'
+      return 'gray'
     }
   }
   
+  const getMatchTagKind = (score: number | null): 'green' | 'yellow' | 'red' | 'gray' => {
+    if (score === null || score === undefined) return 'gray'
+    if (score >= 0.6) return 'green'
+    if (score >= 0.4) return 'yellow'
+    return 'red'
+  }
+  
+  const headers = useMemo(() => [
+    { key: 'publication_date', header: 'Fecha Publicación' },
+    { key: 'closing_date', header: 'Fecha Presentación Ofertas' },
+    { key: 'entity', header: 'Entidad' },
+    { key: 'department', header: 'Departamento' },
+    { key: 'amount', header: 'Monto' },
+    { key: 'state', header: 'Estado' },
+    { key: 'match', header: 'Match Experiencia' },
+    { key: 'link', header: 'Enlace' },
+  ], [])
+  
+  const rows = useMemo(() => {
+    return tenders.map((tender) => ({
+      id: tender.id,
+      publication_date: formatDate(tender.publication_date),
+      closing_date: formatDate(tender.closing_date),
+      entity: (
+        <div className="tender-table-entity">
+          <div className="tender-table-entity-name">{tender.entity_name}</div>
+          <div className="tender-table-entity-object">
+            {tender.object_text || 'Sin descripción disponible'}
+          </div>
+        </div>
+      ),
+      department: tender.department || 'N/A',
+      amount: (
+        <span className="tender-table-amount">{formatCurrency(tender.amount)}</span>
+      ),
+      state: tender.state ? (
+        <Tag type={getEstadoTagKind(tender.state)} size="sm">
+          {tender.state}
+        </Tag>
+      ) : (
+        <Tag type="gray" size="sm">N/A</Tag>
+      ),
+      match: tender.experience_match_score !== null && tender.experience_match_score !== undefined ? (
+        <Tag 
+          type={getMatchTagKind(tender.experience_match_score)} 
+          size="sm"
+          className="tender-table-match-tag"
+        >
+          <WatsonMachineLearning size={12} className="tender-table-match-icon" />
+          {Math.round(tender.experience_match_score * 100)}%
+        </Tag>
+      ) : (
+        <Tag type="gray" size="sm">-</Tag>
+      ),
+      link: (
+        <Link
+          href={tender.process_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="tender-table-link"
+          renderIcon={Launch}
+        >
+          Ver proceso
+        </Link>
+      ),
+    }))
+  }, [tenders])
+  
   if (tenders.length === 0) {
     return (
-      <div className="tender-table-empty">
-        <p>No se encontraron licitaciones con los filtros seleccionados.</p>
-      </div>
+      <Tile className="tender-table-empty">
+        <p className="tender-table-empty-text">
+          No se encontraron licitaciones con los filtros seleccionados.
+        </p>
+        <p className="tender-table-empty-hint">
+          Intenta ajustar los filtros o verifica que hay licitaciones disponibles.
+        </p>
+      </Tile>
     )
   }
   
   return (
     <div className="tender-table-container">
-      <table className="tender-table">
-        <thead>
-          <tr>
-            <th>Fecha Publicación</th>
-            <th>Fecha Presentación Ofertas</th>
-            <th>Entidad</th>
-            <th>Departamento</th>
-            <th>Monto</th>
-            <th>Estado</th>
-            <th>Match Experiencia</th>
-            <th>Enlace</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tenders.map((tender) => (
-            <tr key={tender.id}>
-              <td>{formatDate(tender.publication_date)}</td>
-              <td>{formatDate(tender.closing_date)}</td>
-              <td className="entity-cell">
-                <div className="entity-name">{tender.entity_name}</div>
-                <div className="object-preview">
-                  {tender.object_text.substring(0, 100)}
-                  {tender.object_text.length > 100 ? '...' : ''}
-                </div>
-              </td>
-              <td>{tender.department || 'N/A'}</td>
-              <td className="amount-cell">{formatCurrency(tender.amount)}</td>
-              <td>
-                {tender.state ? (
-                  <span className={`estado-badge ${getEstadoBadgeClass(tender.state)}`}>
-                    {tender.state}
-                  </span>
-                ) : (
-                  <span className="estado-badge estado-unknown">N/A</span>
-                )}
-              </td>
-              <td>
-                {tender.experience_match_score !== null && tender.experience_match_score !== undefined ? (
-                  <span className={`match-badge ${tender.experience_match_score >= 0.6 ? 'high-match' : tender.experience_match_score >= 0.4 ? 'medium-match' : 'low-match'}`}>
-                    {(tender.experience_match_score * 100).toFixed(0) + '%'}
-                  </span>
-                ) : (
-                  <span className="match-badge no-match">-</span>
-                )}
-              </td>
-              <td>
-                <a
-                  href={tender.process_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="process-link"
-                >
-                  Ver proceso
-                </a>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <DataTable
+        rows={rows}
+        headers={headers}
+        isSortable
+        size="lg"
+        useZebraStyles
+      >
+        {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
+          <Table {...getTableProps()}>
+            <TableHead>
+              <TableRow>
+                {headers.map((header) => (
+                  <TableHeader {...getHeaderProps({ header })} key={header.key}>
+                    {header.header}
+                  </TableHeader>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow {...getRowProps({ row })} key={row.id}>
+                  {row.cells.map((cell) => (
+                    <TableCell key={cell.id}>
+                      {cell.value}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </DataTable>
     </div>
   )
 }
 
 export default TenderTable
-

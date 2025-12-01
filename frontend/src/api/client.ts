@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
+// Use environment variable or default to relative path for production
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api/v1' : 'http://localhost:8000/api/v1')
 
 const client = axios.create({
   baseURL: API_BASE_URL,
@@ -9,6 +10,16 @@ const client = axios.create({
   },
   timeout: 120000, // 2 minutes timeout for experience matching (can take time with AI)
 })
+
+export interface LeadCreate {
+  email: string
+  name?: string
+  company?: string
+  source?: string
+  industry?: string
+  company_size?: string
+  role?: string
+}
 
 export interface MatchingExperience {
   experience_id: string
@@ -169,5 +180,150 @@ export async function getExperiences(companyName: string): Promise<ExperienceLis
 
 export async function deleteExperience(id: string): Promise<void> {
   await client.delete(`/experiences/${id}`)
+}
+
+export interface CompanyExperienceCreate {
+  company_name: string
+  contract_number?: string | null
+  project_description: string
+  contracting_entity?: string | null
+  completion_date?: string | null
+  amount?: number | null
+  category?: string | null
+  engineering_area?: string | null
+}
+
+export async function createExperience(
+  experience: CompanyExperienceCreate
+): Promise<CompanyExperience> {
+  const response = await client.post<CompanyExperience>('/experiences', experience)
+  return response.data
+}
+
+export interface LeadResponse {
+  id: number
+  email: string
+  name?: string
+  company?: string
+  source?: string
+  created_at: string
+}
+
+export async function captureLead(lead: LeadCreate): Promise<LeadResponse> {
+  const response = await client.post<LeadResponse>('/leads', lead)
+  return response.data
+}
+
+export interface LeadCheckResponse {
+  exists: boolean
+  lead?: LeadResponse
+}
+
+export async function checkLeadExists(email: string): Promise<LeadCheckResponse> {
+  try {
+    const response = await client.get<LeadCheckResponse>(`/leads/check?email=${encodeURIComponent(email)}`)
+    return response.data
+  } catch (err: any) {
+    if (err?.response?.status === 404) {
+      return { exists: false }
+    }
+    throw err
+  }
+}
+
+export interface SupportTicketCreate {
+  email: string
+  name?: string
+  company?: string
+  subject: string
+  message: string
+  category?: 'technical' | 'billing' | 'feature_request' | 'bug_report' | 'general' | 'other'
+  priority?: 'low' | 'medium' | 'high' | 'urgent'
+}
+
+export interface SupportTicketResponse {
+  id: number
+  email: string
+  name?: string
+  company?: string
+  subject: string
+  message: string
+  category: string
+  priority: string
+  status: string
+  ticket_number: string
+  created_at: string
+}
+
+export async function createSupportTicket(ticket: SupportTicketCreate): Promise<SupportTicketResponse> {
+  const response = await client.post<SupportTicketResponse>('/support/tickets', ticket)
+  return response.data
+}
+
+export async function getSupportTickets(email?: string): Promise<SupportTicketResponse[]> {
+  const params = email ? `?email=${encodeURIComponent(email)}` : ''
+  const response = await client.get<SupportTicketResponse[]>(`/support/tickets${params}`)
+  return response.data
+}
+
+export async function getSupportTicket(ticketNumber: string): Promise<SupportTicketResponse> {
+  const response = await client.get<SupportTicketResponse>(`/support/tickets/${ticketNumber}`)
+  return response.data
+}
+
+// Feedback API
+export type FeedbackType = 'nps' | 'feature_request' | 'bug_report' | 'general' | 'usability'
+
+export interface FeedbackCreate {
+  email: string
+  name?: string
+  company?: string
+  type: FeedbackType
+  score?: number // For NPS: 0-10
+  message: string
+  context?: {
+    page?: string
+    action?: string
+    [key: string]: any
+  }
+}
+
+export interface FeedbackResponse {
+  id: number
+  email: string
+  name?: string
+  company?: string
+  type: string
+  score?: number
+  message: string
+  context?: string
+  status: string
+  created_at: string
+}
+
+export interface FeedbackStats {
+  total: number
+  by_type: Record<string, number>
+  average_nps?: number
+  by_status: Record<string, number>
+}
+
+export async function createFeedback(feedback: FeedbackCreate): Promise<FeedbackResponse> {
+  const response = await client.post<FeedbackResponse>('/feedback', feedback)
+  return response.data
+}
+
+export async function getFeedback(email?: string, type?: FeedbackType): Promise<FeedbackResponse[]> {
+  const params = new URLSearchParams()
+  if (email) params.append('email', email)
+  if (type) params.append('type', type)
+  const queryString = params.toString()
+  const response = await client.get<FeedbackResponse[]>(`/feedback${queryString ? `?${queryString}` : ''}`)
+  return response.data
+}
+
+export async function getFeedbackStats(): Promise<FeedbackStats> {
+  const response = await client.get<FeedbackStats>('/feedback/stats')
+  return response.data
 }
 

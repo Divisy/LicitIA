@@ -1,0 +1,153 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.filters-bar-compact {
+  margin-bottom: $spacing-05;
+  padding: $spacing-04 $spacing-05;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-03;
+}
+
+.filters-bar-form {
+  width: 100%;
+}
+
+.filters-bar-row {
+  display: flex;
+  align-items: flex-end;
+  gap: $spacing-04;
+  flex-wrap: wrap;
+}
+
+.filters-bar-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: $spacing-03;
+  flex: 1;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.filters-bar-field {
+  flex: 0 0 auto;
+  min-width: 140px;
+  
+  .cds--date-picker,
+  .cds--text-input-wrapper {
+    width: 100%;
+  }
+  
+  .cds--date-picker-input__wrapper {
+    width: 100%;
+  }
+  
+  // Hide empty labels
+  .cds--label:empty {
+    display: none;
+  }
+  
+  // Make inputs more compact
+  .cds--text-input,
+  .cds--date-picker-input {
+    min-width: 0;
+    font-size: 0.875rem;
+  }
+  
+  input {
+    min-width: 0;
+  }
+}
+
+.filters-bar-checkboxes {
+  display: flex;
+  align-items: center;
+  gap: $spacing-05;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  
+  .cds--checkbox-label {
+    @include type-style('body-compact-01');
+    color: var(--cds-text-secondary);
+    font-size: 0.875rem;
+  }
+}
+
+.filters-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  flex-shrink: 0;
+}
+
+.filters-bar-submit {
+  min-width: 100px;
+  font-weight: 600;
+  
+  svg {
+    margin-right: $spacing-02;
+  }
+}
+
+.filters-bar-hint {
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin-top: $spacing-03;
+  font-size: 0.75rem;
+  
+  &--warning {
+    color: var(--cds-support-warning);
+  }
+}
+
+@media (max-width: 1056px) {
+  .filters-bar-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filters-bar-fields {
+    width: 100%;
+  }
+  
+  .filters-bar-field {
+    flex: 1 1 calc(50% - #{$spacing-02});
+    min-width: 0;
+  }
+  
+  .filters-bar-checkboxes {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  
+  .filters-bar-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 672px) {
+  .filters-bar-compact {
+    padding: $spacing-03 $spacing-04;
+  }
+  
+  .filters-bar-field {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  
+  .filters-bar-checkboxes {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: $spacing-03;
+  }
+  
+  .filters-bar-actions {
+    width: 100%;
+    
+    button {
+      width: 100%;
+    }
+  }
+}

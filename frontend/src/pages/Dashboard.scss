@@ -1,0 +1,97 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.dashboard {
+  width: 100%;
+  min-height: 100vh;
+  background: var(--cds-background);
+  padding: $spacing-06 $spacing-05;
+  
+  @media (max-width: 672px) {
+    padding: $spacing-05 $spacing-04;
+  }
+}
+
+.dashboard-grid {
+  margin-bottom: $spacing-06;
+}
+
+.dashboard-header {
+  margin-bottom: $spacing-07;
+  padding-bottom: $spacing-06;
+  border-bottom: 1px solid var(--cds-border-subtle);
+  display: flex;
+  align-items: center;
+  gap: $spacing-05;
+
+  &__logo {
+    flex-shrink: 0;
+  }
+
+  &__content {
+    flex: 1;
+  }
+}
+
+.dashboard-title {
+  @include type-style('heading-05');
+  color: var(--cds-text-primary);
+  margin: 0 0 $spacing-03 0;
+  font-weight: 700;
+}
+
+.dashboard-subtitle {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin: 0;
+}
+
+.dashboard-loading {
+  padding: $spacing-09 $spacing-06;
+  text-align: center;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+}
+
+.dashboard-results-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-05;
+  margin-bottom: $spacing-05;
+  padding: $spacing-04 $spacing-05;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-03;
+  flex-wrap: wrap;
+  
+  @media (max-width: 672px) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.dashboard-results-text {
+  @include type-style('body-01');
+  color: var(--cds-text-primary);
+  margin: 0;
+  
+  strong {
+    color: var(--cds-link-primary);
+    font-weight: 600;
+  }
+}
+
+.dashboard-load-all-button {
+  font-weight: 600;
+  
+  svg {
+    margin-right: $spacing-03;
+  }
+  
+  @media (max-width: 672px) {
+    width: 100%;
+  }
+}
+

@@ -1,5 +1,17 @@
 import React from 'react'
-import './FiltersBar.css'
+import { 
+  Grid, 
+  Column, 
+  TextInput, 
+  DatePicker, 
+  DatePickerInput,
+  Checkbox,
+  Button,
+  Tile,
+  FormGroup
+} from '@carbon/react'
+import { Search, Filter } from '@carbon/icons-react'
+import './FiltersBar.scss'
 
 interface FiltersBarProps {
   dateFrom: string
@@ -32,98 +44,117 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
   onOnlyInterventoriaChange,
   onSubmit,
 }) => {
+  const handleDateFromChange = (event: React.SyntheticEvent<HTMLInputElement>) => {
+    const value = (event.target as HTMLInputElement).value
+    onDateFromChange(value)
+  }
+
+  const handleDateToChange = (event: React.SyntheticEvent<HTMLInputElement>) => {
+    const value = (event.target as HTMLInputElement).value
+    onDateToChange(value)
+  }
+
   return (
-    <div className="filters-bar">
-      <h2>Filtros</h2>
+    <div className="filters-bar-compact">
       <form
         onSubmit={(e) => {
           e.preventDefault()
           onSubmit()
         }}
+        className="filters-bar-form"
       >
-        <div className="filters-grid">
-          <div className="filter-group">
-            <label htmlFor="dateFrom">Fecha desde:</label>
-            <input
-              type="date"
-              id="dateFrom"
-              value={dateFrom}
-              onChange={(e) => onDateFromChange(e.target.value)}
-            />
-          </div>
-          
-          <div className="filter-group">
-            <label htmlFor="dateTo">Fecha hasta:</label>
-            <input
-              type="date"
-              id="dateTo"
-              value={dateTo}
-              onChange={(e) => onDateToChange(e.target.value)}
-            />
-          </div>
-          
-          <div className="filter-group">
-            <label htmlFor="department">Departamento:</label>
-            <input
-              type="text"
-              id="department"
-              placeholder="Ej: Cundinamarca"
-              value={department}
-              onChange={(e) => onDepartmentChange(e.target.value)}
-            />
-          </div>
-          
-          <div className="filter-group">
-            <label htmlFor="companyName">Nombre de empresa:</label>
-            <input
-              type="text"
-              id="companyName"
-              placeholder="Ej: BEC"
-              value={companyName}
-              onChange={(e) => onCompanyNameChange(e.target.value)}
-            />
-          </div>
-          
-          <div className="filter-group checkbox-group">
-            <label>
-              <input
-                type="checkbox"
-                checked={onlyInterventoria}
-                onChange={(e) => onOnlyInterventoriaChange(e.target.checked)}
+        <div className="filters-bar-row">
+          <div className="filters-bar-fields">
+            <div className="filters-bar-field">
+              <DatePicker
+                datePickerType="single"
+                value={dateFrom ? [new Date(dateFrom)] : []}
+              >
+                <DatePickerInput
+                  id="date-from"
+                  placeholder="dd/mm/aaaa"
+                  labelText=""
+                  size="sm"
+                  value={dateFrom}
+                  onChange={handleDateFromChange}
+                />
+              </DatePicker>
+            </div>
+            
+            <div className="filters-bar-field">
+              <DatePicker
+                datePickerType="single"
+                value={dateTo ? [new Date(dateTo)] : []}
+              >
+                <DatePickerInput
+                  id="date-to"
+                  placeholder="dd/mm/aaaa"
+                  labelText=""
+                  size="sm"
+                  value={dateTo}
+                  onChange={handleDateToChange}
+                />
+              </DatePicker>
+            </div>
+            
+            <div className="filters-bar-field">
+              <TextInput
+                id="department"
+                placeholder="Departamento"
+                value={department}
+                onChange={(e) => onDepartmentChange(e.target.value)}
+                size="sm"
+                hideLabel
               />
-              Solo interventoría/supervisión (reduce tiempo de análisis)
-            </label>
-            {onlyInterventoria && (
-              <span className="checkbox-hint">
-                (Filtra antes del matching con IA - más rápido)
-              </span>
-            )}
-          </div>
-          
-          <div className="filter-group checkbox-group">
-            <label>
-              <input
-                type="checkbox"
-                checked={matchExperience}
-                onChange={(e) => onMatchExperienceChange(e.target.checked)}
+            </div>
+            
+            <div className="filters-bar-field">
+              <TextInput
+                id="company-name"
+                placeholder="Nombre de empresa"
+                value={companyName}
+                onChange={(e) => onCompanyNameChange(e.target.value)}
+                size="sm"
+                hideLabel
               />
-              Solo coincidencias con experiencia
-            </label>
-            {matchExperience && !companyName && (
-              <span className="checkbox-hint">
-                (Ingresa el nombre de la empresa arriba)
-              </span>
-            )}
+            </div>
+          </div>
+
+          <div className="filters-bar-checkboxes">
+            <Checkbox
+              id="only-interventoria"
+              labelText="Solo interventoría/supervisión"
+              checked={onlyInterventoria}
+              onChange={(_, { checked }) => onOnlyInterventoriaChange(checked)}
+            />
+            <Checkbox
+              id="match-experience"
+              labelText="Solo coincidencias con experiencia"
+              checked={matchExperience}
+              onChange={(_, { checked }) => onMatchExperienceChange(checked)}
+            />
+          </div>
+
+          <div className="filters-bar-actions">
+            <Button
+              type="submit"
+              size="sm"
+              renderIcon={Search}
+              className="filters-bar-submit"
+            >
+              Buscar
+            </Button>
           </div>
         </div>
         
-        <button type="submit" className="submit-button">
-          Buscar
-        </button>
+        {matchExperience && !companyName && (
+          <div className="filters-bar-hint filters-bar-hint--warning">
+            Ingresa el nombre de la empresa para ver coincidencias
+          </div>
+        )}
       </form>
     </div>
   )
 }
 
 export default FiltersBar
-

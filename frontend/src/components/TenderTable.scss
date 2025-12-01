@@ -1,0 +1,166 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.tender-table-container {
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-03;
+  overflow: hidden;
+}
+
+.tender-table-entity {
+  max-width: none;
+  min-width: 500px;
+  width: 100%;
+}
+
+.tender-table-entity-name {
+  @include type-style('heading-01');
+  color: var(--cds-text-primary);
+  font-weight: 600;
+  margin-bottom: $spacing-03;
+  line-height: 1.3;
+  font-size: 0.875rem;
+  word-break: break-word;
+}
+
+.tender-table-entity-object {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  line-height: 1.6;
+  font-size: 0.875rem;
+  display: block;
+  overflow: visible;
+  text-overflow: unset;
+  word-wrap: break-word;
+  max-width: 100%;
+  white-space: normal;
+  // Allow up to 4 lines for better horizontal display
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tender-table-amount {
+  @include type-style('body-01');
+  color: var(--cds-support-success);
+  font-weight: 600;
+}
+
+.tender-table-match-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-02;
+  font-weight: 600;
+}
+
+.tender-table-match-icon {
+  flex-shrink: 0;
+}
+
+.tender-table-link {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-02;
+  font-weight: 500;
+  
+  svg {
+    margin-left: $spacing-02;
+  }
+}
+
+.tender-table-empty {
+  padding: $spacing-09 $spacing-06;
+  text-align: center;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+}
+
+.tender-table-empty-text {
+  @include type-style('heading-03');
+  color: var(--cds-text-primary);
+  margin-bottom: $spacing-03;
+}
+
+.tender-table-empty-hint {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+}
+
+// Override Carbon table styles for better spacing
+.tender-table-container {
+  .cds--data-table {
+    .cds--table-header-label {
+      @include type-style('label-01');
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .cds--table-cell {
+      padding: $spacing-05;
+      vertical-align: top;
+    }
+    
+    // Make entity column wider to show more object text horizontally
+    .cds--table-header[data-header-key="entity"],
+    .cds--table-cell[data-column-key="entity"] {
+      min-width: 500px;
+      width: 35%;
+      max-width: none;
+    }
+    
+    // Adjust other columns to accommodate wider entity column
+    .cds--table-header[data-header-key="publication_date"],
+    .cds--table-cell[data-column-key="publication_date"],
+    .cds--table-header[data-header-key="closing_date"],
+    .cds--table-cell[data-column-key="closing_date"] {
+      width: 8%;
+      min-width: 120px;
+    }
+    
+    .cds--table-header[data-header-key="department"],
+    .cds--table-cell[data-column-key="department"] {
+      width: 10%;
+      min-width: 100px;
+    }
+    
+    .cds--table-header[data-header-key="amount"],
+    .cds--table-cell[data-column-key="amount"] {
+      width: 12%;
+      min-width: 130px;
+    }
+    
+    .cds--table-header[data-header-key="state"],
+    .cds--table-cell[data-column-key="state"],
+    .cds--table-header[data-header-key="match"],
+    .cds--table-cell[data-column-key="match"] {
+      width: 10%;
+      min-width: 120px;
+    }
+    
+    .cds--table-header[data-header-key="link"],
+    .cds--table-cell[data-column-key="link"] {
+      width: 10%;
+      min-width: 120px;
+    }
+    
+    .cds--table-row:hover {
+      background: var(--cds-layer-hover);
+    }
+  }
+}
+
+@media (max-width: 672px) {
+  .tender-table-entity {
+    max-width: 200px;
+  }
+  
+  .tender-table-entity-object {
+    font-size: 0.75rem;
+  }
+}
+

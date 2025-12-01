@@ -1,0 +1,191 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.onboarding-experiences-step {
+  display: flex;
+  flex-direction: column;
+  min-height: 500px;
+  padding: $spacing-06;
+  max-width: 600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.onboarding-experiences-header {
+  margin-bottom: $spacing-05;
+}
+
+.onboarding-experiences-back {
+  color: var(--cds-text-secondary);
+  
+  &:hover {
+    color: var(--cds-link-primary);
+  }
+  
+  svg {
+    margin-right: $spacing-02;
+  }
+}
+
+.onboarding-experiences-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  animation: fadeInUp 0.4s ease-out;
+}
+
+.onboarding-experiences-title {
+  @include type-style('heading-04');
+  color: var(--cds-text-primary);
+  margin-bottom: $spacing-03;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.onboarding-experiences-description {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin-bottom: $spacing-07;
+  line-height: 1.6;
+}
+
+.onboarding-experiences-upload {
+  margin-bottom: $spacing-07;
+}
+
+.onboarding-file-uploader {
+  margin-bottom: $spacing-05;
+}
+
+.onboarding-upload-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-08;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-03;
+  min-height: 200px;
+}
+
+.onboarding-upload-loading-text {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin-top: $spacing-04;
+}
+
+.onboarding-upload-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-08;
+  background: var(--cds-layer-selected);
+  border: 2px solid var(--cds-support-success);
+  border-radius: $spacing-03;
+  min-height: 200px;
+  animation: fadeInUp 0.4s ease-out;
+}
+
+.onboarding-upload-success-icon {
+  margin-bottom: $spacing-04;
+  
+  svg {
+    fill: var(--cds-support-success);
+  }
+}
+
+.onboarding-upload-success-text {
+  @include type-style('heading-03');
+  color: var(--cds-text-primary);
+  font-weight: 600;
+  text-align: center;
+}
+
+.onboarding-files-list {
+  margin-top: $spacing-05;
+}
+
+.onboarding-experiences-error {
+  margin-top: $spacing-04;
+}
+
+.onboarding-upload-info {
+  margin-top: $spacing-06;
+  padding: $spacing-05;
+  background: var(--cds-layer-01);
+  border-radius: $spacing-03;
+  border: 1px solid var(--cds-border-subtle);
+}
+
+.onboarding-upload-info-text {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin-bottom: $spacing-03;
+  line-height: 1.6;
+}
+
+.onboarding-download-template {
+  margin-top: $spacing-03;
+  
+  svg {
+    margin-right: $spacing-02;
+  }
+}
+
+.onboarding-experiences-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: $spacing-07;
+  gap: $spacing-04;
+}
+
+.onboarding-experiences-skip {
+  color: var(--cds-text-secondary);
+  
+  &:hover {
+    color: var(--cds-link-primary);
+  }
+}
+
+.onboarding-experiences-continue {
+  min-width: 150px;
+  font-weight: 600;
+  
+  svg {
+    margin-left: $spacing-03;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 672px) {
+  .onboarding-experiences-step {
+    padding: $spacing-05 $spacing-04;
+  }
+
+  .onboarding-experiences-title {
+    @include type-style('heading-03');
+  }
+
+  .onboarding-experiences-actions {
+    flex-direction: column-reverse;
+    
+    button {
+      width: 100%;
+    }
+  }
+}
+

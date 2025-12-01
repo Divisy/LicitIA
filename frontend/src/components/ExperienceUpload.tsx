@@ -1,32 +1,61 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { 
+  FileUploader, 
+  FileUploaderItem,
+  Button,
+  InlineNotification,
+  Loading,
+  Tabs,
+  TabList,
+  Tab,
+  TabPanels,
+  TabPanel,
+  Accordion,
+  AccordionItem
+} from '@carbon/react'
+import { DocumentAdd, Upload, Download, Add } from '@carbon/icons-react'
 import { importExperiences } from '../api/client'
-import './ExperienceUpload.css'
+import ExperienceManualForm from './ExperienceManualForm'
+import './ExperienceUpload.scss'
 
 interface ExperienceUploadProps {
-  onUploadSuccess?: () => void
+  onUploadSuccess?: (count?: number) => void
   defaultCompanyName?: string
+  showValueProposition?: boolean
 }
 
-const ExperienceUpload: React.FC<ExperienceUploadProps> = ({ onUploadSuccess, defaultCompanyName = 'BEC' }) => {
+const ExperienceUpload: React.FC<ExperienceUploadProps> = ({ 
+  onUploadSuccess, 
+  defaultCompanyName = 'BEC',
+  showValueProposition = true
+}) => {
   const [file, setFile] = useState<File | null>(null)
   const [companyName, setCompanyName] = useState<string>(defaultCompanyName)
   const [uploading, setUploading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [activeTab, setActiveTab] = useState(0)
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0]
-      
-      // Validate file type
-      if (!selectedFile.name.endsWith('.xlsx') && !selectedFile.name.endsWith('.xls')) {
-        setMessage({ type: 'error', text: 'Por favor selecciona un archivo Excel (.xlsx o .xls)' })
-        setFile(null)
-        return
-      }
-      
-      setFile(selectedFile)
-      setMessage(null)
+  useEffect(() => {
+    setCompanyName(defaultCompanyName)
+  }, [defaultCompanyName])
+
+  const handleFileChange = (event: { target: { files: FileList | null } }) => {
+    const selectedFile = event.target.files?.[0]
+    if (!selectedFile) return
+
+    if (!selectedFile.name.endsWith('.xlsx') && !selectedFile.name.endsWith('.xls')) {
+      setMessage({ type: 'error', text: 'Por favor selecciona un archivo Excel (.xlsx o .xls)' })
+      setFile(null)
+      return
     }
+    
+    setFile(selectedFile)
+    setMessage(null)
+  }
+
+  const handleRemoveFile = () => {
+    setFile(null)
+    setMessage(null)
   }
 
   const handleUpload = async () => {
@@ -57,14 +86,9 @@ const ExperienceUpload: React.FC<ExperienceUploadProps> = ({ onUploadSuccess, de
       } else {
         setMessage({ type: 'success', text: result.message })
         setFile(null)
-        // Reset file input
-        const fileInput = document.getElementById('excel-file-input') as HTMLInputElement
-        if (fileInput) {
-          fileInput.value = ''
-        }
         
         if (onUploadSuccess) {
-          onUploadSuccess()
+          onUploadSuccess(result.imported)
         }
       }
     } catch (error) {
@@ -77,80 +101,179 @@ const ExperienceUpload: React.FC<ExperienceUploadProps> = ({ onUploadSuccess, de
     }
   }
 
+  const handleManualSuccess = (count: number) => {
+    if (onUploadSuccess) {
+      onUploadSuccess(count)
+    }
+  }
+
+  const handleDownloadTemplate = () => {
+    // TODO: Implementar descarga de plantilla
+    alert('Descarga de plantilla próximamente')
+  }
+
   return (
     <div className="experience-upload">
-      <h3>Cargar Experiencias de la Empresa</h3>
-      <p className="upload-description">
-        Sube un archivo Excel con las experiencias de tu empresa para que el sistema pueda 
-        encontrar licitaciones que coincidan con tu experiencia.
-      </p>
-      
-      <div className="upload-form">
-        <div className="form-group">
-          <label htmlFor="company-name-input">Nombre de la Empresa:</label>
-          <input
-            type="text"
-            id="company-name-input"
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-            placeholder="Ej: BEC"
-            disabled={uploading}
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="excel-file-input">Archivo Excel:</label>
-          <input
-            type="file"
-            id="excel-file-input"
-            accept=".xlsx,.xls"
-            onChange={handleFileChange}
-            disabled={uploading}
-          />
-          {file && (
-            <div className="file-info">
-              <span className="file-name">📄 {file.name}</span>
-              <span className="file-size">
-                ({(file.size / 1024).toFixed(2)} KB)
-              </span>
-            </div>
-          )}
-        </div>
-
+      {/* Simple Tabs */}
+      <div className="experience-upload__tabs">
         <button
-          type="button"
-          onClick={handleUpload}
-          disabled={!file || uploading || !companyName.trim()}
-          className="upload-button"
+          className={`experience-upload__tab ${activeTab === 0 ? 'experience-upload__tab--active' : ''}`}
+          onClick={() => setActiveTab(0)}
         >
-          {uploading ? 'Subiendo...' : 'Subir Experiencias'}
+          <DocumentAdd size={20} />
+          <span>Desde Excel</span>
+        </button>
+        <button
+          className={`experience-upload__tab ${activeTab === 1 ? 'experience-upload__tab--active' : ''}`}
+          onClick={() => setActiveTab(1)}
+        >
+          <Add size={20} />
+          <span>Manual</span>
         </button>
       </div>
 
-      {message && (
-        <div className={`upload-message ${message.type}`}>
-          {message.type === 'success' && '✅ '}
-          {message.type === 'error' && '❌ '}
-          {message.text}
+      {/* Content Panels */}
+      <div className="experience-upload__content">
+        {activeTab === 0 && (
+          <div className="experience-upload__excel-section">
+            {uploading ? (
+              <div className="experience-upload-loading">
+                <Loading description="Subiendo archivo..." withOverlay={false} />
+                <p className="experience-upload-loading-text">Procesando archivo...</p>
+              </div>
+            ) : (
+              <>
+                <div className="experience-upload__dropzone">
+                  <FileUploader
+                    accept={['.xlsx', '.xls']}
+                    buttonKind="primary"
+                    buttonLabel="Seleccionar archivo Excel"
+                    filenameStatus="edit"
+                    iconDescription="Eliminar archivo"
+                    labelDescription="Solo archivos .xlsx o .xls"
+                    labelTitle=""
+                    multiple={false}
+                    onChange={handleFileChange}
+                    size="lg"
+                    className="experience-upload-file-uploader"
+                  />
+                  {!file && (
+                    <p className="experience-upload__dropzone-hint">
+                      Arrastra y suelta tu archivo aquí o haz clic para seleccionar
+                    </p>
+                  )}
+                </div>
+
+                {file && (
+                  <div className="experience-upload-file-list">
+                    <FileUploaderItem
+                      name={file.name}
+                      status="complete"
+                      onDelete={handleRemoveFile}
+                      size={file.size}
+                    />
+                  </div>
+                )}
+
+                {message && (
+                  <InlineNotification
+                    kind={message.type === 'success' ? 'success' : 'error'}
+                    title={message.type === 'success' ? '¡Éxito!' : 'Error'}
+                    subtitle={message.text}
+                    lowContrast={false}
+                    className="experience-upload-message"
+                    onClose={() => setMessage(null)}
+                  />
+                )}
+
+                <div className="experience-upload__actions">
+                  <Button
+                    kind="ghost"
+                    size="md"
+                    onClick={handleDownloadTemplate}
+                    renderIcon={Download}
+                    className="experience-upload-template-button"
+                  >
+                    Descargar Plantilla
+                  </Button>
+                  <Button
+                    type="button"
+                    size="lg"
+                    onClick={handleUpload}
+                    disabled={!file || uploading || !companyName.trim()}
+                    renderIcon={Upload}
+                    className="experience-upload-button"
+                  >
+                    {uploading ? 'Subiendo...' : 'Subir Experiencias'}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {activeTab === 1 && (
+          <div className="experience-upload__manual-section">
+            <ExperienceManualForm
+              companyName={companyName}
+              onSuccess={handleManualSuccess}
+            />
+          </div>
+        )}
+      </div>
+
+      {activeTab === 0 && (
+        <div className="experience-upload-help-section">
+          <Accordion className="experience-upload-help">
+            <AccordionItem 
+              title="Formato del archivo Excel"
+              open={false}
+            >
+              <div className="experience-upload-help-content">
+                <p className="experience-upload-help-text">
+                  Tu archivo Excel debe tener estas columnas (solo <strong>OBRA</strong> es obligatoria):
+                </p>
+                <div className="experience-upload-help-columns">
+                  <div className="experience-upload-help-column experience-upload-help-column--required">
+                    <span className="experience-upload-help-column-name">OBRA *</span>
+                    <span className="experience-upload-help-column-desc">Descripción del proyecto</span>
+                  </div>
+                  <div className="experience-upload-help-column">
+                    <span className="experience-upload-help-column-name">EMPRESA</span>
+                    <span className="experience-upload-help-column-desc">Nombre de la empresa</span>
+                  </div>
+                  <div className="experience-upload-help-column">
+                    <span className="experience-upload-help-column-name">ENTIDAD CONTRATANTE</span>
+                    <span className="experience-upload-help-column-desc">Entidad que contrató</span>
+                  </div>
+                  <div className="experience-upload-help-column">
+                    <span className="experience-upload-help-column-name">VALOR ACTUAL</span>
+                    <span className="experience-upload-help-column-desc">Monto del contrato</span>
+                  </div>
+                  <div className="experience-upload-help-column">
+                    <span className="experience-upload-help-column-name">FECHA FINALIZACIÓN</span>
+                    <span className="experience-upload-help-column-desc">Fecha de finalización</span>
+                  </div>
+                  <div className="experience-upload-help-column">
+                    <span className="experience-upload-help-column-name">CONTRATO No.</span>
+                    <span className="experience-upload-help-column-desc">Número de contrato</span>
+                  </div>
+                  <div className="experience-upload-help-column">
+                    <span className="experience-upload-help-column-name">CATEGORÍA</span>
+                    <span className="experience-upload-help-column-desc">Categoría del proyecto</span>
+                  </div>
+                  <div className="experience-upload-help-column">
+                    <span className="experience-upload-help-column-name">ÁREA DE LA INGENIERÍA CIVIL</span>
+                    <span className="experience-upload-help-column-desc">Área de ingeniería</span>
+                  </div>
+                </div>
+              </div>
+            </AccordionItem>
+          </Accordion>
         </div>
       )}
-
-      <div className="upload-help">
-        <h4>Formato del archivo Excel:</h4>
-        <ul>
-          <li><strong>EMPRESA</strong> - Nombre de la empresa</li>
-          <li><strong>CONTRATO No.</strong> - Número de contrato</li>
-          <li><strong>OBRA</strong> - Descripción del proyecto (requerido)</li>
-          <li><strong>ENTIDAD CONTRATANTE</strong> - Entidad que contrató</li>
-          <li><strong>FECHA FINALIZACIÓN</strong> - Fecha de finalización</li>
-          <li><strong>VALOR ACTUAL</strong> - Monto del contrato</li>
-          <li><strong>CATEGORÍA</strong> - Categoría del proyecto</li>
-          <li><strong>ÁREA DE LA INGENIERÍA CIVIL</strong> - Área de ingeniería</li>
-        </ul>
-      </div>
     </div>
   )
 }
 
 export default ExperienceUpload
-

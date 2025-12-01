@@ -1,0 +1,39 @@
+@use '../../../styles/tokens' as *;
+
+.licitia-card {
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $licitia-radius-md;
+  transition: all $licitia-transition-base;
+
+  &--padding-none {
+    padding: 0;
+  }
+
+  &--padding-sm {
+    padding: $licitia-spacing-sm;
+  }
+
+  &--padding-md {
+    padding: $licitia-spacing-md;
+  }
+
+  &--padding-lg {
+    padding: $licitia-spacing-lg;
+  }
+
+  &--interactive {
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--cds-border-strong);
+      box-shadow: $licitia-shadow-md;
+      transform: translateY(-2px);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+  }
+}
+

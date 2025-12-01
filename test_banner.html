@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Banner</title>
+</head>
+<body>
+    <h1>Test LocalStorage</h1>
+    <button onclick="clearAll()">Limpiar todo</button>
+    <button onclick="checkStatus()">Ver estado</button>
+    <div id="status"></div>
+    <script>
+        function clearAll() {
+            localStorage.removeItem('licitia_onboarding_completed');
+            localStorage.removeItem('licitia_onboarding_banner_dismissed');
+            localStorage.removeItem('licitia_onboarding_state');
+            document.getElementById('status').innerHTML = '✅ Limpiado';
+        }
+        function checkStatus() {
+            const completed = localStorage.getItem('licitia_onboarding_completed');
+            const dismissed = localStorage.getItem('licitia_onboarding_banner_dismissed');
+            const state = localStorage.getItem('licitia_onboarding_state');
+            document.getElementById('status').innerHTML = `
+                <p>Completed: ${completed || 'null'}</p>
+                <p>Banner Dismissed: ${dismissed || 'null'}</p>
+                <p>State: ${state ? 'exists' : 'null'}</p>
+            `;
+        }
+        checkStatus();
+    </script>
+</body>
+</html>

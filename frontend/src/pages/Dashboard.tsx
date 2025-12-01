@@ -1,17 +1,33 @@
 import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { 
+  Grid, 
+  Column, 
+  Button, 
+  InlineNotification,
+  Loading,
+  Tile
+} from '@carbon/react'
+import { View, Download } from '@carbon/icons-react'
 import FiltersBar from '../components/FiltersBar'
 import TenderTable from '../components/TenderTable'
+import OnboardingWizard from '../components/onboarding/OnboardingWizard'
+import OnboardingBanner from '../components/onboarding/OnboardingBanner'
+import EmptyState from '../components/empty-states/EmptyState'
+import Logo from '../components/Logo'
+import { useOnboarding } from '../hooks/useOnboarding'
 import { getTenders, Tender, TenderFilters } from '../api/client'
-import './Dashboard.css'
+import './Dashboard.scss'
 
 const Dashboard: React.FC = () => {
   const [tenders, setTenders] = useState<Tender[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
+  const [showOnboardingBanner, setShowOnboardingBanner] = useState(false)
   
-  // Filter state (removed is_relevant as it's no longer used)
+  const { state: onboardingState, startOnboarding } = useOnboarding()
+  
+  // Filter state
   const [filters, setFilters] = useState<TenderFilters>({
     limit: 50,
     offset: 0,
@@ -30,11 +46,9 @@ const Dashboard: React.FC = () => {
     setError(null)
     
     try {
-      // Determine limit: if showAll is true or matchExperience is enabled, use a high limit
       const limit = loadAll || matchExperience ? 1000 : 50
       
       const params: TenderFilters = {
-        // No need for is_relevant filter - experience matching is the main feature
         limit: limit,
         offset: 0,
       }
@@ -48,18 +62,14 @@ const Dashboard: React.FC = () => {
       if (department) {
         params.department = department
       }
-      // OPTIMIZATION: Filter by interventoría keywords BEFORE matching (reduces AI processing time)
       if (onlyInterventoria) {
         params.only_interventoria = true
       }
-      // If matchExperience is enabled, use companyName or default to "BEC"
       if (matchExperience) {
         params.match_experience = true
-        params.min_match_score = 0.55  // 55% threshold (balanced for quality)
-        // Use provided company name or default to "BEC" if empty
+        params.min_match_score = 0.55
         params.company_name = companyName.trim() || "BEC"
       } else if (companyName) {
-        // Only send company_name if not matching (for display purposes)
         params.company_name = companyName
       }
       
@@ -78,8 +88,69 @@ const Dashboard: React.FC = () => {
     fetchTenders()
   }, [])
   
+  // Check for onboarding flag on mount - this should run first
+  useEffect(() => {
+    const shouldStartOnboarding = localStorage.getItem('licitia_start_onboarding')
+    const completed = localStorage.getItem('licitia_onboarding_completed')
+    
+    console.log('[Dashboard Mount] Checking onboarding flags:', {
+      shouldStartOnboarding,
+      completed,
+      isActive: onboardingState.isActive
+    })
+    
+    // If flag is set, clear completed flag and start onboarding
+    // This ensures new users always get onboarding even if completed was set before
+    if (shouldStartOnboarding === 'true') {
+      // Clear completed flag if onboarding should start (new user)
+      if (completed === 'true') {
+        console.log('[Dashboard] Clearing completed flag for new user')
+        localStorage.removeItem('licitia_onboarding_completed')
+        localStorage.removeItem('licitia_onboarding_state')
+      }
+      
+      console.log('[Dashboard] Starting onboarding automatically for new user')
+      // Remove flag first to prevent multiple triggers
+      localStorage.removeItem('licitia_start_onboarding')
+      // Start onboarding immediately
+      startOnboarding()
+    }
+  }, []) // Run only on mount
+  
+  // Watch for state changes to handle edge cases
+  useEffect(() => {
+    if (!onboardingState.isActive) {
+      const shouldStartOnboarding = localStorage.getItem('licitia_start_onboarding')
+      const completed = localStorage.getItem('licitia_onboarding_completed')
+      
+      if (shouldStartOnboarding === 'true' && completed !== 'true') {
+        console.log('[Dashboard] Onboarding flag detected, starting...')
+        localStorage.removeItem('licitia_start_onboarding')
+        startOnboarding()
+      }
+    }
+  }, [onboardingState.isActive, startOnboarding])
+  
+  // Separate effect for banner display
+  useEffect(() => {
+    const completed = localStorage.getItem('licitia_onboarding_completed')
+    const hasSeenBanner = localStorage.getItem('licitia_onboarding_banner_dismissed')
+    const shouldStartOnboarding = localStorage.getItem('licitia_start_onboarding')
+    
+    // Only show banner if onboarding is not active, not completed, and flag is not set
+    if (!completed && !hasSeenBanner && !onboardingState.isActive && shouldStartOnboarding !== 'true') {
+      const timer = setTimeout(() => {
+        setShowOnboardingBanner(true)
+      }, 3000)
+      
+      return () => {
+        clearTimeout(timer)
+      }
+    }
+  }, [onboardingState.isActive])
+  
   const handleFilterSubmit = () => {
-    setShowAll(false) // Reset showAll when filters change
+    setShowAll(false)
     fetchTenders(false)
   }
   
@@ -88,48 +159,139 @@ const Dashboard: React.FC = () => {
     fetchTenders(true)
   }
   
+  const handleOnboardingComplete = () => {
+    setShowOnboardingBanner(false)
+    fetchTenders()
+  }
+
+  const handleStartOnboarding = () => {
+    setShowOnboardingBanner(false)
+    startOnboarding()
+  }
+
+  const handleDismissBanner = () => {
+    setShowOnboardingBanner(false)
+    localStorage.setItem('licitia_onboarding_banner_dismissed', 'true')
+  }
+
   return (
     <div className="dashboard">
-      <FiltersBar
-        dateFrom={dateFrom}
-        dateTo={dateTo}
-        department={department}
-        companyName={companyName}
-        matchExperience={matchExperience}
-        onlyInterventoria={onlyInterventoria}
-        onDateFromChange={setDateFrom}
-        onDateToChange={setDateTo}
-        onDepartmentChange={setDepartment}
-        onCompanyNameChange={setCompanyName}
-        onMatchExperienceChange={setMatchExperience}
-        onOnlyInterventoriaChange={setOnlyInterventoria}
-        onSubmit={handleFilterSubmit}
-      />
+      <OnboardingWizard onComplete={handleOnboardingComplete} />
       
-      {loading && <div className="loading">Cargando...</div>}
-      {error && <div className="error">Error: {error}</div>}
+      {showOnboardingBanner && !onboardingState.isActive && (
+        <OnboardingBanner
+          onStart={handleStartOnboarding}
+          onDismiss={handleDismissBanner}
+        />
+      )}
       
-      {!loading && !error && (
-        <div className="results-info">
-          <p>Mostrando {tenders.length} de {total} licitaciones</p>
-          {!showAll && tenders.length < total && (
-            <button 
-              type="button"
-              onClick={handleLoadAll}
-              className="load-all-button"
-            >
-              Ver todas las licitaciones ({total})
-            </button>
-          )}
-        </div>
+      <Grid className="dashboard-grid">
+        <Column lg={16} md={8} sm={4}>
+          <div className="dashboard-header">
+            <div className="dashboard-header__logo">
+              <Logo size="md" showText={true} />
+            </div>
+            <div className="dashboard-header__content">
+              <h1 className="dashboard-title">Dashboard</h1>
+              <p className="dashboard-subtitle">
+                Encuentra las licitaciones perfectas para tu empresa
+              </p>
+            </div>
+          </div>
+        </Column>
+      </Grid>
+      
+      <Grid className="dashboard-grid">
+        <Column lg={16} md={8} sm={4}>
+          <FiltersBar
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            department={department}
+            companyName={companyName}
+            matchExperience={matchExperience}
+            onlyInterventoria={onlyInterventoria}
+            onDateFromChange={setDateFrom}
+            onDateToChange={setDateTo}
+            onDepartmentChange={setDepartment}
+            onCompanyNameChange={setCompanyName}
+            onMatchExperienceChange={setMatchExperience}
+            onOnlyInterventoriaChange={setOnlyInterventoria}
+            onSubmit={handleFilterSubmit}
+          />
+        </Column>
+      </Grid>
+      
+      {loading && (
+        <Grid className="dashboard-grid">
+          <Column lg={16} md={8} sm={4}>
+            <Tile className="dashboard-loading">
+              <Loading description="Cargando licitaciones..." withOverlay={false} />
+            </Tile>
+          </Column>
+        </Grid>
+      )}
+      
+      {error && (
+        <Grid className="dashboard-grid">
+          <Column lg={16} md={8} sm={4}>
+            <InlineNotification
+              kind="error"
+              title="Error"
+              subtitle={error}
+              lowContrast={false}
+            />
+          </Column>
+        </Grid>
       )}
       
       {!loading && !error && (
-        <TenderTable tenders={tenders} />
+        <Grid className="dashboard-grid">
+          <Column lg={16} md={8} sm={4}>
+            <div className="dashboard-results-info">
+              <p className="dashboard-results-text">
+                Mostrando <strong>{tenders.length}</strong> de <strong>{total}</strong> licitaciones
+              </p>
+              {!showAll && tenders.length < total && (
+                <Button
+                  kind="secondary"
+                  size="md"
+                  onClick={handleLoadAll}
+                  renderIcon={View}
+                  className="dashboard-load-all-button"
+                >
+                  Ver todas las licitaciones ({total})
+                </Button>
+              )}
+            </div>
+          </Column>
+        </Grid>
+      )}
+      
+      {!loading && !error && tenders.length === 0 && total === 0 && (
+        <Grid className="dashboard-grid">
+          <Column lg={16} md={8} sm={4}>
+            <EmptyState
+              type="no-tenders"
+              title="No se encontraron licitaciones"
+              description="Intenta ajustar los filtros de búsqueda o verifica que hay licitaciones disponibles."
+              action={{
+                label: "Ver todas las licitaciones",
+                onClick: handleLoadAll
+              }}
+            />
+          </Column>
+        </Grid>
+      )}
+      
+      {!loading && !error && tenders.length > 0 && (
+        <Grid className="dashboard-grid">
+          <Column lg={16} md={8} sm={4}>
+            <TenderTable tenders={tenders} />
+          </Column>
+        </Grid>
       )}
     </div>
   )
 }
 
 export default Dashboard
-

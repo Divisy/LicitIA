@@ -1,0 +1,311 @@
+@use '../styles/tokens' as *;
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.support-page {
+  width: 100%;
+  padding: $spacing-06 $spacing-05;
+  background: var(--cds-background);
+
+  @media (max-width: 672px) {
+    padding: $spacing-05 $spacing-04;
+  }
+}
+
+.support-grid {
+  margin-bottom: $spacing-06;
+}
+
+.support-header {
+  display: flex;
+  align-items: center;
+  gap: $spacing-05;
+  margin-bottom: $spacing-07;
+  padding-bottom: $spacing-06;
+  border-bottom: 1px solid var(--cds-border-subtle);
+
+  &__content {
+    flex: 1;
+  }
+}
+
+.support-title {
+  @include type-style('heading-04');
+  font-weight: 700;
+  color: var(--cds-text-primary);
+  margin: 0 0 $spacing-03 0;
+}
+
+.support-subtitle {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.support-form-tile {
+  padding: $spacing-07 !important;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-03;
+  height: 100%;
+}
+
+.support-form-header {
+  display: flex;
+  align-items: center;
+  gap: $spacing-04;
+  margin-bottom: $spacing-06;
+  padding-bottom: $spacing-05;
+  border-bottom: 1px solid var(--cds-border-subtle);
+}
+
+.support-form-icon {
+  fill: var(--cds-link-primary);
+  flex-shrink: 0;
+}
+
+.support-form-title {
+  @include type-style('heading-04');
+  font-weight: 600;
+  color: var(--cds-text-primary);
+  margin: 0;
+}
+
+.support-notification {
+  margin-bottom: $spacing-06;
+}
+
+.support-form {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+}
+
+.support-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-05;
+
+  @media (max-width: 672px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.support-input,
+.support-select {
+  width: 100%;
+}
+
+.support-textarea {
+  width: 100%;
+  min-height: 150px;
+}
+
+.support-form-footer {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+  margin-top: $spacing-05;
+}
+
+.support-submit-button {
+  width: 100%;
+  min-height: 48px;
+  font-weight: 600;
+}
+
+.support-form-note {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: $spacing-02;
+  margin: 0;
+
+  svg {
+    fill: var(--cds-text-secondary);
+    flex-shrink: 0;
+  }
+}
+
+.support-info-tile {
+  padding: $spacing-07 !important;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-03;
+  margin-bottom: $spacing-06;
+}
+
+.support-info-title {
+  @include type-style('heading-04');
+  font-weight: 600;
+  color: var(--cds-text-primary);
+  margin: 0 0 $spacing-06 0;
+}
+
+.support-info-content {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-06;
+}
+
+.support-info-item {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-04;
+
+  svg {
+    fill: var(--cds-link-primary);
+    flex-shrink: 0;
+    margin-top: $spacing-01;
+  }
+
+  strong {
+    @include type-style('heading-03');
+    font-weight: 600;
+    color: var(--cds-text-primary);
+    display: block;
+    margin-bottom: $spacing-02;
+  }
+
+  p {
+    @include type-style('body-01');
+    color: var(--cds-text-secondary);
+    margin: 0;
+    line-height: 1.6;
+  }
+}
+
+.support-tickets-tile {
+  padding: $spacing-07 !important;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-03;
+}
+
+.support-tickets-title {
+  @include type-style('heading-04');
+  font-weight: 600;
+  color: var(--cds-text-primary);
+  margin: 0 0 $spacing-06 0;
+}
+
+.support-tickets-list {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+}
+
+.support-ticket-item {
+  padding: $spacing-05;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-02;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: var(--cds-link-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  }
+}
+
+.support-ticket-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-03;
+  flex-wrap: wrap;
+  gap: $spacing-03;
+}
+
+.support-ticket-number {
+  @include type-style('heading-03');
+  font-weight: 700;
+  color: var(--cds-link-primary);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.support-ticket-badges {
+  display: flex;
+  gap: $spacing-02;
+  flex-wrap: wrap;
+}
+
+.support-ticket-badge {
+  @include type-style('label-01');
+  padding: $spacing-01 $spacing-03;
+  border-radius: $spacing-01;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+
+  &--green {
+    background: var(--cds-support-success-inverse);
+    color: var(--cds-support-success);
+  }
+
+  &--yellow {
+    background: var(--cds-support-warning-inverse);
+    color: var(--cds-support-warning);
+  }
+
+  &--red {
+    background: var(--cds-support-error-inverse);
+    color: var(--cds-support-error);
+  }
+
+  &--blue {
+    background: var(--cds-link-primary);
+    color: white;
+  }
+
+  &--gray {
+    background: var(--cds-layer-hover);
+    color: var(--cds-text-secondary);
+  }
+}
+
+.support-ticket-subject {
+  @include type-style('heading-03');
+  font-weight: 600;
+  color: var(--cds-text-primary);
+  margin: 0 0 $spacing-03 0;
+}
+
+.support-ticket-message {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin: 0 0 $spacing-04 0;
+  line-height: 1.6;
+}
+
+.support-ticket-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: $spacing-03;
+  border-top: 1px solid var(--cds-border-subtle);
+  @include type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+}
+
+.support-ticket-date {
+  display: flex;
+  align-items: center;
+  gap: $spacing-02;
+}
+
+.support-ticket-category {
+  text-transform: capitalize;
+  font-weight: 500;
+}
+
+.support-tickets-empty {
+  text-align: center;
+  padding: $spacing-08 $spacing-05;
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+}
+

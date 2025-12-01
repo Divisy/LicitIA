@@ -1,0 +1,55 @@
+// LicitIA Design Tokens
+// Extends Carbon Design System tokens with custom brand tokens
+
+// Import Carbon spacing tokens first
+@use '@carbon/layout/scss/spacing' as *;
+
+// Color Tokens (extending Carbon)
+$licitia-primary: #0f62fe; // Carbon blue-60
+$licitia-primary-hover: #0050e6; // Carbon blue-70
+$licitia-secondary: #8d3bff; // Custom purple
+$licitia-success: #24a148; // Carbon green-60
+$licitia-warning: #f1c21b; // Carbon yellow-40
+$licitia-error: #da1e28; // Carbon red-60
+
+// Typography Tokens
+$licitia-font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
+$licitia-font-family-mono: 'IBM Plex Mono', 'Courier New', monospace;
+
+// Spacing Tokens (using Carbon spacing scale)
+$licitia-spacing-xs: $spacing-02; // 0.25rem / 4px
+$licitia-spacing-sm: $spacing-03; // 0.5rem / 8px
+$licitia-spacing-md: $spacing-05; // 1rem / 16px
+$licitia-spacing-lg: $spacing-07; // 2rem / 32px
+$licitia-spacing-xl: $spacing-09; // 3rem / 48px
+
+// Border Radius
+$licitia-radius-sm: 0.25rem;
+$licitia-radius-md: 0.5rem;
+$licitia-radius-lg: 1rem;
+
+// Shadows
+$licitia-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+$licitia-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.1);
+$licitia-shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.15);
+
+// Z-index scale
+$licitia-z-dropdown: 1000;
+$licitia-z-sticky: 1020;
+$licitia-z-fixed: 1030;
+$licitia-z-modal-backdrop: 1040;
+$licitia-z-modal: 1050;
+$licitia-z-popover: 1060;
+$licitia-z-tooltip: 1070;
+
+// Breakpoints (Carbon breakpoints)
+$licitia-breakpoint-sm: 672px;
+$licitia-breakpoint-md: 1056px;
+$licitia-breakpoint-lg: 1312px;
+$licitia-breakpoint-xl: 1584px;
+
+// Animation
+$licitia-transition-fast: 0.1s;
+$licitia-transition-base: 0.2s;
+$licitia-transition-slow: 0.3s;
+
