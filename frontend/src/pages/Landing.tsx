@@ -971,7 +971,7 @@ const Landing: React.FC = () => {
                       </CarbonButton>
                       <p className="landing-live-preview__cta-note">
                         <CheckmarkFilled size={16} />
-                        <span>7 días gratis • Sin tarjeta de crédito</span>
+                        <span>30 días gratis • Sin tarjeta de crédito</span>
                       </p>
                     </div>
                   </div>
@@ -1014,7 +1014,7 @@ const Landing: React.FC = () => {
                       Garantía <span className="landing-guarantee-title-highlight">Sin Riesgo</span>
                     </h2>
                     <p className="landing-guarantee-description">
-                      Prueba LicitIA durante <strong>7 días completamente gratis</strong>. Sin tarjeta de crédito, sin compromiso.
+                      Prueba LicitIA durante <strong>30 días completamente gratis</strong>. Sin tarjeta de crédito, sin compromiso.
                       Si no encuentras valor, cancela cuando quieras. <strong>Es así de simple.</strong>
                     </p>
                   </div>
@@ -1025,7 +1025,7 @@ const Landing: React.FC = () => {
                         <CheckmarkFilled size={24} />
                       </div>
                       <div className="landing-guarantee-feature-content">
-                        <h3>7 días gratis</h3>
+                        <h3>30 días gratis</h3>
                         <p>Sin tarjeta de crédito. Sin compromiso. Prueba todo.</p>
                       </div>
                     </div>
@@ -1075,7 +1075,7 @@ const Landing: React.FC = () => {
           <Column lg={16} md={8} sm={4}>
             <div className="landing-pricing__header">
               <h2 className="landing-pricing__title">
-                Prueba <span className="landing-pricing__title-highlight">Gratis</span> por 7 Días
+                Prueba <span className="landing-pricing__title-highlight">Gratis</span> por 30 Días
               </h2>
               <p className="landing-pricing__subtitle">
                 Sin tarjeta de crédito. Sin compromiso. Cancela cuando quieras.
@@ -1092,10 +1092,10 @@ const Landing: React.FC = () => {
                   <h3 className="landing-pricing-card__name">Prueba Gratis</h3>
                   <div className="landing-pricing-card__price">
                     <span className="landing-pricing-card__price-amount">$0</span>
-                    <span className="landing-pricing-card__price-period">/7 días</span>
+                    <span className="landing-pricing-card__price-period">/30 días</span>
                   </div>
                   <p className="landing-pricing-card__description">
-                    Acceso completo a todas las funciones durante 7 días
+                    Acceso completo a todas las funciones durante 30 días
                   </p>
                 </div>
                 <ul className="landing-pricing-card__features">
@@ -1195,7 +1195,7 @@ const Landing: React.FC = () => {
                 </CarbonButton>
                 <p className="landing-pricing-card__note">
                   <CheckmarkFilled size={16} />
-                  <span>7 días gratis, luego $49.50/mes</span>
+                  <span>30 días gratis, luego $49.50/mes</span>
                 </p>
               </Card>
             </div>
@@ -1239,13 +1239,13 @@ const Landing: React.FC = () => {
                       <CheckmarkFilled size={24} />
                     </div>
                     <div className="landing-faq-answer__content">
-                      <p><strong>No, no necesitas tarjeta de crédito.</strong> La prueba de 7 días es completamente gratis. Solo necesitas tu email para registrarte y empezar a usar LicitIA inmediatamente.</p>
+                      <p><strong>No, no necesitas tarjeta de crédito.</strong> La prueba de 30 días es completamente gratis. Solo necesitas tu email para registrarte y empezar a usar LicitIA inmediatamente.</p>
                     </div>
                   </div>
                 </AccordionItem>
                 
                 <AccordionItem 
-                  title="¿Qué pasa después de los 7 días de prueba gratis?"
+                  title="¿Qué pasa después de los 30 días de prueba gratis?"
                   className="landing-faq-accordion-item"
                 >
                   <div className="landing-faq-answer">
@@ -1477,7 +1477,7 @@ const Landing: React.FC = () => {
                 <div className="landing-cta-final__trust-badges">
                   <div className="landing-cta-final__trust-badge">
                     <CheckmarkFilled size={18} />
-                    <span>7 días gratis</span>
+                    <span>30 días gratis</span>
                   </div>
                   <div className="landing-cta-final__trust-badge">
                     <Security size={18} />
