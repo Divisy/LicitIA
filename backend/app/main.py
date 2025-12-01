@@ -21,8 +21,11 @@ app = FastAPI(
 
 # CORS middleware (allow frontend to call backend)
 # CORS origins - support both local and production
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
-cors_origins = [origin.strip() for origin in cors_origins]
+cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+cors_origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
+
+# Log CORS configuration for debugging
+logger.info(f"CORS origins configured: {cors_origins}")
 
 app.add_middleware(
     CORSMiddleware,
