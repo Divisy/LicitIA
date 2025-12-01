@@ -54,11 +54,20 @@ print(f"[CORS] Parsed CORS origins: {cors_origins}")
 logger.info(f"CORS origins configured: {cors_origins}")
 logger.info(f"CORS_ORIGINS env var: {cors_origins_raw if cors_origins_raw else 'NOT SET'}")
 
-# If no CORS origins configured, allow all (for development)
-# In production, always require explicit CORS_ORIGINS
+# If no CORS origins configured, use a fallback
+# IMPORTANT: When allow_credentials=True, we CANNOT use allow_origins=["*"]
+# We must specify explicit origins
 if not cors_origins:
-    logger.warning("No CORS origins configured, allowing all origins (development mode)")
-    cors_origins = ["*"]
+    logger.warning("No CORS origins configured, using fallback origins")
+    # Fallback: allow common production and development origins
+    cors_origins = [
+        "https://perpetual-playfulness-production-c731.up.railway.app",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]
+    print(f"[CORS] Using fallback origins: {cors_origins}")
 
 # Configure CORS middleware
 # Log the exact configuration being used
@@ -66,9 +75,10 @@ print(f"[CORS] Configuring middleware with origins: {cors_origins}")
 logger.info(f"Configuring CORS middleware with origins: {cors_origins}")
 
 # Add CORS middleware BEFORE routers
+# IMPORTANT: When allow_credentials=True, allow_origins must be a list of specific origins, not ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins if cors_origins != ["*"] else ["*"],
+    allow_origins=cors_origins,  # Always use explicit list, never ["*"]
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
