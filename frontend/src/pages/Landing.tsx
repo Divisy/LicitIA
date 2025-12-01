@@ -66,12 +66,20 @@ const Landing: React.FC = () => {
     setLoading(true)
 
     try {
-      const leadResponse = await captureLead({
-        email: formData.email,
-        name: formData.name || undefined,
-        company: formData.company || undefined,
-        source: 'landing_page',
-      })
+      // Intentar capturar el lead en el backend
+      try {
+        const leadResponse = await captureLead({
+          email: formData.email,
+          name: formData.name || undefined,
+          company: formData.company || undefined,
+          source: 'landing_page',
+        })
+        console.log('[Landing] Lead captured in backend:', leadResponse)
+      } catch (apiErr: any) {
+        // Si el backend no está disponible, continuar con localStorage
+        console.warn('[Landing] Backend not available, using localStorage fallback:', apiErr?.message)
+        // No mostrar error al usuario si el backend falla, usar fallback
+      }
       
       // Verificar si es un nuevo usuario (email diferente al guardado)
       const previousEmail = localStorage.getItem('licitia_user_email')
@@ -97,7 +105,7 @@ const Landing: React.FC = () => {
       // Marcar que debe iniciar onboarding automáticamente
       localStorage.setItem('licitia_start_onboarding', 'true')
       
-      console.log('[Landing] Lead captured, flags set:', {
+      console.log('[Landing] Lead saved, flags set:', {
         email: formData.email,
         company: formData.company,
         startOnboarding: localStorage.getItem('licitia_start_onboarding')
@@ -109,15 +117,9 @@ const Landing: React.FC = () => {
         navigate('/dashboard')
       }, 1500)
     } catch (err: any) {
-      console.error('Error capturing lead:', err)
-      // Mejorar el mensaje de error
-      if (err?.response?.status === 404) {
-        setError('El servicio no está disponible. Por favor, intenta más tarde.')
-      } else if (err?.response?.status === 400) {
-        setError('Este email ya está registrado. Puedes iniciar sesión directamente.')
-      } else {
-        setError(err?.response?.data?.detail || err?.message || 'Error al registrar. Intenta de nuevo.')
-      }
+      console.error('Error in form submission:', err)
+      // Solo mostrar error si es un error crítico
+      setError('Error al procesar el registro. Por favor, intenta de nuevo.')
     } finally {
       setLoading(false)
     }
