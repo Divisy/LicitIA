@@ -12,6 +12,11 @@ from app.config import settings
 setup_logging()
 logger = get_logger(__name__)
 
+# Log startup immediately
+print("=" * 80)
+print("LICITIA BACKEND STARTING")
+print("=" * 80)
+
 # Create FastAPI app
 app = FastAPI(
     title="LicitIA API",
@@ -24,7 +29,9 @@ app = FastAPI(
 cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
 cors_origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
 
-# Log CORS configuration for debugging
+# Log CORS configuration for debugging (use both logger and print for visibility)
+print(f"[CORS] CORS_ORIGINS env var: {os.getenv('CORS_ORIGINS', 'NOT SET')}")
+print(f"[CORS] CORS origins configured: {cors_origins}")
 logger.info(f"CORS origins configured: {cors_origins}")
 logger.info(f"CORS_ORIGINS env var: {os.getenv('CORS_ORIGINS', 'NOT SET')}")
 
