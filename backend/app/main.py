@@ -150,27 +150,11 @@ async def startup_event():
         print(f"[STARTUP] Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 1 minute)")
         logger.info(f"Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 1 minute)")
         
-        # Pre-load semantic AI model in background to avoid blocking first request
-        import threading
-        def preload_semantic_model():
-            try:
-                from app.services.experience_matching import get_semantic_model
-                print("[STARTUP] Pre-loading semantic AI model in background...")
-                logger.info("Pre-loading semantic AI model in background...")
-                model = get_semantic_model()
-                if model:
-                    print("[STARTUP] Semantic AI model pre-loaded successfully")
-                    logger.info("Semantic AI model pre-loaded successfully")
-                else:
-                    print("[STARTUP] Semantic AI model not available")
-                    logger.warning("Semantic AI model not available")
-            except Exception as e:
-                print(f"[STARTUP] Error pre-loading semantic model: {e}")
-                logger.error(f"Error pre-loading semantic model: {e}")
-        
-        # Start pre-loading in background thread (non-blocking)
-        threading.Thread(target=preload_semantic_model, daemon=True).start()
-        print("[STARTUP] Background model pre-loading started")
+        # NOTE: Semantic AI model will be loaded lazily on first use
+        # This avoids downloading the model (~470MB) during startup/build
+        # The model will be cached in memory after first load
+        print("[STARTUP] Semantic AI model will be loaded on first use (lazy loading)")
+        logger.info("Semantic AI model will be loaded on first use (lazy loading)")
         
         print("=" * 80)
         print("LICITIA BACKEND READY - Server is accepting requests")
