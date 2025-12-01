@@ -46,13 +46,15 @@ if not cors_origins:
 print(f"[CORS] Configuring middleware with origins: {cors_origins}")
 logger.info(f"Configuring CORS middleware with origins: {cors_origins}")
 
+# Add CORS middleware BEFORE routers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins if cors_origins != ["*"] else ["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
     expose_headers=["*"],
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
 
 print("[CORS] CORS middleware configured successfully")
