@@ -108,8 +108,39 @@ const ExperienceUpload: React.FC<ExperienceUploadProps> = ({
   }
 
   const handleDownloadTemplate = () => {
-    // TODO: Implementar descarga de plantilla
-    alert('Descarga de plantilla próximamente')
+    // Download template from public folder
+    const link = document.createElement('a')
+    link.href = '/plantilla-experiencias.xlsx'
+    link.download = 'plantilla-experiencias.xlsx'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const handleUseExampleTemplate = async () => {
+    // Load example template and automatically upload it
+    try {
+      const response = await fetch('/plantilla-ejemplo-experiencias.xlsx')
+      if (!response.ok) {
+        throw new Error('No se pudo cargar la plantilla de ejemplo')
+      }
+      
+      const blob = await response.blob()
+      const exampleFile = new File([blob], 'plantilla-ejemplo-experiencias.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+      
+      setFile(exampleFile)
+      setMessage({
+        type: 'success',
+        text: 'Plantilla de ejemplo cargada. Haz clic en "Subir Experiencias" para ver cómo funcionan los matches.'
+      })
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Error al cargar la plantilla de ejemplo'
+      })
+    }
   }
 
   return (
@@ -187,15 +218,25 @@ const ExperienceUpload: React.FC<ExperienceUploadProps> = ({
                 )}
 
                 <div className="experience-upload__actions">
-                  <Button
-                    kind="ghost"
-                    size="md"
-                    onClick={handleDownloadTemplate}
-                    renderIcon={Download}
-                    className="experience-upload-template-button"
-                  >
-                    Descargar Plantilla
-                  </Button>
+                  <div className="experience-upload__template-buttons">
+                    <Button
+                      kind="ghost"
+                      size="md"
+                      onClick={handleDownloadTemplate}
+                      renderIcon={Download}
+                      className="experience-upload-template-button"
+                    >
+                      Descargar Plantilla
+                    </Button>
+                    <Button
+                      kind="tertiary"
+                      size="md"
+                      onClick={handleUseExampleTemplate}
+                      className="experience-upload-example-button"
+                    >
+                      Usar Plantilla de Ejemplo
+                    </Button>
+                  </div>
                   <Button
                     type="button"
                     size="lg"

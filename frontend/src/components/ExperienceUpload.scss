@@ -133,10 +133,26 @@
   align-items: center;
   gap: $spacing-04;
   margin-top: $spacing-04;
+  flex-wrap: wrap;
+}
+
+.experience-upload__template-buttons {
+  display: flex;
+  gap: $spacing-03;
+  flex-wrap: wrap;
 }
 
 .experience-upload-template-button {
   color: var(--cds-link-primary);
+}
+
+.experience-upload-example-button {
+  color: var(--cds-link-primary);
+  border-color: var(--cds-link-primary);
+  
+  &:hover {
+    background: var(--cds-layer-hover);
+  }
 }
 
 .experience-upload-button {

@@ -77,7 +77,12 @@ const Landing: React.FC = () => {
         console.log('[Landing] Lead captured in backend:', leadResponse)
       } catch (apiErr: any) {
         // Si el backend no está disponible, continuar con localStorage
-        console.warn('[Landing] Backend not available, using localStorage fallback:', apiErr?.message)
+        console.warn('[Landing] Backend not available, using localStorage fallback:', {
+          message: apiErr?.message,
+          status: apiErr?.response?.status,
+          url: apiErr?.config?.url,
+          baseURL: apiErr?.config?.baseURL,
+        })
         // No mostrar error al usuario si el backend falla, usar fallback
       }
       
@@ -468,15 +473,15 @@ const Landing: React.FC = () => {
                   </div>
                   <div className="landing-hero__preview-stats">
                     <div className="landing-hero__preview-stat-item">
-                      <div className="landing-hero__preview-stat-number">{liveTenders.length > 0 ? '25+' : '0'}</div>
-                      <div className="landing-hero__preview-stat-label">Licitaciones</div>
+                      <div className="landing-hero__preview-stat-number">SECOP II</div>
+                      <div className="landing-hero__preview-stat-label">Todas las licitaciones</div>
                     </div>
                     <div className="landing-hero__preview-stat-item">
                       <div className="landing-hero__preview-stat-number">95%</div>
                       <div className="landing-hero__preview-stat-label">Precisión IA</div>
                     </div>
                     <div className="landing-hero__preview-stat-item">
-                      <div className="landing-hero__preview-stat-number">2h</div>
+                      <div className="landing-hero__preview-stat-number">Tiempo Real</div>
                       <div className="landing-hero__preview-stat-label">Actualización</div>
                     </div>
                   </div>
