@@ -55,7 +55,7 @@ const Login: React.FC = () => {
         localStorage.removeItem('licitia_start_onboarding')
         
         // Redirigir al dashboard
-        navigate('/')
+        navigate('/dashboard')
       } else {
         // Email no existe, sugerir registro
         setError('Este email no está registrado. Por favor, regístrate primero.')

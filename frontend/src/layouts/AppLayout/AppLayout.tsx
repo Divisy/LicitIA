@@ -66,7 +66,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const isActive = (path: string) => location.pathname === path
 
   const handleLogoClick = () => {
-    navigate('/')
+    navigate('/dashboard')
     setIsSideNavExpanded(false)
   }
 

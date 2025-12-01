@@ -1,5 +1,5 @@
 import React from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { AppLayout } from './layouts/AppLayout'
 import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
@@ -12,8 +12,9 @@ import Login from './pages/Login'
 function App() {
   return (
     <Routes>
-      {/* Landing page without layout */}
-      <Route path="/landing" element={<Landing />} />
+      {/* Landing page as root - without layout */}
+      <Route path="/" element={<Landing />} />
+      <Route path="/landing" element={<Navigate to="/" replace />} />
       
       {/* Login page without layout */}
       <Route path="/login" element={<Login />} />
@@ -24,11 +25,13 @@ function App() {
         element={
           <AppLayout>
             <Routes>
-              <Route path="/" element={<Dashboard />} />
+              <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/experiences" element={<Experiences />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/help" element={<Support />} />
               <Route path="/feedback" element={<Feedback />} />
+              {/* Redirect old / route to dashboard for existing users */}
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </AppLayout>
         }

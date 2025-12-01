@@ -106,7 +106,7 @@ const Landing: React.FC = () => {
       setSuccess(true)
       setTimeout(() => {
         console.log('[Landing] Navigating to dashboard, flag:', localStorage.getItem('licitia_start_onboarding'))
-        navigate('/')
+        navigate('/dashboard')
       }, 1500)
     } catch (err: any) {
       console.error('Error capturing lead:', err)
