@@ -1,0 +1,22 @@
+// Carbon Design System Base Styles
+@use '@carbon/react/scss/reset';
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+@use '@carbon/react/scss/components' as *;
+
+// Import Carbon tokens
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/motion' as *;
+@use '@carbon/react/scss/utilities' as *;
+
+// Carbon theme configuration
+:root {
+  // Carbon theme variables are automatically available
+}
+
+// Custom theme overrides for LicitIA
+.licitia-theme {
+  // Custom brand colors can be added here
+  // Carbon provides a comprehensive design system out of the box
+}
+

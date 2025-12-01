@@ -1,0 +1,105 @@
+@use '../../styles/tokens' as *;
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.licitia-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-03;
+  transition: opacity 0.2s ease;
+
+  &--clickable {
+    cursor: pointer;
+
+    &:hover {
+      opacity: 0.8;
+    }
+
+    &:focus {
+      outline: 2px solid var(--cds-focus);
+      outline-offset: 2px;
+      border-radius: $spacing-01;
+    }
+  }
+
+  &__icon {
+    fill: var(--cds-link-primary);
+    flex-shrink: 0;
+    transition: fill 0.2s ease;
+  }
+
+  &__text {
+    @include type-style('heading-02');
+    font-weight: 700;
+    color: var(--cds-text-primary);
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, var(--cds-link-primary) 0%, var(--cds-link-secondary) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    white-space: nowrap;
+    display: inline-block; // Ensure text is always visible
+    visibility: visible; // Ensure text is always visible
+    opacity: 1; // Ensure text is always visible
+  }
+
+  // Size variants
+  &--sm {
+    gap: $spacing-02;
+
+    .licitia-logo__text {
+      @include type-style('heading-04');
+    }
+  }
+
+  &--md {
+    gap: $spacing-03;
+
+    .licitia-logo__text {
+      @include type-style('heading-03');
+    }
+  }
+
+  &--lg {
+    gap: $spacing-04;
+
+    .licitia-logo__text {
+      @include type-style('heading-02');
+    }
+  }
+
+  &--xl {
+    gap: $spacing-05;
+
+    .licitia-logo__text {
+      @include type-style('heading-01');
+    }
+  }
+
+  // Variant styles
+  &--light {
+    .licitia-logo__text {
+      color: #ffffff;
+      background: none;
+      -webkit-text-fill-color: #ffffff;
+    }
+
+    .licitia-logo__icon {
+      fill: #ffffff;
+    }
+  }
+
+  &--dark {
+    .licitia-logo__text {
+      color: var(--cds-text-primary);
+      background: none;
+      -webkit-text-fill-color: var(--cds-text-primary);
+    }
+
+    .licitia-logo__icon {
+      fill: var(--cds-text-primary);
+    }
+  }
+}
+

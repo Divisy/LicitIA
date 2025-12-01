@@ -1,7 +1,21 @@
 import React from 'react'
+import { 
+  Tile, 
+  Button, 
+  Tag,
+  DataTable,
+  Table,
+  TableHead,
+  TableRow,
+  TableHeader,
+  TableBody,
+  TableCell,
+  Link
+} from '@carbon/react'
+import { TrashCan, Document, Building, DocumentAdd, WatsonMachineLearning } from '@carbon/icons-react'
 import { CompanyExperience } from '../api/client'
 import { deleteExperience } from '../api/client'
-import './ExperienceList.css'
+import './ExperienceList.scss'
 
 interface ExperienceListProps {
   experiences: CompanyExperience[]
@@ -9,11 +23,19 @@ interface ExperienceListProps {
   onDelete?: () => void
 }
 
-const ExperienceList: React.FC<ExperienceListProps> = ({ experiences, companyName, onDelete }) => {
+const ExperienceList: React.FC<ExperienceListProps> = ({ 
+  experiences, 
+  companyName, 
+  onDelete 
+}) => {
   const formatDate = (dateString: string | null): string => {
     if (!dateString) return 'N/A'
     try {
-      return new Date(dateString).toLocaleDateString('es-CO')
+      return new Date(dateString).toLocaleDateString('es-CO', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      })
     } catch {
       return 'N/A'
     }
@@ -47,103 +69,140 @@ const ExperienceList: React.FC<ExperienceListProps> = ({ experiences, companyNam
   if (experiences.length === 0) {
     return (
       <div className="experience-list-empty">
-        <p>No se encontraron experiencias para "{companyName}".</p>
-        <p>Sube un archivo Excel para comenzar.</p>
+        <Document size={48} className="experience-list-empty-icon" />
+        <p className="experience-list-empty-text">
+          No se encontraron experiencias para <strong>{companyName}</strong>.
+        </p>
+        <p className="experience-list-empty-hint">
+          Sube un archivo Excel para comenzar.
+        </p>
       </div>
     )
   }
 
+  const getExperienceIcon = (experience: CompanyExperience) => {
+    const desc = (experience.project_description || '').toLowerCase()
+    const category = (experience.category || '').toLowerCase()
+    const area = (experience.engineering_area || '').toLowerCase()
+    
+    if (desc.includes('interventoría') || desc.includes('supervisión') || category.includes('interventoría')) {
+      return <WatsonMachineLearning size={20} className="experience-list-service-icon" />
+    }
+    if (desc.includes('construcción') || category.includes('construcción')) {
+      return <Building size={20} className="experience-list-service-icon" />
+    }
+    return <DocumentAdd size={20} className="experience-list-service-icon" />
+  }
+
+  const headers = [
+    { key: 'service', header: 'Experiencia' },
+    { key: 'name', header: 'Nombre' },
+    { key: 'entity', header: 'Entidad Contratante' },
+    { key: 'contract', header: 'Contrato' },
+    { key: 'date', header: 'Fecha Finalización' },
+    { key: 'amount', header: 'Valor' },
+    { key: 'category', header: 'Categoría' },
+    { key: 'details', header: '' },
+  ]
+
+  const rows = experiences.map((experience) => ({
+    id: experience.id,
+    service: (
+      <div className="experience-list-service">
+        {getExperienceIcon(experience)}
+        <span className="experience-list-service-name">
+          {experience.category || experience.engineering_area || 'Experiencia'}
+        </span>
+      </div>
+    ),
+    name: (
+      <div className="experience-list-name">
+        {experience.project_description.length > 60
+          ? `${experience.project_description.substring(0, 60)}...`
+          : experience.project_description}
+      </div>
+    ),
+    entity: experience.contracting_entity || 'N/A',
+    contract: experience.contract_number || 'N/A',
+    date: formatDate(experience.completion_date),
+    amount: experience.amount ? (
+      <span className="experience-list-amount">{formatCurrency(experience.amount)}</span>
+    ) : 'N/A',
+    category: experience.category ? (
+      <Tag type="blue" size="sm">{experience.category}</Tag>
+    ) : experience.engineering_area ? (
+      <Tag type="cyan" size="sm">{experience.engineering_area}</Tag>
+    ) : 'N/A',
+    details: (
+      <div className="experience-list-details">
+        <Link
+          href="#"
+          onClick={(e) => {
+            e.preventDefault()
+            const details = [
+              `Proyecto: ${experience.project_description}`,
+              `Entidad: ${experience.contracting_entity || 'N/A'}`,
+              `Contrato: ${experience.contract_number || 'N/A'}`,
+              `Fecha: ${formatDate(experience.completion_date)}`,
+              `Valor: ${formatCurrency(experience.amount)}`,
+              `Categoría: ${experience.category || 'N/A'}`,
+              `Área: ${experience.engineering_area || 'N/A'}`,
+            ].join('\n')
+            
+            const confirmDelete = window.confirm(
+              `Detalles de la experiencia:\n\n${details}\n\n¿Desea eliminar esta experiencia?`
+            )
+            
+            if (confirmDelete) {
+              handleDelete(experience.id)
+            }
+          }}
+          className="experience-list-details-link"
+        >
+          Ver detalles
+        </Link>
+      </div>
+    ),
+  }))
+
   return (
     <div className="experience-list">
-      <div className="experience-list-header">
-        <p className="experience-count">
-          {experiences.length} {experiences.length === 1 ? 'experiencia encontrada' : 'experiencias encontradas'}
-        </p>
-      </div>
-
-      <div className="experience-grid">
-        {experiences.map((experience) => (
-          <div key={experience.id} className="experience-card">
-            <div className="experience-card-header">
-              <h3 className="experience-project">
-                {experience.project_description.length > 80
-                  ? experience.project_description.substring(0, 80) + '...'
-                  : experience.project_description}
-              </h3>
-              <button
-                className="delete-button"
-                onClick={() => handleDelete(experience.id)}
-                title="Eliminar experiencia"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="experience-card-body">
-              {experience.contracting_entity && (
-                <div className="experience-field">
-                  <span className="field-label">Entidad:</span>
-                  <span className="field-value">{experience.contracting_entity}</span>
-                </div>
-              )}
-
-              {experience.contract_number && (
-                <div className="experience-field">
-                  <span className="field-label">Contrato:</span>
-                  <span className="field-value">{experience.contract_number}</span>
-                </div>
-              )}
-
-              {experience.completion_date && (
-                <div className="experience-field">
-                  <span className="field-label">Fecha Finalización:</span>
-                  <span className="field-value">{formatDate(experience.completion_date)}</span>
-                </div>
-              )}
-
-              {experience.amount && (
-                <div className="experience-field">
-                  <span className="field-label">Valor:</span>
-                  <span className="field-value amount">{formatCurrency(experience.amount)}</span>
-                </div>
-              )}
-
-              {experience.category && (
-                <div className="experience-field">
-                  <span className="field-label">Categoría:</span>
-                  <span className="field-value">{experience.category}</span>
-                </div>
-              )}
-
-              {experience.engineering_area && (
-                <div className="experience-field">
-                  <span className="field-label">Área:</span>
-                  <span className="field-value">{experience.engineering_area}</span>
-                </div>
-              )}
-
-              {experience.keywords && experience.keywords.length > 0 && (
-                <div className="experience-field">
-                  <span className="field-label">Palabras clave:</span>
-                  <div className="keywords-list">
-                    {experience.keywords.slice(0, 5).map((keyword, idx) => (
-                      <span key={idx} className="keyword-tag">
-                        {keyword}
-                      </span>
+      <div className="experience-list-table-container">
+        <DataTable
+          rows={rows}
+          headers={headers}
+          isSortable
+          size="md"
+          useZebraStyles
+        >
+          {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
+            <Table {...getTableProps()}>
+              <TableHead>
+                <TableRow>
+                  {headers.map((header) => (
+                    <TableHeader {...getHeaderProps({ header })} key={header.key}>
+                      {header.header}
+                    </TableHeader>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow {...getRowProps({ row })} key={row.id}>
+                    {row.cells.map((cell) => (
+                      <TableCell key={cell.id}>
+                        {cell.value}
+                      </TableCell>
                     ))}
-                    {experience.keywords.length > 5 && (
-                      <span className="keyword-more">+{experience.keywords.length - 5} más</span>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </DataTable>
       </div>
     </div>
   )
 }
 
 export default ExperienceList
-

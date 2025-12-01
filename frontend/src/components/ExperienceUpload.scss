@@ -1,0 +1,228 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.experience-upload {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-04;
+  padding: $spacing-06;
+}
+
+.experience-upload__tabs {
+  display: flex;
+  gap: $spacing-03;
+  border-bottom: 2px solid var(--cds-border-subtle);
+  margin-bottom: $spacing-06;
+}
+
+.experience-upload__tab {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  padding: $spacing-04 $spacing-05;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: -2px;
+
+  svg {
+    fill: var(--cds-text-secondary);
+  }
+
+  &:hover {
+    color: var(--cds-text-primary);
+    
+    svg {
+      fill: var(--cds-link-primary);
+    }
+  }
+
+  &--active {
+    color: var(--cds-link-primary);
+    border-bottom-color: var(--cds-link-primary);
+    font-weight: 600;
+
+    svg {
+      fill: var(--cds-link-primary);
+    }
+  }
+}
+
+.experience-upload__content {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+}
+
+.experience-upload__excel-section,
+.experience-upload__manual-section {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+}
+
+.experience-upload__dropzone {
+  padding: $spacing-08 $spacing-06;
+  background: var(--cds-layer-01);
+  border: 2px dashed var(--cds-border-strong);
+  border-radius: $spacing-04;
+  text-align: center;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: var(--cds-link-primary);
+    background: var(--cds-layer-accent-01);
+  }
+}
+
+.experience-upload__dropzone-hint {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin-top: $spacing-04;
+}
+
+.experience-upload-company-input {
+  margin-bottom: $spacing-05;
+}
+
+.experience-upload-file-section {
+  margin-bottom: $spacing-05;
+}
+
+.experience-upload-file-uploader {
+  margin-bottom: $spacing-04;
+}
+
+.experience-upload-file-list {
+  margin-top: $spacing-04;
+}
+
+.experience-upload-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-08;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-03;
+  min-height: 150px;
+}
+
+.experience-upload-loading-text {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin-top: $spacing-04;
+}
+
+.experience-upload-message {
+  margin-top: $spacing-04;
+}
+
+.experience-upload__actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: $spacing-04;
+  margin-top: $spacing-04;
+}
+
+.experience-upload-template-button {
+  color: var(--cds-link-primary);
+}
+
+.experience-upload-button {
+  min-width: 200px;
+  font-weight: 600;
+  
+  svg {
+    margin-right: $spacing-03;
+  }
+}
+
+.experience-upload-help-section {
+  margin-top: $spacing-06;
+  padding-top: $spacing-06;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
+.experience-upload-help {
+  margin: 0;
+}
+
+.experience-upload-help-content {
+  padding: $spacing-05 0;
+}
+
+.experience-upload-help-text {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  margin-bottom: $spacing-05;
+  line-height: 1.5;
+  
+  strong {
+    color: var(--cds-text-primary);
+    font-weight: 600;
+  }
+}
+
+.experience-upload-help-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: $spacing-03;
+  margin-top: $spacing-04;
+  
+  @media (max-width: 672px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.experience-upload-help-column {
+  padding: $spacing-03 $spacing-04;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-02;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-01;
+  
+  &--required {
+    border-left: 3px solid var(--cds-support-warning);
+    background: var(--cds-layer-accent-01);
+  }
+}
+
+.experience-upload-help-column-name {
+  @include type-style('label-01');
+  color: var(--cds-text-primary);
+  font-weight: 600;
+  font-size: 0.75rem;
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+.experience-upload-help-column-desc {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 672px) {
+  .experience-upload-actions {
+    justify-content: stretch;
+    
+    button {
+      width: 100%;
+    }
+  }
+}
+

@@ -1,0 +1,133 @@
+{
+  "common": {
+    "appName": "LicitIA",
+    "appTagline": "Radar de Oportunidades - Interventoría Vial",
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "clear": "Limpiar",
+    "apply": "Aplicar",
+    "close": "Cerrar",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "previous": "Anterior",
+    "submit": "Enviar",
+    "confirm": "Confirmar",
+    "yes": "Sí",
+    "no": "No"
+  },
+  "navigation": {
+    "dashboard": "Dashboard",
+    "profile": "Perfil de Empresa",
+    "settings": "Configuración",
+    "logout": "Cerrar Sesión"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "Encuentra las licitaciones perfectas para tu empresa",
+    "filters": {
+      "title": "Filtros",
+      "dateFrom": "Fecha desde",
+      "dateTo": "Fecha hasta",
+      "department": "Departamento",
+      "companyName": "Nombre de empresa",
+      "matchExperience": "Solo coincidencias con experiencia",
+      "onlyInterventoria": "Solo interventoría",
+      "apply": "Aplicar filtros"
+    },
+    "results": {
+      "showing": "Mostrando {{count}} de {{total}} licitaciones",
+      "loadAll": "Ver todas las licitaciones ({{total}})",
+      "noResults": "No se encontraron licitaciones",
+      "noResultsDescription": "Intenta ajustar los filtros de búsqueda o verifica que hay licitaciones disponibles."
+    },
+    "table": {
+      "entity": "Entidad",
+      "object": "Objeto",
+      "department": "Departamento",
+      "amount": "Monto",
+      "publicationDate": "Fecha Publicación",
+      "closingDate": "Fecha Presentación Ofertas",
+      "matchScore": "Porcentaje de Match",
+      "state": "Estado",
+      "actions": "Acciones",
+      "viewDetails": "Ver detalles"
+    }
+  },
+  "profile": {
+    "title": "Perfil de Empresa",
+    "companyName": "Nombre de la empresa",
+    "experiences": {
+      "title": "Experiencias",
+      "add": "Agregar experiencia",
+      "upload": "Subir Excel",
+      "empty": "No hay experiencias registradas",
+      "emptyDescription": "Agrega tus experiencias para mejorar el matching de licitaciones"
+    }
+  },
+  "onboarding": {
+    "welcome": {
+      "title": "¡Bienvenido a LicitIA!",
+      "description": "Te ayudaremos a configurar tu perfil en unos minutos"
+    },
+    "companyName": {
+      "title": "¿Cuál es el nombre de tu empresa?",
+      "description": "Este nombre se usará para asociar tus experiencias",
+      "placeholder": "Ej: Constructora ABC"
+    },
+    "experiences": {
+      "title": "Agrega tus experiencias",
+      "description": "Sube un Excel con tus proyectos anteriores o agrégalos manualmente"
+    }
+  },
+  "landing": {
+    "hero": {
+      "title": "Encuentra las licitaciones perfectas para tu empresa en 2 minutos",
+      "subtitle": "IA que identifica oportunidades de interventoría vial basadas en tu experiencia. Ahorra 10+ horas por semana buscando licitaciones relevantes.",
+      "cta": "Probar Gratis - Sin Tarjeta",
+      "note": "7 días gratis, sin compromiso • Sin tarjeta de crédito"
+    },
+    "benefits": {
+      "matching": {
+        "title": "Matching Inteligente",
+        "description": "IA que analiza tu experiencia y encuentra licitaciones que realmente calificas. No más perder tiempo en oportunidades que no son para ti."
+      },
+      "updates": {
+        "title": "Actualización Automática",
+        "description": "Actualizamos las licitaciones cada 2 horas. Recibe alertas de nuevas oportunidades que coinciden con tu perfil."
+      },
+      "filters": {
+        "title": "Filtros Avanzados",
+        "description": "Filtra por fecha, departamento, monto, tipo de contrato y más. Encuentra la licitación perfecta en segundos."
+      }
+    },
+    "benefits": {
+      "matching": {
+        "title": "Matching Inteligente",
+        "description": "IA que analiza tu experiencia y encuentra licitaciones que realmente calificas."
+      },
+      "updates": {
+        "title": "Actualización Automática",
+        "description": "Actualizamos las licitaciones cada 2 horas. Recibe alertas de nuevas oportunidades."
+      },
+      "filters": {
+        "title": "Filtros Avanzados",
+        "description": "Filtra por fecha, departamento, monto, tipo de contrato y más."
+      }
+    }
+  },
+  "errors": {
+    "generic": "Ha ocurrido un error. Por favor intenta de nuevo.",
+    "network": "Error de conexión. Verifica tu internet.",
+    "notFound": "No se encontró el recurso solicitado.",
+    "unauthorized": "No tienes permisos para realizar esta acción.",
+    "validation": "Por favor verifica los datos ingresados."
+  }
+}
+

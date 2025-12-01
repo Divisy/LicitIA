@@ -1,37 +1,39 @@
 import React from 'react'
-import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
+import { AppLayout } from './layouts/AppLayout'
 import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
-import './App.css'
+import Experiences from './pages/Experiences'
+import Support from './pages/Support'
+import Feedback from './pages/Feedback'
+import Landing from './pages/Landing'
+import Login from './pages/Login'
 
 function App() {
   return (
-    <Router>
-      <div className="App">
-        <header className="App-header">
-          <div className="header-content">
-            <div className="header-title">
-              <h1>LicitIA</h1>
-              <p>Radar de Oportunidades - Interventoría Vial</p>
-            </div>
-            <nav className="header-nav">
-              <NavLink to="/" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-                Dashboard
-              </NavLink>
-              <NavLink to="/profile" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-                Perfil de Empresa
-              </NavLink>
-            </nav>
-          </div>
-        </header>
-        <main>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/profile" element={<Profile />} />
-          </Routes>
-        </main>
-      </div>
-    </Router>
+    <Routes>
+      {/* Landing page without layout */}
+      <Route path="/landing" element={<Landing />} />
+      
+      {/* Login page without layout */}
+      <Route path="/login" element={<Login />} />
+      
+      {/* App routes with Carbon layout */}
+      <Route
+        path="/*"
+        element={
+          <AppLayout>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/experiences" element={<Experiences />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/help" element={<Support />} />
+              <Route path="/feedback" element={<Feedback />} />
+            </Routes>
+          </AppLayout>
+        }
+      />
+    </Routes>
   )
 }
 

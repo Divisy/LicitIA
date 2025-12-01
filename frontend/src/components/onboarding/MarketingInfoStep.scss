@@ -1,0 +1,84 @@
+@use '../../styles/tokens' as *;
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.onboarding-marketing-step {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: $spacing-06;
+
+  @media (max-width: 672px) {
+    padding: $spacing-05;
+  }
+}
+
+.onboarding-marketing-header {
+  margin-bottom: $spacing-06;
+}
+
+.onboarding-marketing-back {
+  padding: 0;
+  color: var(--cds-text-secondary);
+  
+  &:hover {
+    color: var(--cds-link-primary);
+  }
+}
+
+.onboarding-marketing-content {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-06;
+}
+
+.onboarding-marketing-title {
+  @include type-style('heading-04');
+  font-weight: 600;
+  color: var(--cds-text-primary);
+  margin: 0;
+}
+
+.onboarding-marketing-description {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.onboarding-marketing-form {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+}
+
+.onboarding-marketing-field {
+  width: 100%;
+}
+
+.onboarding-marketing-error {
+  margin-top: $spacing-03;
+}
+
+.onboarding-marketing-actions {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+  margin-top: $spacing-06;
+}
+
+.onboarding-marketing-submit {
+  width: 100%;
+  min-height: 48px;
+}
+
+.onboarding-marketing-skip {
+  width: 100%;
+  color: var(--cds-text-secondary);
+  
+  &:hover {
+    color: var(--cds-link-primary);
+  }
+}
+

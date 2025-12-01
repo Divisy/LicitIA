@@ -1,0 +1,34 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.onboarding-progress-indicator {
+  padding: $spacing-05 $spacing-06;
+  border-bottom: 1px solid var(--cds-border-subtle);
+  background: var(--cds-layer-01);
+}
+
+.onboarding-progress-bar-container {
+  width: 100%;
+  height: 4px;
+  background: var(--cds-layer-selected-inverse);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: $spacing-03;
+}
+
+.onboarding-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cds-link-primary) 0%, var(--cds-link-secondary) 100%);
+  border-radius: 2px;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 8px rgba(15, 98, 254, 0.4);
+}
+
+.onboarding-progress-text {
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+  text-align: center;
+  font-weight: 500;
+}
+

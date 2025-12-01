@@ -1,0 +1,141 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.experiences-page {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: $spacing-06 $spacing-05;
+  background: var(--cds-background);
+}
+
+.experiences-page-header {
+  display: flex;
+  align-items: center;
+  gap: $spacing-05;
+  margin-bottom: $spacing-07;
+  padding-bottom: $spacing-05;
+  border-bottom: 1px solid var(--cds-border-subtle);
+}
+
+.experiences-page-title {
+  @include type-style('heading-05');
+  color: var(--cds-text-primary);
+  margin: 0;
+  font-weight: 700;
+  flex: 1;
+}
+
+.experiences-step-tile {
+  padding: $spacing-06 !important;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-03;
+  margin-bottom: $spacing-06;
+  transition: all 0.2s ease;
+
+  &:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  }
+}
+
+.experiences-step-header {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  margin-bottom: $spacing-04;
+}
+
+.experiences-step-title {
+  @include type-style('heading-04');
+  color: var(--cds-text-primary);
+  margin: 0;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.experiences-step-info-icon {
+  fill: var(--cds-text-secondary);
+  cursor: help;
+}
+
+.experiences-step-description {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin: 0 0 $spacing-06 0;
+  line-height: 1.6;
+}
+
+.experiences-step-content {
+  margin-top: $spacing-05;
+}
+
+.experiences-step-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: $spacing-05;
+  padding-top: $spacing-05;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
+.experiences-manage-all-button {
+  color: var(--cds-link-primary);
+  
+  svg {
+    margin-left: $spacing-03;
+  }
+}
+
+
+.experiences-loading {
+  padding: $spacing-08 $spacing-06;
+  text-align: center;
+}
+
+.experiences-error {
+  margin-bottom: $spacing-05;
+}
+
+.experiences-empty-state {
+  padding: $spacing-08 $spacing-06;
+  text-align: center;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-03;
+}
+
+.experiences-empty-icon {
+  fill: var(--cds-text-secondary);
+  margin-bottom: $spacing-04;
+  opacity: 0.4;
+}
+
+.experiences-empty-text {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
+@media (max-width: 672px) {
+  .experiences-page {
+    padding: $spacing-04;
+  }
+
+  .experiences-page-title {
+    @include type-style('heading-04');
+    margin-bottom: $spacing-05;
+  }
+
+  .experiences-step-tile {
+    padding: $spacing-05 !important;
+  }
+
+  .experiences-step-title {
+    @include type-style('heading-05');
+  }
+}
+

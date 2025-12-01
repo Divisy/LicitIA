@@ -1,0 +1,32 @@
+// Main styles entry point
+@forward './carbon';
+@forward './tokens';
+
+// Global styles
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
+  background-color: var(--cds-background);
+  color: var(--cds-text-primary);
+}
+
+// Carbon theme application
+.cds--g100 {
+  // Gray 100 theme (dark)
+}
+
+.cds--white {
+  // White theme (light) - default
+}
+

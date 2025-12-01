@@ -1,0 +1,149 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.experience-list {
+  width: 100%;
+}
+
+.experience-list-header {
+  margin-bottom: $spacing-05;
+  padding-bottom: $spacing-04;
+  border-bottom: 1px solid var(--cds-border-subtle);
+}
+
+.experience-list-count {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin: 0;
+  font-weight: 500;
+}
+
+.experience-list-table-container {
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-03;
+  overflow: hidden;
+}
+
+.experience-list-service {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.experience-list-service-icon {
+  fill: var(--cds-link-primary);
+  flex-shrink: 0;
+}
+
+.experience-list-service-name {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-primary);
+  font-weight: 500;
+}
+
+.experience-list-name {
+  max-width: 300px;
+  @include type-style('body-01');
+  color: var(--cds-text-primary);
+  line-height: 1.5;
+}
+
+.experience-list-amount {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-primary);
+  font-weight: 500;
+}
+
+.experience-list-details {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.experience-list-details-link {
+  @include type-style('body-compact-01');
+  color: var(--cds-link-primary);
+  text-decoration: none;
+  cursor: pointer;
+  
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.experience-list-delete-button {
+  &:hover {
+    background: var(--cds-layer-hover) !important;
+  }
+}
+
+.experience-list-empty {
+  padding: $spacing-09 $spacing-06;
+  text-align: center;
+}
+
+.experience-list-empty-icon {
+  fill: var(--cds-text-secondary);
+  margin-bottom: $spacing-05;
+  opacity: 0.5;
+}
+
+.experience-list-empty-text {
+  @include type-style('heading-03');
+  color: var(--cds-text-primary);
+  margin-bottom: $spacing-03;
+  
+  strong {
+    color: var(--cds-link-primary);
+  }
+}
+
+.experience-list-empty-hint {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+}
+
+// Override Carbon table styles
+.experience-list-table-container {
+  .cds--data-table {
+    .cds--table-cell {
+      padding: $spacing-04 $spacing-05;
+      vertical-align: middle;
+    }
+    
+    .cds--table-header {
+      background: var(--cds-layer-01);
+      border-bottom: 2px solid var(--cds-border-subtle);
+      
+      .cds--table-header-content {
+        @include type-style('label-01');
+        color: var(--cds-text-secondary);
+        font-weight: 600;
+        text-transform: none;
+      }
+    }
+    
+    .cds--table-row {
+      border-bottom: 1px solid var(--cds-border-subtle);
+      
+      &:hover {
+        background: var(--cds-layer-hover);
+      }
+    }
+  }
+}
+
+@media (max-width: 672px) {
+  .experience-list-name {
+    max-width: 150px;
+    font-size: 0.875rem;
+  }
+  
+  .experience-list-service {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: $spacing-02;
+  }
+}
+
