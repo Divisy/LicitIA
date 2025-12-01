@@ -36,16 +36,18 @@ for key, value in os.environ.items():
         # Capture CORS_ORIGINS if found (case-insensitive, handle any case variation)
         if key.upper() == "CORS_ORIGINS":
             cors_env_found = value
-            print(f"[CORS] Found CORS_ORIGINS in environment: {value}")
+            print(f"[CORS] ✓ Found CORS_ORIGINS in environment with key '{key}': {value}")
 print("=" * 80)
 
-# Get CORS_ORIGINS from environment (try multiple methods)
-# Railway sometimes has issues with os.getenv, so use the value we found in the loop
-cors_origins_raw = cors_env_found or os.environ.get("CORS_ORIGINS") or os.getenv("CORS_ORIGINS")
-print(f"[CORS] Raw CORS_ORIGINS from env: {repr(cors_origins_raw)}")
-if cors_env_found and not cors_origins_raw:
-    print(f"[CORS] WARNING: Found in loop but not in getenv, using loop value: {cors_env_found}")
+# Get CORS_ORIGINS from environment
+# Railway sometimes has issues with os.getenv, so prioritize the value we found in the loop
+if cors_env_found:
     cors_origins_raw = cors_env_found
+    print(f"[CORS] Using CORS_ORIGINS captured from environment loop: {cors_origins_raw}")
+else:
+    # Fallback to standard methods if not found in loop
+    cors_origins_raw = os.environ.get("CORS_ORIGINS") or os.getenv("CORS_ORIGINS")
+    print(f"[CORS] Raw CORS_ORIGINS from env (standard methods): {repr(cors_origins_raw)}")
 
 # Default to localhost if not set
 if not cors_origins_raw:
