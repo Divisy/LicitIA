@@ -140,8 +140,8 @@ const Landing: React.FC = () => {
             id: 'demo-1',
             external_id: 'demo-1',
             source: 'SECOP',
-            entity_name: 'Alcaldía de Bogotá - Secretaría de Movilidad',
-            object_text: 'Interventoría técnica para proyecto de infraestructura vial en la Avenida 68',
+            entity_name: 'Instituto Nacional de Vías (INVÍAS)',
+            object_text: 'Interventoría técnica para proyecto de infraestructura vial en la Avenida 68. Supervisión de obras de construcción, control de calidad de materiales, verificación de especificaciones técnicas y seguimiento de cronograma de ejecución.',
             department: 'Cundinamarca',
             municipality: 'Bogotá',
             amount: 2500000000,
@@ -163,8 +163,8 @@ const Landing: React.FC = () => {
             id: 'demo-2',
             external_id: 'demo-2',
             source: 'SECOP',
-            entity_name: 'Instituto Nacional de Vías (INVÍAS)',
-            object_text: 'Supervisión técnica de obras de rehabilitación de vía principal',
+            entity_name: 'Alcaldía de Medellín - Secretaría de Infraestructura',
+            object_text: 'Construcción de puente vehicular sobre quebrada La Iguaná. Obras de concreto, estructuras metálicas, movimientos de tierra, drenajes y señalización vial. Incluye estudios geotécnicos y diseño estructural.',
             department: 'Antioquia',
             municipality: 'Medellín',
             amount: 1800000000,
@@ -173,8 +173,8 @@ const Landing: React.FC = () => {
             state: 'Publicado',
             apertura_estado: 'Abierto',
             process_url: '#',
-            contract_type: 'Interventoría y Supervisión',
-            contract_modality: 'Prestación de Servicios',
+            contract_type: 'Obra Pública',
+            contract_modality: 'Obra',
             relevance_score: 0.88,
             is_relevant_interventoria_vial: true,
             experience_match_score: 0.78,
@@ -186,21 +186,90 @@ const Landing: React.FC = () => {
             id: 'demo-3',
             external_id: 'demo-3',
             source: 'SECOP',
-            entity_name: 'Gobernación de Cundinamarca',
-            object_text: 'Interventoría para proyecto de mejoramiento de vías terciarias',
+            entity_name: 'Gobernación de Cundinamarca - Secretaría de Obras Públicas',
+            object_text: 'Estudios y diseños para proyecto de mejoramiento y pavimentación de vías terciarias. Incluye estudios topográficos, geotécnicos, diseño geométrico, estructural y de pavimentos, y elaboración de planos constructivos.',
             department: 'Cundinamarca',
             municipality: 'Chía',
-            amount: 950000000,
+            amount: 450000000,
             publication_date: new Date().toISOString(),
             closing_date: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString(),
             state: 'Publicado',
             apertura_estado: 'Abierto',
             process_url: '#',
-            contract_type: 'Interventoría y Supervisión',
+            contract_type: 'Estudios y Diseños',
             contract_modality: 'Prestación de Servicios',
             relevance_score: 0.82,
             is_relevant_interventoria_vial: true,
             experience_match_score: 0.72,
+            matching_experiences: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: 'demo-4',
+            external_id: 'demo-4',
+            source: 'SECOP',
+            entity_name: 'Agencia Nacional de Infraestructura (ANI)',
+            object_text: 'Interventoría técnica, administrativa y financiera para proyecto de construcción de doble calzada. Supervisión de obras civiles, control de calidad, verificación de avances físicos y financieros, y gestión de contratistas.',
+            department: 'Valle del Cauca',
+            municipality: 'Cali',
+            amount: 3200000000,
+            publication_date: new Date().toISOString(),
+            closing_date: new Date(Date.now() + 35 * 24 * 60 * 60 * 1000).toISOString(),
+            state: 'Publicado',
+            apertura_estado: 'Abierto',
+            process_url: '#',
+            contract_type: 'Interventoría y Supervisión',
+            contract_modality: 'Prestación de Servicios',
+            relevance_score: 0.90,
+            is_relevant_interventoria_vial: true,
+            experience_match_score: 0.82,
+            matching_experiences: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: 'demo-5',
+            external_id: 'demo-5',
+            source: 'SECOP',
+            entity_name: 'Empresa de Acueducto y Alcantarillado de Bogotá (EAAB)',
+            object_text: 'Construcción de sistema de alcantarillado sanitario y pluvial en zona urbana. Incluye excavación, instalación de tuberías, construcción de cámaras de inspección, obras de concreto y restauración de vías.',
+            department: 'Cundinamarca',
+            municipality: 'Bogotá',
+            amount: 1850000000,
+            publication_date: new Date().toISOString(),
+            closing_date: new Date(Date.now() + 28 * 24 * 60 * 60 * 1000).toISOString(),
+            state: 'Publicado',
+            apertura_estado: 'Abierto',
+            process_url: '#',
+            contract_type: 'Obra Pública',
+            contract_modality: 'Obra',
+            relevance_score: 0.87,
+            is_relevant_interventoria_vial: true,
+            experience_match_score: 0.75,
+            matching_experiences: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: 'demo-6',
+            external_id: 'demo-6',
+            source: 'SECOP',
+            entity_name: 'Departamento Administrativo de Gestión del Medio Ambiente (DAGMA)',
+            object_text: 'Estudios técnicos y diseños para proyecto de construcción de planta de tratamiento de aguas residuales. Incluye estudios hidrológicos, diseño estructural, diseño de procesos, especificaciones técnicas y elaboración de planos constructivos.',
+            department: 'Valle del Cauca',
+            municipality: 'Cali',
+            amount: 680000000,
+            publication_date: new Date().toISOString(),
+            closing_date: new Date(Date.now() + 22 * 24 * 60 * 60 * 1000).toISOString(),
+            state: 'Publicado',
+            apertura_estado: 'Abierto',
+            process_url: '#',
+            contract_type: 'Estudios y Diseños',
+            contract_modality: 'Prestación de Servicios',
+            relevance_score: 0.85,
+            is_relevant_interventoria_vial: true,
+            experience_match_score: 0.68,
             matching_experiences: null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -213,16 +282,48 @@ const Landing: React.FC = () => {
       try {
         setLoadingTenders(true)
         const response = await getTenders({
-          limit: 6,
+          limit: 50, // Get more to filter
           offset: 0,
-          only_interventoria: true, // Show most relevant tenders
         })
+        
+        // Filter tenders: montos >= 150,000,000 and relevant types
+        const filteredTenders = (response?.items || []).filter((tender) => {
+          // Must have amount >= 150,000,000
+          if (!tender.amount || tender.amount < 150000000) return false
+          
+          // Must be relevant types: obra, interventoría, estudios y diseños
+          const objectText = (tender.object_text || '').toLowerCase()
+          const contractType = (tender.contract_type || '').toLowerCase()
+          
+          const isObra = objectText.includes('obra') || 
+                        objectText.includes('construcción') || 
+                        objectText.includes('construccion') ||
+                        contractType.includes('obra') ||
+                        contractType.includes('construcción')
+          
+          const isInterventoria = objectText.includes('interventoría') || 
+                                 objectText.includes('interventoria') ||
+                                 objectText.includes('supervisión') ||
+                                 objectText.includes('supervision') ||
+                                 contractType.includes('interventoría') ||
+                                 contractType.includes('supervisión')
+          
+          const isEstudiosDiseños = objectText.includes('estudio') ||
+                                   objectText.includes('diseño') ||
+                                   objectText.includes('diseno') ||
+                                   contractType.includes('estudio') ||
+                                   contractType.includes('diseño')
+          
+          return isObra || isInterventoria || isEstudiosDiseños
+        })
+        
         // Add demo match scores for preview (to show value of the product)
-        const tendersWithDemoScores = ((response?.items || [])).map((tender, idx) => ({
+        const tendersWithDemoScores = filteredTenders.slice(0, 6).map((tender, idx) => ({
           ...tender,
           // Show demo match scores: 85%, 78%, 72%, 65% to demonstrate AI matching value
           experience_match_score: tender.experience_match_score || (0.85 - idx * 0.07),
         }))
+        
         // Use real data if available, otherwise use demo data
         if (tendersWithDemoScores.length > 0) {
           setLiveTenders(tendersWithDemoScores)
@@ -517,14 +618,12 @@ const Landing: React.FC = () => {
                           </div>
                           <div className="landing-hero__preview-col landing-hero__preview-col--entity">
                             <div className="landing-hero__preview-entity-name">
-                              {tender.entity_name.length > 35 
-                                ? `${tender.entity_name.substring(0, 35)}...` 
+                              {tender.entity_name.length > 40 
+                                ? `${tender.entity_name.substring(0, 40)}...` 
                                 : tender.entity_name}
                             </div>
                             <div className="landing-hero__preview-entity-object">
-                              {tender.object_text.length > 60 
-                                ? `${tender.object_text.substring(0, 60)}...` 
-                                : tender.object_text}
+                              {tender.object_text || 'Sin descripción disponible'}
                             </div>
                           </div>
                           <div className="landing-hero__preview-col landing-hero__preview-col--dept">
@@ -1093,6 +1192,8 @@ const Landing: React.FC = () => {
               </h2>
               <p className="landing-pricing__subtitle">
                 Sin tarjeta de crédito. Sin compromiso. Cancela cuando quieras.
+                <br />
+                <strong>Después de la prueba: desde $199.000/mes</strong> (oferta de lanzamiento)
               </p>
             </div>
             
@@ -1160,16 +1261,16 @@ const Landing: React.FC = () => {
                 <div className="landing-pricing-card__header">
                   <h3 className="landing-pricing-card__name">LicitIA Pro</h3>
                   <div className="landing-pricing-card__price">
-                    <span className="landing-pricing-card__price-old">$99</span>
-                    <span className="landing-pricing-card__price-amount">$49.50</span>
+                    <span className="landing-pricing-card__price-old">$399.000</span>
+                    <span className="landing-pricing-card__price-amount">$199.000</span>
                     <span className="landing-pricing-card__price-period">/mes</span>
                   </div>
                   <p className="landing-pricing-card__description">
-                    <strong>50% descuento</strong> primeros 3 meses • Luego $99/mes
+                    <strong>50% descuento</strong> primeros 3 meses • Luego $299.000/mes
                   </p>
                   <div className="landing-pricing-card__urgency">
                     <Time size={16} />
-                    <span>Solo para primeros 50 usuarios</span>
+                    <span>Solo para primeros 100 usuarios</span>
                   </div>
                 </div>
                 <ul className="landing-pricing-card__features">
@@ -1209,7 +1310,7 @@ const Landing: React.FC = () => {
                 </CarbonButton>
                 <p className="landing-pricing-card__note">
                   <CheckmarkFilled size={16} />
-                  <span>30 días gratis, luego $49.50/mes</span>
+                  <span>30 días gratis, luego $199.000/mes</span>
                 </p>
               </Card>
             </div>

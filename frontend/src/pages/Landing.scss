@@ -566,7 +566,8 @@
 
   &__preview-table-header {
     display: grid;
-    grid-template-columns: 1fr 1.2fr 2.5fr 1fr 1.1fr 0.9fr 1.2fr 1fr;
+    // Increased entity column width to show more contract detail (from 3.5fr to 4fr)
+    grid-template-columns: 0.9fr 1.1fr 4fr 0.8fr 1fr 0.8fr 1fr 0.9fr;
     gap: $spacing-03;
     padding: $spacing-04 $spacing-05;
     background: var(--cds-layer-01, #f4f4f4);
@@ -578,7 +579,7 @@
     letter-spacing: 0.5px;
 
     @media (max-width: $licitia-breakpoint-md) {
-      grid-template-columns: 1fr 1.2fr 2fr 0.9fr 1fr 0.8fr 1fr 0.9fr;
+      grid-template-columns: 0.9fr 1.1fr 3.5fr 0.8fr 1fr 0.8fr 1fr 0.9fr;
       font-size: 0.7rem;
       padding: $spacing-03 $spacing-04;
       gap: $spacing-02;
@@ -603,7 +604,8 @@
 
   &__preview-row {
     display: grid;
-    grid-template-columns: 1fr 1.2fr 2.5fr 1fr 1.1fr 0.9fr 1.2fr 1fr;
+    // Increased entity column width to show more contract detail (from 3.5fr to 4fr)
+    grid-template-columns: 0.9fr 1.1fr 4fr 0.8fr 1fr 0.8fr 1fr 0.9fr;
     gap: $spacing-03;
     padding: $spacing-05;
     border-bottom: 1px solid var(--cds-border-subtle, #e0e0e0);
@@ -625,7 +627,7 @@
     }
 
     @media (max-width: $licitia-breakpoint-md) {
-      grid-template-columns: 1fr 1.2fr 2fr 0.9fr 1fr 0.8fr 1fr 0.9fr;
+      grid-template-columns: 0.9fr 1.1fr 3.5fr 0.8fr 1fr 0.8fr 1fr 0.9fr;
       padding: $spacing-04;
       gap: $spacing-02;
     }
@@ -654,7 +656,11 @@
       flex-direction: column;
       align-items: flex-start;
       gap: $spacing-02;
-      padding-right: $spacing-02;
+      padding-right: $spacing-04;
+      min-width: 0; // Allow text wrapping
+      max-width: 100%;
+      // Ensure entity column has enough space for description
+      min-width: 320px;
     }
 
     &--dept {
@@ -729,11 +735,21 @@
   }
 
   &__preview-entity-object {
-    @include type-style('body-01');
+    @include type-style('body-compact-01');
     color: var(--cds-text-secondary, #525252);
-    line-height: 1.5;
+    line-height: 1.7;
     font-size: 0.875rem;
-    margin: 0;
+    word-wrap: break-word;
+    max-width: 100%;
+    white-space: normal;
+    // Show more lines for better detail visibility - increased to 6 lines
+    display: -webkit-box;
+    -webkit-line-clamp: 6;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: $spacing-02;
+    padding-right: $spacing-02;
   }
 
   &__preview-dept {
