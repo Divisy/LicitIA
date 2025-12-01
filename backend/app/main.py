@@ -63,47 +63,63 @@ app.include_router(feedback.router, prefix="/api/v1", tags=["feedback"])
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup."""
-    start_scheduler()
+    print("[STARTUP] Initializing services...")
+    logger.info("Application startup event triggered")
     
-    # Schedule the tender fetching job
-    from apscheduler.triggers.interval import IntervalTrigger
-    from app.core.scheduler import scheduler
-    from datetime import datetime
-    
-    # Add job that runs immediately on startup, then every 2 hours
-    scheduler.add_job(
-        fetch_and_store_new_tenders,
-        trigger=IntervalTrigger(hours=settings.FETCH_INTERVAL_HOURS),
-        id="fetch_tenders",
-        name="Fetch and store new tenders from SECOP",
-        replace_existing=True,
-        next_run_time=datetime.utcnow(),  # Run immediately on startup
-    )
-    
-    logger.info(f"Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (starting immediately)")
-    
-    # Pre-load semantic AI model in background to avoid blocking first request
-    # This is done in a background thread to not block server startup
-    import threading
-    def preload_semantic_model():
-        try:
-            from app.services.experience_matching import get_semantic_model
-            print("[STARTUP] Pre-loading semantic AI model in background...")
-            logger.info("Pre-loading semantic AI model in background...")
-            model = get_semantic_model()
-            if model:
-                print("[STARTUP] Semantic AI model pre-loaded successfully")
-                logger.info("Semantic AI model pre-loaded successfully")
-            else:
-                print("[STARTUP] Semantic AI model not available")
-                logger.warning("Semantic AI model not available")
-        except Exception as e:
-            print(f"[STARTUP] Error pre-loading semantic model: {e}")
-            logger.error(f"Error pre-loading semantic model: {e}")
-    
-    # Start pre-loading in background thread (non-blocking)
-    threading.Thread(target=preload_semantic_model, daemon=True).start()
-    print("[STARTUP] Background model pre-loading started")
+    try:
+        start_scheduler()
+        print("[STARTUP] Scheduler started")
+        
+        # Schedule the tender fetching job
+        from apscheduler.triggers.interval import IntervalTrigger
+        from app.core.scheduler import scheduler
+        from datetime import datetime, timedelta
+        
+        # Don't run immediately on startup - wait 1 minute to let server fully start
+        next_run = datetime.utcnow() + timedelta(minutes=1)
+        
+        scheduler.add_job(
+            fetch_and_store_new_tenders,
+            trigger=IntervalTrigger(hours=settings.FETCH_INTERVAL_HOURS),
+            id="fetch_tenders",
+            name="Fetch and store new tenders from SECOP",
+            replace_existing=True,
+            next_run_time=next_run,  # Wait 1 minute before first run
+        )
+        
+        print(f"[STARTUP] Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 1 minute)")
+        logger.info(f"Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 1 minute)")
+        
+        # Pre-load semantic AI model in background to avoid blocking first request
+        import threading
+        def preload_semantic_model():
+            try:
+                from app.services.experience_matching import get_semantic_model
+                print("[STARTUP] Pre-loading semantic AI model in background...")
+                logger.info("Pre-loading semantic AI model in background...")
+                model = get_semantic_model()
+                if model:
+                    print("[STARTUP] Semantic AI model pre-loaded successfully")
+                    logger.info("Semantic AI model pre-loaded successfully")
+                else:
+                    print("[STARTUP] Semantic AI model not available")
+                    logger.warning("Semantic AI model not available")
+            except Exception as e:
+                print(f"[STARTUP] Error pre-loading semantic model: {e}")
+                logger.error(f"Error pre-loading semantic model: {e}")
+        
+        # Start pre-loading in background thread (non-blocking)
+        threading.Thread(target=preload_semantic_model, daemon=True).start()
+        print("[STARTUP] Background model pre-loading started")
+        
+        print("=" * 80)
+        print("LICITIA BACKEND READY - Server is accepting requests")
+        print("=" * 80)
+        logger.info("Application startup completed successfully")
+    except Exception as e:
+        print(f"[STARTUP] ERROR during startup: {e}")
+        logger.error(f"Error during startup: {e}", exc_info=True)
+        # Don't raise - let server start even if startup tasks fail
 
 
 @app.on_event("shutdown")
