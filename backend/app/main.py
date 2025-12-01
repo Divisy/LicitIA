@@ -26,14 +26,33 @@ app = FastAPI(
 
 # CORS middleware (allow frontend to call backend)
 # CORS origins - support both local and production
-cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+# Debug: Print ALL environment variables that start with CORS
+print("=" * 80)
+print("[CORS DEBUG] All CORS-related environment variables:")
+for key, value in os.environ.items():
+    if "CORS" in key.upper():
+        print(f"  {key} = {value}")
+print("=" * 80)
+
+# Get CORS_ORIGINS from environment
+cors_origins_raw = os.getenv("CORS_ORIGINS")
+print(f"[CORS] Raw CORS_ORIGINS from env: {repr(cors_origins_raw)}")
+
+# Default to localhost if not set
+if not cors_origins_raw:
+    print("[CORS] WARNING: CORS_ORIGINS not set, using defaults")
+    cors_origins_str = "http://localhost:3000,http://localhost:5173"
+else:
+    cors_origins_str = cors_origins_raw
+
+# Parse origins
 cors_origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
 
 # Log CORS configuration for debugging (use both logger and print for visibility)
-print(f"[CORS] CORS_ORIGINS env var: {os.getenv('CORS_ORIGINS', 'NOT SET')}")
-print(f"[CORS] CORS origins configured: {cors_origins}")
+print(f"[CORS] CORS_ORIGINS env var: {cors_origins_raw if cors_origins_raw else 'NOT SET'}")
+print(f"[CORS] Parsed CORS origins: {cors_origins}")
 logger.info(f"CORS origins configured: {cors_origins}")
-logger.info(f"CORS_ORIGINS env var: {os.getenv('CORS_ORIGINS', 'NOT SET')}")
+logger.info(f"CORS_ORIGINS env var: {cors_origins_raw if cors_origins_raw else 'NOT SET'}")
 
 # If no CORS origins configured, allow all (for development)
 # In production, always require explicit CORS_ORIGINS
