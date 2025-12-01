@@ -26,22 +26,26 @@ app = FastAPI(
 
 # CORS middleware (allow frontend to call backend)
 # CORS origins - support both local and production
-# Debug: Print ALL environment variables that start with CORS
+# Debug: Print ALL environment variables that start with CORS and capture CORS_ORIGINS
 print("=" * 80)
 print("[CORS DEBUG] All CORS-related environment variables:")
 cors_env_found = None
 for key, value in os.environ.items():
     if "CORS" in key.upper():
         print(f"  {key} = {value}")
-        # Capture CORS_ORIGINS if found (case-insensitive)
+        # Capture CORS_ORIGINS if found (case-insensitive, handle any case variation)
         if key.upper() == "CORS_ORIGINS":
             cors_env_found = value
+            print(f"[CORS] Found CORS_ORIGINS in environment: {value}")
 print("=" * 80)
 
 # Get CORS_ORIGINS from environment (try multiple methods)
-# Railway sometimes has issues with os.getenv, so try os.environ directly
-cors_origins_raw = os.environ.get("CORS_ORIGINS") or cors_env_found or os.getenv("CORS_ORIGINS")
+# Railway sometimes has issues with os.getenv, so use the value we found in the loop
+cors_origins_raw = cors_env_found or os.environ.get("CORS_ORIGINS") or os.getenv("CORS_ORIGINS")
 print(f"[CORS] Raw CORS_ORIGINS from env: {repr(cors_origins_raw)}")
+if cors_env_found and not cors_origins_raw:
+    print(f"[CORS] WARNING: Found in loop but not in getenv, using loop value: {cors_env_found}")
+    cors_origins_raw = cors_env_found
 
 # Default to localhost if not set
 if not cors_origins_raw:
