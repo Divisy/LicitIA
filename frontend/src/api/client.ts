@@ -5,6 +5,13 @@ const API_BASE_URL =
   import.meta.env.VITE_API_URL ||
   (import.meta.env.PROD ? "/api/v1" : "http://localhost:8000/api/v1");
 
+// Log API configuration for debugging
+if (import.meta.env.DEV) {
+  console.log('[API Client] Base URL:', API_BASE_URL);
+  console.log('[API Client] VITE_API_URL:', import.meta.env.VITE_API_URL);
+  console.log('[API Client] PROD:', import.meta.env.PROD);
+}
+
 const client = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -12,6 +19,37 @@ const client = axios.create({
   },
   timeout: 120000, // 2 minutes timeout for experience matching (can take time with AI)
 });
+
+// Add request interceptor for debugging
+client.interceptors.request.use(
+  (config) => {
+    if (import.meta.env.DEV) {
+      console.log('[API Request]', config.method?.toUpperCase(), config.url, config.baseURL);
+    }
+    return config;
+  },
+  (error) => {
+    console.error('[API Request Error]', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for error handling
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (import.meta.env.DEV || import.meta.env.PROD) {
+      console.error('[API Response Error]', {
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        fullURL: error.config?.baseURL + error.config?.url,
+        status: error.response?.status,
+        message: error.message,
+      });
+    }
+    return Promise.reject(error);
+  }
+);
 
 export interface LeadCreate {
   email: string;
@@ -121,9 +159,19 @@ export async function getTenders(
     params.append("offset", filters.offset.toString());
   }
 
-  const response = await client.get<TenderListResponse>(
-    `/tenders?${params.toString()}`
-  );
+  const url = `/tenders?${params.toString()}`;
+  console.log('[API] getTenders - Request URL:', url);
+  console.log('[API] getTenders - Base URL:', client.defaults.baseURL);
+  console.log('[API] getTenders - Full URL:', client.defaults.baseURL + url);
+  
+  const response = await client.get<TenderListResponse>(url);
+  
+  console.log('[API] getTenders - Response:', {
+    status: response.status,
+    dataItems: response.data?.items?.length || 0,
+    dataTotal: response.data?.total || 0,
+  });
+  
   // Ensure response has the expected structure
   return {
     items: response.data?.items || [],
