@@ -127,27 +127,8 @@ const Landing: React.FC = () => {
     navigate('/')
   }
 
-  // Fetch live tenders immediately on mount (Time to Value = 0)
-  useEffect(() => {
-    const fetchLiveTenders = async () => {
-      try {
-        setLoadingTenders(true)
-        const response = await getTenders({
-          limit: 6,
-          offset: 0,
-          only_interventoria: true, // Show most relevant tenders
-        })
-        // Add demo match scores for preview (to show value of the product)
-        const tendersWithDemoScores = ((response?.items || [])).map((tender, idx) => ({
-          ...tender,
-          // Show demo match scores: 85%, 78%, 72%, 65% to demonstrate AI matching value
-          experience_match_score: tender.experience_match_score || (0.85 - idx * 0.07),
-        }))
-        setLiveTenders(tendersWithDemoScores)
-      } catch (err) {
-        console.error('Error fetching live tenders:', err)
-        // Create demo data if API fails to ensure preview always shows
-        const demoTenders: Tender[] = [
+  // Create demo data function
+  const createDemoTenders = (): Tender[] => [
           {
             id: 'demo-1',
             external_id: 'demo-1',
@@ -218,7 +199,33 @@ const Landing: React.FC = () => {
             updated_at: new Date().toISOString(),
           },
         ]
-        setLiveTenders(demoTenders)
+
+  // Fetch live tenders immediately on mount (Time to Value = 0)
+  useEffect(() => {
+    const fetchLiveTenders = async () => {
+      try {
+        setLoadingTenders(true)
+        const response = await getTenders({
+          limit: 6,
+          offset: 0,
+          only_interventoria: true, // Show most relevant tenders
+        })
+        // Add demo match scores for preview (to show value of the product)
+        const tendersWithDemoScores = ((response?.items || [])).map((tender, idx) => ({
+          ...tender,
+          // Show demo match scores: 85%, 78%, 72%, 65% to demonstrate AI matching value
+          experience_match_score: tender.experience_match_score || (0.85 - idx * 0.07),
+        }))
+        // Use real data if available, otherwise use demo data
+        if (tendersWithDemoScores.length > 0) {
+          setLiveTenders(tendersWithDemoScores)
+        } else {
+          setLiveTenders(createDemoTenders())
+        }
+      } catch (err) {
+        console.error('Error fetching live tenders:', err)
+        // Always show demo data if API fails
+        setLiveTenders(createDemoTenders())
       } finally {
         setLoadingTenders(false)
       }
