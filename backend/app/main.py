@@ -26,13 +26,21 @@ cors_origins = [origin.strip() for origin in cors_origins_str.split(",") if orig
 
 # Log CORS configuration for debugging
 logger.info(f"CORS origins configured: {cors_origins}")
+logger.info(f"CORS_ORIGINS env var: {os.getenv('CORS_ORIGINS', 'NOT SET')}")
+
+# If no CORS origins configured, allow all (for development)
+# In production, always require explicit CORS_ORIGINS
+if not cors_origins:
+    logger.warning("No CORS origins configured, allowing all origins (development mode)")
+    cors_origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=cors_origins if cors_origins != ["*"] else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Include routers
