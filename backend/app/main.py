@@ -41,6 +41,11 @@ if not cors_origins:
     logger.warning("No CORS origins configured, allowing all origins (development mode)")
     cors_origins = ["*"]
 
+# Configure CORS middleware
+# Log the exact configuration being used
+print(f"[CORS] Configuring middleware with origins: {cors_origins}")
+logger.info(f"Configuring CORS middleware with origins: {cors_origins}")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins if cors_origins != ["*"] else ["*"],
@@ -49,6 +54,9 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+print("[CORS] CORS middleware configured successfully")
+logger.info("CORS middleware configured successfully")
 
 # Include routers
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
