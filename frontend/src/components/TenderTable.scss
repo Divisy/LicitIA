@@ -93,16 +93,70 @@
 // Override Carbon table styles for better spacing
 .tender-table-container {
   .cds--data-table {
-    .cds--table-header-label {
-      @include type-style('label-01');
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+    // Professional header styling following Carbon Design System
+    .cds--table-header {
+      background: var(--cds-layer-01);
+      border-bottom: 2px solid var(--cds-border-strong);
+      padding: 0;
+      
+      .cds--table-header-content {
+        padding: $spacing-05 $spacing-05;
+        display: flex;
+        align-items: center;
+        height: 100%;
+      }
+      
+      .cds--table-header-label {
+        @include type-style('label-01');
+        font-weight: 600;
+        color: var(--cds-text-primary);
+        text-transform: none;
+        letter-spacing: 0.01em;
+        font-size: 0.875rem;
+        line-height: 1.43;
+        white-space: normal;
+        word-wrap: break-word;
+      }
+      
+      // Sort icon styling
+      .cds--table-sort {
+        margin-left: $spacing-02;
+        
+        svg {
+          fill: var(--cds-icon-secondary);
+        }
+      }
+      
+      // Hover state for sortable headers
+      &:hover {
+        background: var(--cds-layer-hover);
+        
+        .cds--table-header-label {
+          color: var(--cds-text-primary);
+        }
+        
+        .cds--table-sort svg {
+          fill: var(--cds-icon-primary);
+        }
+      }
+      
+      // Active sort state
+      &[aria-sort] {
+        .cds--table-header-label {
+          color: var(--cds-text-primary);
+          font-weight: 600;
+        }
+        
+        .cds--table-sort svg {
+          fill: var(--cds-link-primary);
+        }
+      }
     }
     
     .cds--table-cell {
       padding: $spacing-05;
       vertical-align: top;
+      border-bottom: 1px solid var(--cds-border-subtle);
     }
     
     // Make entity column wider to show more object text horizontally
@@ -148,8 +202,31 @@
       min-width: 120px;
     }
     
-    .cds--table-row:hover {
-      background: var(--cds-layer-hover);
+    .cds--table-row {
+      transition: background-color 0.15s ease;
+      
+      &:hover {
+        background: var(--cds-layer-hover);
+      }
+    }
+    
+    // Zebra striping for better readability
+    .cds--data-table--zebra tbody tr:nth-child(odd) {
+      background: var(--cds-layer);
+    }
+    
+    .cds--data-table--zebra tbody tr:nth-child(even) {
+      background: var(--cds-layer-01);
+    }
+    
+    // Better spacing for table container
+    .cds--data-table-container {
+      padding: 0;
+    }
+    
+    // Improve table border styling
+    .cds--data-table-content {
+      border: none;
     }
   }
 }

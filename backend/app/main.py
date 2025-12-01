@@ -12,6 +12,11 @@ from app.config import settings
 setup_logging()
 logger = get_logger(__name__)
 
+# Log startup immediately
+print("=" * 80)
+print("LICITIA BACKEND STARTING")
+print("=" * 80)
+
 # Create FastAPI app
 app = FastAPI(
     title="LicitIA API",
@@ -21,16 +26,104 @@ app = FastAPI(
 
 # CORS middleware (allow frontend to call backend)
 # CORS origins - support both local and production
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
-cors_origins = [origin.strip() for origin in cors_origins]
+# Debug: Print ALL environment variables that start with CORS and capture CORS_ORIGINS
+print("=" * 80)
+print("[CORS DEBUG] All CORS-related environment variables:")
+cors_env_found = None
+for key, value in os.environ.items():
+    if "CORS" in key.upper():
+        print(f"  {key} = {value}")
+        # Capture CORS_ORIGINS if found (case-insensitive, handle any case variation)
+        # Strip any whitespace from key for comparison
+        key_normalized = key.strip().upper()
+        if key_normalized == "CORS_ORIGINS":
+            cors_env_found = value.strip() if value else None
+            print(f"[CORS] ✓ Found CORS_ORIGINS in environment with key '{key}': {cors_env_found}")
+print("=" * 80)
 
+# Get CORS_ORIGINS from environment
+# Railway sometimes has issues with os.getenv, so prioritize the value we found in the loop
+if cors_env_found:
+    cors_origins_raw = cors_env_found
+    print(f"[CORS] ✓ Using CORS_ORIGINS captured from environment loop: {cors_origins_raw}")
+else:
+    # Fallback to standard methods if not found in loop
+    cors_origins_raw = os.environ.get("CORS_ORIGINS") or os.getenv("CORS_ORIGINS")
+    print(f"[CORS] Raw CORS_ORIGINS from env (standard methods): {repr(cors_origins_raw)}")
+    if not cors_origins_raw:
+        print("[CORS] ⚠️  CORS_ORIGINS not found with any method, will use fallback")
+
+# Default to localhost if not set
+if not cors_origins_raw:
+    print("[CORS] WARNING: CORS_ORIGINS not set, using defaults")
+    cors_origins_str = "http://localhost:3000,http://localhost:5173"
+else:
+    cors_origins_str = cors_origins_raw
+
+# Parse origins
+cors_origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
+
+# Log CORS configuration for debugging (use both logger and print for visibility)
+print(f"[CORS] CORS_ORIGINS env var: {cors_origins_raw if cors_origins_raw else 'NOT SET'}")
+print(f"[CORS] Parsed CORS origins: {cors_origins}")
+logger.info(f"CORS origins configured: {cors_origins}")
+logger.info(f"CORS_ORIGINS env var: {cors_origins_raw if cors_origins_raw else 'NOT SET'}")
+
+# If no CORS origins configured, use a fallback
+# IMPORTANT: When allow_credentials=True, we CANNOT use allow_origins=["*"]
+# We must specify explicit origins
+if not cors_origins:
+    logger.warning("No CORS origins configured, using fallback origins")
+    # Fallback: allow common production and development origins
+    cors_origins = [
+        "https://perpetual-playfulness-production-c731.up.railway.app",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]
+    print(f"[CORS] Using fallback origins: {cors_origins}")
+
+# Configure CORS middleware
+# Log the exact configuration being used
+print(f"[CORS] Configuring middleware with origins: {cors_origins}")
+logger.info(f"Configuring CORS middleware with origins: {cors_origins}")
+
+# Add CORS middleware BEFORE routers
+# IMPORTANT: When allow_credentials=True, allow_origins must be a list of specific origins, not ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=cors_origins,  # Always use explicit list, never ["*"]
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
+
+print("[CORS] CORS middleware configured successfully")
+logger.info("CORS middleware configured successfully")
+
+# Add root endpoint for testing
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {
+        "message": "LicitIA API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/api/v1/health"
+    }
+
+# Add CORS test endpoint
+@app.get("/api/v1/cors-test")
+async def cors_test():
+    """Test endpoint to verify CORS is working."""
+    return {
+        "status": "ok",
+        "cors": "configured",
+        "message": "If you can see this, CORS is working!"
+    }
 
 # Include routers
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
@@ -45,41 +138,47 @@ app.include_router(feedback.router, prefix="/api/v1", tags=["feedback"])
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup."""
-    start_scheduler()
+    print("[STARTUP] Initializing services...")
+    logger.info("Application startup event triggered")
     
-    # Schedule the tender fetching job
-    from apscheduler.triggers.interval import IntervalTrigger
-    from app.core.scheduler import scheduler
-    from datetime import datetime
-    
-    # Add job that runs immediately on startup, then every 2 hours
-    scheduler.add_job(
-        fetch_and_store_new_tenders,
-        trigger=IntervalTrigger(hours=settings.FETCH_INTERVAL_HOURS),
-        id="fetch_tenders",
-        name="Fetch and store new tenders from SECOP",
-        replace_existing=True,
-        next_run_time=datetime.utcnow(),  # Run immediately on startup
-    )
-    
-    logger.info(f"Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (starting immediately)")
-    
-    # Pre-load semantic AI model in background to avoid blocking first request
-    import threading
-    def preload_semantic_model():
-        try:
-            from app.services.experience_matching import get_semantic_model
-            logger.info("Pre-loading semantic AI model in background...")
-            model = get_semantic_model()
-            if model:
-                logger.info("Semantic AI model pre-loaded successfully")
-            else:
-                logger.warning("Semantic AI model not available")
-        except Exception as e:
-            logger.error(f"Error pre-loading semantic model: {e}")
-    
-    # Start pre-loading in background thread (non-blocking)
-    threading.Thread(target=preload_semantic_model, daemon=True).start()
+    try:
+        start_scheduler()
+        print("[STARTUP] Scheduler started")
+        
+        # Schedule the tender fetching job
+        from apscheduler.triggers.interval import IntervalTrigger
+        from app.core.scheduler import scheduler
+        from datetime import datetime, timedelta
+        
+        # Don't run immediately on startup - wait 1 minute to let server fully start
+        next_run = datetime.utcnow() + timedelta(minutes=1)
+        
+        scheduler.add_job(
+            fetch_and_store_new_tenders,
+            trigger=IntervalTrigger(hours=settings.FETCH_INTERVAL_HOURS),
+            id="fetch_tenders",
+            name="Fetch and store new tenders from SECOP",
+            replace_existing=True,
+            next_run_time=next_run,  # Wait 1 minute before first run
+        )
+        
+        print(f"[STARTUP] Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 1 minute)")
+        logger.info(f"Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 1 minute)")
+        
+        # NOTE: Semantic AI model will be loaded lazily on first use
+        # This avoids downloading the model (~470MB) during startup/build
+        # The model will be cached in memory after first load
+        print("[STARTUP] Semantic AI model will be loaded on first use (lazy loading)")
+        logger.info("Semantic AI model will be loaded on first use (lazy loading)")
+        
+        print("=" * 80)
+        print("LICITIA BACKEND READY - Server is accepting requests")
+        print("=" * 80)
+        logger.info("Application startup completed successfully")
+    except Exception as e:
+        print(f"[STARTUP] ERROR during startup: {e}")
+        logger.error(f"Error during startup: {e}", exc_info=True)
+        # Don't raise - let server start even if startup tasks fail
 
 
 @app.on_event("shutdown")

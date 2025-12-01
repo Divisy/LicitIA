@@ -382,18 +382,30 @@ _experience_cache_timestamp = {}
 
 
 def get_semantic_model():
-    """Get or load the semantic model (cached)."""
+    """
+    Get or load the semantic model (cached, lazy loading).
+    
+    The model is only loaded when first needed, not during startup.
+    This significantly speeds up application startup time.
+    """
     global _semantic_model
     if not SEMANTIC_AI_AVAILABLE:
         return None
     
     if _semantic_model is None:
         try:
-            logger.info("Loading semantic model (paraphrase-multilingual-MiniLM-L12-v2)...")
-            _semantic_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
-            logger.info("Semantic model loaded successfully")
+            logger.info("Loading semantic model (paraphrase-multilingual-MiniLM-L12-v2) - this may take a minute on first use...")
+            print("[SEMANTIC AI] Loading model (first use) - this is normal and will be cached after loading")
+            # Use cache_folder to speed up subsequent loads if possible
+            _semantic_model = SentenceTransformer(
+                'paraphrase-multilingual-MiniLM-L12-v2',
+                device='cpu'  # Explicitly use CPU to avoid GPU issues
+            )
+            logger.info("Semantic model loaded successfully and cached in memory")
+            print("[SEMANTIC AI] Model loaded successfully")
         except Exception as e:
             logger.error(f"Error loading semantic model: {e}")
+            print(f"[SEMANTIC AI] Error loading model: {e}")
             return None
     
     return _semantic_model

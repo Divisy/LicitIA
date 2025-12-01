@@ -9,15 +9,15 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Copy requirements first (for better Docker layer caching)
+# This layer will be cached and reused if requirements.txt doesn't change
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code (this layer changes most frequently)
 COPY . .
 
-# Copy init script
-COPY init_railway.sh .
+# Make init script executable
 RUN chmod +x init_railway.sh
 
 # Expose port

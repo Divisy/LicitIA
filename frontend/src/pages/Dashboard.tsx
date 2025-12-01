@@ -73,12 +73,33 @@ const Dashboard: React.FC = () => {
         params.company_name = companyName
       }
       
+      console.log('[Dashboard] Fetching tenders with params:', params)
       const response = await getTenders(params)
-      setTenders(response.items)
-      setTotal(response.total)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al cargar licitaciones')
-      console.error('Error fetching tenders:', err)
+      console.log('[Dashboard] Tenders response:', {
+        itemsCount: response?.items?.length || 0,
+        total: response?.total || 0,
+        hasItems: !!response?.items
+      })
+      
+      setTenders(response?.items || [])
+      setTotal(response?.total || 0)
+      
+      if (!response?.items || response.items.length === 0) {
+        console.warn('[Dashboard] No tenders returned from API')
+      }
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.detail || err?.message || 'Error al cargar licitaciones'
+      console.error('[Dashboard] Error fetching tenders:', {
+        message: errorMessage,
+        status: err?.response?.status,
+        url: err?.config?.url,
+        baseURL: err?.config?.baseURL,
+        fullError: err
+      })
+      setError(errorMessage)
+      // Asegurar que los estados estén vacíos en caso de error
+      setTenders([])
+      setTotal(0)
     } finally {
       setLoading(false)
     }

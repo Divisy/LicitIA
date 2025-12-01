@@ -386,3 +386,5 @@ Estas mejoras **maximizan el valor** del matching (feature más importante) y re
 
 **Fecha de creación:** 2025-11-17  
 **Versión:** 1.0
+
+

@@ -66,12 +66,25 @@ const Landing: React.FC = () => {
     setLoading(true)
 
     try {
-      const leadResponse = await captureLead({
-        email: formData.email,
-        name: formData.name || undefined,
-        company: formData.company || undefined,
-        source: 'landing_page',
-      })
+      // Intentar capturar el lead en el backend
+      try {
+        const leadResponse = await captureLead({
+          email: formData.email,
+          name: formData.name || undefined,
+          company: formData.company || undefined,
+          source: 'landing_page',
+        })
+        console.log('[Landing] Lead captured in backend:', leadResponse)
+      } catch (apiErr: any) {
+        // Si el backend no está disponible, continuar con localStorage
+        console.warn('[Landing] Backend not available, using localStorage fallback:', {
+          message: apiErr?.message,
+          status: apiErr?.response?.status,
+          url: apiErr?.config?.url,
+          baseURL: apiErr?.config?.baseURL,
+        })
+        // No mostrar error al usuario si el backend falla, usar fallback
+      }
       
       // Verificar si es un nuevo usuario (email diferente al guardado)
       const previousEmail = localStorage.getItem('licitia_user_email')
@@ -97,7 +110,7 @@ const Landing: React.FC = () => {
       // Marcar que debe iniciar onboarding automáticamente
       localStorage.setItem('licitia_start_onboarding', 'true')
       
-      console.log('[Landing] Lead captured, flags set:', {
+      console.log('[Landing] Lead saved, flags set:', {
         email: formData.email,
         company: formData.company,
         startOnboarding: localStorage.getItem('licitia_start_onboarding')
@@ -106,18 +119,12 @@ const Landing: React.FC = () => {
       setSuccess(true)
       setTimeout(() => {
         console.log('[Landing] Navigating to dashboard, flag:', localStorage.getItem('licitia_start_onboarding'))
-        navigate('/')
+        navigate('/dashboard')
       }, 1500)
     } catch (err: any) {
-      console.error('Error capturing lead:', err)
-      // Mejorar el mensaje de error
-      if (err?.response?.status === 404) {
-        setError('El servicio no está disponible. Por favor, intenta más tarde.')
-      } else if (err?.response?.status === 400) {
-        setError('Este email ya está registrado. Puedes iniciar sesión directamente.')
-      } else {
-        setError(err?.response?.data?.detail || err?.message || 'Error al registrar. Intenta de nuevo.')
-      }
+      console.error('Error in form submission:', err)
+      // Solo mostrar error si es un error crítico
+      setError('Error al procesar el registro. Por favor, intenta de nuevo.')
     } finally {
       setLoading(false)
     }
@@ -127,26 +134,206 @@ const Landing: React.FC = () => {
     navigate('/')
   }
 
+  // Create demo data function
+  const createDemoTenders = (): Tender[] => [
+          {
+            id: 'demo-1',
+            external_id: 'demo-1',
+            source: 'SECOP',
+            entity_name: 'Instituto Nacional de Vías (INVÍAS)',
+            object_text: 'Interventoría técnica para proyecto de infraestructura vial en la Avenida 68. Supervisión de obras de construcción, control de calidad de materiales, verificación de especificaciones técnicas y seguimiento de cronograma de ejecución.',
+            department: 'Cundinamarca',
+            municipality: 'Bogotá',
+            amount: 2500000000,
+            publication_date: new Date().toISOString(),
+            closing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            state: 'Publicado',
+            apertura_estado: 'Abierto',
+            process_url: '#',
+            contract_type: 'Interventoría y Supervisión',
+            contract_modality: 'Prestación de Servicios',
+            relevance_score: 0.95,
+            is_relevant_interventoria_vial: true,
+            experience_match_score: 0.85,
+            matching_experiences: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: 'demo-2',
+            external_id: 'demo-2',
+            source: 'SECOP',
+            entity_name: 'Alcaldía de Medellín - Secretaría de Infraestructura',
+            object_text: 'Construcción de puente vehicular sobre quebrada La Iguaná. Obras de concreto, estructuras metálicas, movimientos de tierra, drenajes y señalización vial. Incluye estudios geotécnicos y diseño estructural.',
+            department: 'Antioquia',
+            municipality: 'Medellín',
+            amount: 1800000000,
+            publication_date: new Date().toISOString(),
+            closing_date: new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString(),
+            state: 'Publicado',
+            apertura_estado: 'Abierto',
+            process_url: '#',
+            contract_type: 'Obra Pública',
+            contract_modality: 'Obra',
+            relevance_score: 0.88,
+            is_relevant_interventoria_vial: true,
+            experience_match_score: 0.78,
+            matching_experiences: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: 'demo-3',
+            external_id: 'demo-3',
+            source: 'SECOP',
+            entity_name: 'Gobernación de Cundinamarca - Secretaría de Obras Públicas',
+            object_text: 'Estudios y diseños para proyecto de mejoramiento y pavimentación de vías terciarias. Incluye estudios topográficos, geotécnicos, diseño geométrico, estructural y de pavimentos, y elaboración de planos constructivos.',
+            department: 'Cundinamarca',
+            municipality: 'Chía',
+            amount: 450000000,
+            publication_date: new Date().toISOString(),
+            closing_date: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString(),
+            state: 'Publicado',
+            apertura_estado: 'Abierto',
+            process_url: '#',
+            contract_type: 'Estudios y Diseños',
+            contract_modality: 'Prestación de Servicios',
+            relevance_score: 0.82,
+            is_relevant_interventoria_vial: true,
+            experience_match_score: 0.72,
+            matching_experiences: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: 'demo-4',
+            external_id: 'demo-4',
+            source: 'SECOP',
+            entity_name: 'Agencia Nacional de Infraestructura (ANI)',
+            object_text: 'Interventoría técnica, administrativa y financiera para proyecto de construcción de doble calzada. Supervisión de obras civiles, control de calidad, verificación de avances físicos y financieros, y gestión de contratistas.',
+            department: 'Valle del Cauca',
+            municipality: 'Cali',
+            amount: 3200000000,
+            publication_date: new Date().toISOString(),
+            closing_date: new Date(Date.now() + 35 * 24 * 60 * 60 * 1000).toISOString(),
+            state: 'Publicado',
+            apertura_estado: 'Abierto',
+            process_url: '#',
+            contract_type: 'Interventoría y Supervisión',
+            contract_modality: 'Prestación de Servicios',
+            relevance_score: 0.90,
+            is_relevant_interventoria_vial: true,
+            experience_match_score: 0.82,
+            matching_experiences: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: 'demo-5',
+            external_id: 'demo-5',
+            source: 'SECOP',
+            entity_name: 'Empresa de Acueducto y Alcantarillado de Bogotá (EAAB)',
+            object_text: 'Construcción de sistema de alcantarillado sanitario y pluvial en zona urbana. Incluye excavación, instalación de tuberías, construcción de cámaras de inspección, obras de concreto y restauración de vías.',
+            department: 'Cundinamarca',
+            municipality: 'Bogotá',
+            amount: 1850000000,
+            publication_date: new Date().toISOString(),
+            closing_date: new Date(Date.now() + 28 * 24 * 60 * 60 * 1000).toISOString(),
+            state: 'Publicado',
+            apertura_estado: 'Abierto',
+            process_url: '#',
+            contract_type: 'Obra Pública',
+            contract_modality: 'Obra',
+            relevance_score: 0.87,
+            is_relevant_interventoria_vial: true,
+            experience_match_score: 0.75,
+            matching_experiences: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: 'demo-6',
+            external_id: 'demo-6',
+            source: 'SECOP',
+            entity_name: 'Departamento Administrativo de Gestión del Medio Ambiente (DAGMA)',
+            object_text: 'Estudios técnicos y diseños para proyecto de construcción de planta de tratamiento de aguas residuales. Incluye estudios hidrológicos, diseño estructural, diseño de procesos, especificaciones técnicas y elaboración de planos constructivos.',
+            department: 'Valle del Cauca',
+            municipality: 'Cali',
+            amount: 680000000,
+            publication_date: new Date().toISOString(),
+            closing_date: new Date(Date.now() + 22 * 24 * 60 * 60 * 1000).toISOString(),
+            state: 'Publicado',
+            apertura_estado: 'Abierto',
+            process_url: '#',
+            contract_type: 'Estudios y Diseños',
+            contract_modality: 'Prestación de Servicios',
+            relevance_score: 0.85,
+            is_relevant_interventoria_vial: true,
+            experience_match_score: 0.68,
+            matching_experiences: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ]
+
   // Fetch live tenders immediately on mount (Time to Value = 0)
   useEffect(() => {
     const fetchLiveTenders = async () => {
       try {
         setLoadingTenders(true)
         const response = await getTenders({
-          limit: 6,
+          limit: 50, // Get more to filter
           offset: 0,
-          only_interventoria: true, // Show most relevant tenders
         })
+        
+        // Filter tenders: montos >= 150,000,000 and relevant types
+        const filteredTenders = (response?.items || []).filter((tender) => {
+          // Must have amount >= 150,000,000
+          if (!tender.amount || tender.amount < 150000000) return false
+          
+          // Must be relevant types: obra, interventoría, estudios y diseños
+          const objectText = (tender.object_text || '').toLowerCase()
+          const contractType = (tender.contract_type || '').toLowerCase()
+          
+          const isObra = objectText.includes('obra') || 
+                        objectText.includes('construcción') || 
+                        objectText.includes('construccion') ||
+                        contractType.includes('obra') ||
+                        contractType.includes('construcción')
+          
+          const isInterventoria = objectText.includes('interventoría') || 
+                                 objectText.includes('interventoria') ||
+                                 objectText.includes('supervisión') ||
+                                 objectText.includes('supervision') ||
+                                 contractType.includes('interventoría') ||
+                                 contractType.includes('supervisión')
+          
+          const isEstudiosDiseños = objectText.includes('estudio') ||
+                                   objectText.includes('diseño') ||
+                                   objectText.includes('diseno') ||
+                                   contractType.includes('estudio') ||
+                                   contractType.includes('diseño')
+          
+          return isObra || isInterventoria || isEstudiosDiseños
+        })
+        
         // Add demo match scores for preview (to show value of the product)
-        const tendersWithDemoScores = (response.items || []).map((tender, idx) => ({
+        const tendersWithDemoScores = filteredTenders.slice(0, 6).map((tender, idx) => ({
           ...tender,
           // Show demo match scores: 85%, 78%, 72%, 65% to demonstrate AI matching value
           experience_match_score: tender.experience_match_score || (0.85 - idx * 0.07),
         }))
-        setLiveTenders(tendersWithDemoScores)
+        
+        // Use real data if available, otherwise use demo data
+        if (tendersWithDemoScores.length > 0) {
+          setLiveTenders(tendersWithDemoScores)
+        } else {
+          setLiveTenders(createDemoTenders())
+        }
       } catch (err) {
         console.error('Error fetching live tenders:', err)
-        // Don't show error to user, just silently fail
+        // Always show demo data if API fails
+        setLiveTenders(createDemoTenders())
       } finally {
         setLoadingTenders(false)
       }
@@ -387,15 +574,15 @@ const Landing: React.FC = () => {
                   </div>
                   <div className="landing-hero__preview-stats">
                     <div className="landing-hero__preview-stat-item">
-                      <div className="landing-hero__preview-stat-number">{liveTenders.length > 0 ? '25+' : '0'}</div>
-                      <div className="landing-hero__preview-stat-label">Licitaciones</div>
+                      <div className="landing-hero__preview-stat-number">SECOP II</div>
+                      <div className="landing-hero__preview-stat-label">Todas las licitaciones</div>
                     </div>
                     <div className="landing-hero__preview-stat-item">
                       <div className="landing-hero__preview-stat-number">95%</div>
                       <div className="landing-hero__preview-stat-label">Precisión IA</div>
                     </div>
                     <div className="landing-hero__preview-stat-item">
-                      <div className="landing-hero__preview-stat-number">2h</div>
+                      <div className="landing-hero__preview-stat-number">Tiempo Real</div>
                       <div className="landing-hero__preview-stat-label">Actualización</div>
                     </div>
                   </div>
@@ -431,14 +618,12 @@ const Landing: React.FC = () => {
                           </div>
                           <div className="landing-hero__preview-col landing-hero__preview-col--entity">
                             <div className="landing-hero__preview-entity-name">
-                              {tender.entity_name.length > 35 
-                                ? `${tender.entity_name.substring(0, 35)}...` 
+                              {tender.entity_name.length > 40 
+                                ? `${tender.entity_name.substring(0, 40)}...` 
                                 : tender.entity_name}
                             </div>
                             <div className="landing-hero__preview-entity-object">
-                              {tender.object_text.length > 60 
-                                ? `${tender.object_text.substring(0, 60)}...` 
-                                : tender.object_text}
+                              {tender.object_text || 'Sin descripción disponible'}
                             </div>
                           </div>
                           <div className="landing-hero__preview-col landing-hero__preview-col--dept">
@@ -899,7 +1084,7 @@ const Landing: React.FC = () => {
                       </CarbonButton>
                       <p className="landing-live-preview__cta-note">
                         <CheckmarkFilled size={16} />
-                        <span>7 días gratis • Sin tarjeta de crédito</span>
+                        <span>30 días gratis • Sin tarjeta de crédito</span>
                       </p>
                     </div>
                   </div>
@@ -942,7 +1127,7 @@ const Landing: React.FC = () => {
                       Garantía <span className="landing-guarantee-title-highlight">Sin Riesgo</span>
                     </h2>
                     <p className="landing-guarantee-description">
-                      Prueba LicitIA durante <strong>7 días completamente gratis</strong>. Sin tarjeta de crédito, sin compromiso.
+                      Prueba LicitIA durante <strong>30 días completamente gratis</strong>. Sin tarjeta de crédito, sin compromiso.
                       Si no encuentras valor, cancela cuando quieras. <strong>Es así de simple.</strong>
                     </p>
                   </div>
@@ -953,7 +1138,7 @@ const Landing: React.FC = () => {
                         <CheckmarkFilled size={24} />
                       </div>
                       <div className="landing-guarantee-feature-content">
-                        <h3>7 días gratis</h3>
+                        <h3>30 días gratis</h3>
                         <p>Sin tarjeta de crédito. Sin compromiso. Prueba todo.</p>
                       </div>
                     </div>
@@ -1003,10 +1188,12 @@ const Landing: React.FC = () => {
           <Column lg={16} md={8} sm={4}>
             <div className="landing-pricing__header">
               <h2 className="landing-pricing__title">
-                Prueba <span className="landing-pricing__title-highlight">Gratis</span> por 7 Días
+                Prueba <span className="landing-pricing__title-highlight">Gratis</span> por 30 Días
               </h2>
               <p className="landing-pricing__subtitle">
                 Sin tarjeta de crédito. Sin compromiso. Cancela cuando quieras.
+                <br />
+                <strong>Después de la prueba: desde $199.000/mes</strong> (oferta de lanzamiento)
               </p>
             </div>
             
@@ -1020,10 +1207,10 @@ const Landing: React.FC = () => {
                   <h3 className="landing-pricing-card__name">Prueba Gratis</h3>
                   <div className="landing-pricing-card__price">
                     <span className="landing-pricing-card__price-amount">$0</span>
-                    <span className="landing-pricing-card__price-period">/7 días</span>
+                    <span className="landing-pricing-card__price-period">/30 días</span>
                   </div>
                   <p className="landing-pricing-card__description">
-                    Acceso completo a todas las funciones durante 7 días
+                    Acceso completo a todas las funciones durante 30 días
                   </p>
                 </div>
                 <ul className="landing-pricing-card__features">
@@ -1074,16 +1261,16 @@ const Landing: React.FC = () => {
                 <div className="landing-pricing-card__header">
                   <h3 className="landing-pricing-card__name">LicitIA Pro</h3>
                   <div className="landing-pricing-card__price">
-                    <span className="landing-pricing-card__price-old">$99</span>
-                    <span className="landing-pricing-card__price-amount">$49.50</span>
+                    <span className="landing-pricing-card__price-old">$399.000</span>
+                    <span className="landing-pricing-card__price-amount">$199.000</span>
                     <span className="landing-pricing-card__price-period">/mes</span>
                   </div>
                   <p className="landing-pricing-card__description">
-                    <strong>50% descuento</strong> primeros 3 meses • Luego $99/mes
+                    <strong>50% descuento</strong> primeros 3 meses • Luego $299.000/mes
                   </p>
                   <div className="landing-pricing-card__urgency">
                     <Time size={16} />
-                    <span>Solo para primeros 50 usuarios</span>
+                    <span>Solo para primeros 100 usuarios</span>
                   </div>
                 </div>
                 <ul className="landing-pricing-card__features">
@@ -1123,7 +1310,7 @@ const Landing: React.FC = () => {
                 </CarbonButton>
                 <p className="landing-pricing-card__note">
                   <CheckmarkFilled size={16} />
-                  <span>7 días gratis, luego $49.50/mes</span>
+                  <span>30 días gratis, luego $199.000/mes</span>
                 </p>
               </Card>
             </div>
@@ -1167,13 +1354,13 @@ const Landing: React.FC = () => {
                       <CheckmarkFilled size={24} />
                     </div>
                     <div className="landing-faq-answer__content">
-                      <p><strong>No, no necesitas tarjeta de crédito.</strong> La prueba de 7 días es completamente gratis. Solo necesitas tu email para registrarte y empezar a usar LicitIA inmediatamente.</p>
+                      <p><strong>No, no necesitas tarjeta de crédito.</strong> La prueba de 30 días es completamente gratis. Solo necesitas tu email para registrarte y empezar a usar LicitIA inmediatamente.</p>
                     </div>
                   </div>
                 </AccordionItem>
                 
                 <AccordionItem 
-                  title="¿Qué pasa después de los 7 días de prueba gratis?"
+                  title="¿Qué pasa después de los 30 días de prueba gratis?"
                   className="landing-faq-accordion-item"
                 >
                   <div className="landing-faq-answer">
@@ -1405,7 +1592,7 @@ const Landing: React.FC = () => {
                 <div className="landing-cta-final__trust-badges">
                   <div className="landing-cta-final__trust-badge">
                     <CheckmarkFilled size={18} />
-                    <span>7 días gratis</span>
+                    <span>30 días gratis</span>
                   </div>
                   <div className="landing-cta-final__trust-badge">
                     <Security size={18} />
