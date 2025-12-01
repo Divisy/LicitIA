@@ -89,6 +89,27 @@ app.add_middleware(
 print("[CORS] CORS middleware configured successfully")
 logger.info("CORS middleware configured successfully")
 
+# Add root endpoint for testing
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {
+        "message": "LicitIA API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/api/v1/health"
+    }
+
+# Add CORS test endpoint
+@app.get("/api/v1/cors-test")
+async def cors_test():
+    """Test endpoint to verify CORS is working."""
+    return {
+        "status": "ok",
+        "cors": "configured",
+        "message": "If you can see this, CORS is working!"
+    }
+
 # Include routers
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(tenders.router, prefix="/api/v1", tags=["tenders"])
