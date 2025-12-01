@@ -74,8 +74,8 @@ const Dashboard: React.FC = () => {
       }
       
       const response = await getTenders(params)
-      setTenders(response.items)
-      setTotal(response.total)
+      setTenders(response?.items || [])
+      setTotal(response?.total || 0)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar licitaciones')
       console.error('Error fetching tenders:', err)

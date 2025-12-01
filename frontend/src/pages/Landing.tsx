@@ -138,7 +138,7 @@ const Landing: React.FC = () => {
           only_interventoria: true, // Show most relevant tenders
         })
         // Add demo match scores for preview (to show value of the product)
-        const tendersWithDemoScores = (response.items || []).map((tender, idx) => ({
+        const tendersWithDemoScores = ((response?.items || [])).map((tender, idx) => ({
           ...tender,
           // Show demo match scores: 85%, 78%, 72%, 65% to demonstrate AI matching value
           experience_match_score: tender.experience_match_score || (0.85 - idx * 0.07),

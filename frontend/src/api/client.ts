@@ -124,7 +124,13 @@ export async function getTenders(
   const response = await client.get<TenderListResponse>(
     `/tenders?${params.toString()}`
   );
-  return response.data;
+  // Ensure response has the expected structure
+  return {
+    items: response.data?.items || [],
+    total: response.data?.total || 0,
+    limit: response.data?.limit || filters.limit || 50,
+    offset: response.data?.offset || filters.offset || 0,
+  };
 }
 
 export async function getTender(id: string): Promise<Tender> {
