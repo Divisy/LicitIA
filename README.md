@@ -1,204 +1,221 @@
-# LicitIA - Radar de Oportunidades
+# LicitIA
 
-MVP SaaS para detectar y alertar sobre licitaciones públicas de interventoría vial en Colombia.
+Plataforma para detectar y gestionar licitaciones públicas de Colombia (SECOP II), enfocada en consultoría, interventoría y obra pública.
 
-## 🎯 Descripción
+**Repositorio:** [github.com/Divisy/LicitIA](https://github.com/Divisy/LicitIA)
 
-LicitIA es una plataforma que:
-- Detecta automáticamente licitaciones públicas del SECOP (últimos 60 días)
-- Hace matching inteligente con la experiencia previa de la empresa
-- Filtra licitaciones que coinciden con el historial de proyectos (score ≥ 60%)
-- Envía alertas por email y WhatsApp a empresas suscritas (opcional)
+## Estado del MVP
 
-## 🏗️ Arquitectura
+| Componente | Estado |
+|------------|--------|
+| User Story 1.1 — Conexión SECOP + filtros MVP | Implementado |
+| Backend en Railway | [vigilant-joy-production.up.railway.app](https://vigilant-joy-production.up.railway.app) |
+| Ingesta automática SECOP | Cada 2 horas (APScheduler) |
+| Frontend conectado a producción | Pendiente |
 
-- **Backend**: FastAPI (Python 3.11+)
-- **Base de datos**: PostgreSQL
-- **ORM**: SQLAlchemy 2.x + Alembic
-- **Jobs en background**: APScheduler
-- **Frontend**: React + Vite + TypeScript
-- **Containerización**: Docker Compose
+## Qué hace LicitIA
 
-## 📋 Requisitos Previos
+```text
+SECOP II (API datos.gov.co)
+        ↓  job cada 2 h
+Backend FastAPI (Railway)
+        ↓
+PostgreSQL (Railway)
+        ↓
+API REST /api/v1/tenders
+```
 
-- Docker y Docker Compose instalados
-- Cuenta de OpenAI (para clasificación)
-- (Opcional) Token de Socrata para SECOP API
-- (Opcional) Credenciales SMTP para emails
-- (Opcional) WhatsApp Cloud API credentials
+1. Consulta el dataset público de SECOP II vía API Socrata.
+2. Filtra licitaciones según reglas del MVP (modalidad, estado, UNSPSC).
+3. Persiste los resultados en PostgreSQL.
+4. Expone los datos vía API REST (Swagger en `/docs`).
 
-## 🚀 Inicio Rápido
+## User Story 1.1 — Filtros SECOP
 
-### 1. Configurar Variables de Entorno
+La ingesta MVP (`fetch_mvp_secop_tenders`) aplica dos flujos:
 
-Copia el archivo de ejemplo y completa las variables:
+| Modalidad | Filtro UNSPSC | Estado |
+|-----------|---------------|--------|
+| Concurso de méritos abierto | 10 códigos (ver `backend/app/services/secop_filters.py`) | Publicado |
+| Licitación pública Obra Publica | No aplica | Publicado |
+
+### Campos guardados por licitación
+
+| Campo SECOP | Columna en BD / API |
+|-------------|---------------------|
+| Entidad | `entity_name` |
+| Referencia | `reference` |
+| Descripción | `object_text` |
+| Fase actual | `current_phase` |
+| Fecha presentación oferta | `closing_date` |
+| Cuantía | `amount` |
+| Estado | `state` |
+| Ubicación | `department`, `municipality`, `location` |
+
+Archivos clave:
+
+- `backend/app/services/secop_filters.py` — códigos UNSPSC y modalidades
+- `backend/app/services/secop_client.py` — cliente SECOP y mapeo de campos
+- `backend/app/services/tender_ingestion.py` — job de ingesta y persistencia
+
+## Producción (Railway)
+
+| Recurso | Valor |
+|---------|-------|
+| API | https://vigilant-joy-production.up.railway.app |
+| Health | https://vigilant-joy-production.up.railway.app/api/v1/health |
+| Swagger | https://vigilant-joy-production.up.railway.app/docs |
+| Licitaciones | https://vigilant-joy-production.up.railway.app/api/v1/tenders |
+
+### Variables de entorno (backend)
+
+| Variable | Descripción | Ejemplo |
+|----------|-------------|---------|
+| `DATABASE_URL` | Referencia al Postgres de Railway | `${{Postgres.DATABASE_URL}}` |
+| `SECOP_DATASET_ID` | Dataset SECOP II | `p6dx-8zbt` |
+| `SECOP_BASE_URL` | Base API Socrata | `https://www.datos.gov.co/resource` |
+| `FETCH_INTERVAL_HOURS` | Frecuencia del job | `2` |
+| `SECOP_FETCH_LOOKBACK_DAYS` | Ventana de consulta (días) | `1` (operación normal) |
+| `CORS_ORIGINS` | Orígenes permitidos del frontend | URLs separadas por coma |
+
+**Carga histórica inicial:** usar `SECOP_FETCH_LOOKBACK_DAYS=60` una vez, luego volver a `1`.
+
+El deploy usa `Dockerfile` y `railway.toml` en la raíz del monorepo. El contenedor ejecuta `backend/init_railway.sh` (migraciones + uvicorn).
+
+## Ver la base de datos (sin frontend)
+
+### Opción A — Swagger
+
+Abrir `/docs` y probar `GET /api/v1/tenders`.
+
+### Opción B — Railway Query
+
+Postgres → Database → Query:
+
+```sql
+SELECT COUNT(*) FROM tenders;
+```
+
+### Opción C — DBeaver (túnel SSH, recomendado)
+
+1. Instalar [DBeaver](https://dbeaver.io) y Railway CLI (`npm install -g @railway/cli`).
+2. Generar llave SSH si no existe: `ssh-keygen -t ed25519`
+3. Agregar la llave pública en [railway.app/account/ssh-keys](https://railway.app/account/ssh-keys).
+4. Vincular el proyecto y abrir túnel:
 
 ```bash
-cp .env.example .env
+cd /ruta/a/LicitIA-2
+railway login
+railway link
+railway connect Postgres --tunnel-only
 ```
 
-Edita `.env` y completa:
-- `SECOP_DATASET_ID`: ID del dataset de SECOP en datos.gov.co
-- `OPENAI_API_KEY`: Tu clave de API de OpenAI
-- `SMTP_USER` y `SMTP_PASSWORD`: Para enviar emails (opcional)
-- Otras configuraciones según necesites
+5. En DBeaver: conexión PostgreSQL a `127.0.0.1` + puerto del túnel, database `railway`, user `postgres`.
+6. Navegar: `Schemas → public → Tables → tenders` → View Data.
 
-### 2. Ejecutar con Docker Compose
+> El túnel debe permanecer abierto en la terminal. El puerto local cambia en cada sesión.
 
-```bash
-docker-compose -f docker/docker-compose.yml up --build
-```
+## Arquitectura
 
-Esto iniciará:
-- PostgreSQL en el puerto 5432
-- Backend API en http://localhost:8000
-- Frontend en http://localhost:3000
+| Capa | Tecnología |
+|------|------------|
+| Backend | FastAPI + Uvicorn |
+| Base de datos | PostgreSQL + SQLAlchemy 2.x |
+| Migraciones | Alembic |
+| Jobs | APScheduler |
+| Frontend | React + Vite + TypeScript |
+| Deploy | Railway (Docker) |
 
-### 3. Acceder a la Aplicación
+## Desarrollo local
 
-- **Frontend**: http://localhost:3000
-- **API Docs**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/api/v1/health
+### Requisitos
 
-## 📁 Estructura del Proyecto
-
-```
-Licitia/
-├── backend/
-│   ├── app/
-│   │   ├── api/v1/          # Endpoints FastAPI
-│   │   ├── core/            # Configuración (DB, logging, scheduler)
-│   │   ├── models/          # Modelos SQLAlchemy
-│   │   ├── schemas/         # Schemas Pydantic
-│   │   ├── services/        # Lógica de negocio
-│   │   └── tests/           # Tests
-│   ├── alembic/             # Migraciones de base de datos
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/
-│   ├── src/
-│   │   ├── api/             # Cliente API
-│   │   ├── components/     # Componentes React
-│   │   └── pages/          # Páginas
-│   ├── package.json
-│   └── Dockerfile
-├── docker/
-│   └── docker-compose.yml
-├── .env.example
-└── README.md
-```
-
-## 🔧 Desarrollo Local (sin Docker)
+- Python 3.11+
+- Node.js 18+ (frontend)
+- PostgreSQL local o Docker
 
 ### Backend
 
 ```bash
 cd backend
-
-# Crear entorno virtual
 python -m venv venv
-source venv/bin/activate  # En Windows: venv\Scripts\activate
-
-# Instalar dependencias
+source venv/bin/activate
 pip install -r requirements.txt
 
-# Configurar .env con DATABASE_URL apuntando a PostgreSQL local
-
-# Ejecutar migraciones
+# Configurar DATABASE_URL y variables SECOP en backend/.env o .env en la raíz
 alembic upgrade head
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-# Iniciar servidor
-uvicorn app.main:app --reload
+- API: http://localhost:8000
+- Docs: http://localhost:8000/docs
+
+### Ingesta manual (local o debug)
+
+```bash
+cd backend && source venv/bin/activate
+python -c "from app.services.tender_ingestion import fetch_and_store_new_tenders; fetch_and_store_new_tenders()"
 ```
 
 ### Frontend
 
 ```bash
 cd frontend
-
-# Instalar dependencias
 npm install
-
-# Iniciar servidor de desarrollo
 npm run dev
 ```
 
-## 📊 Base de Datos
-
-### Crear Migración
+### Docker Compose
 
 ```bash
-cd backend
-alembic revision --autogenerate -m "Description"
-alembic upgrade head
+docker-compose -f docker/docker-compose.yml up --build
 ```
 
-### Modelos Principales
+## API principal
 
-- **Tender**: Licitaciones detectadas del SECOP
-- **Subscription**: Empresas suscritas para recibir alertas
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/api/v1/health` | Health check |
+| GET | `/api/v1/tenders` | Listar licitaciones (paginado, filtros) |
+| GET | `/api/v1/tenders/{id}` | Detalle de licitación |
 
-## 🔄 Flujo de Trabajo
-
-1. **Job periódico** (cada 2 horas por defecto):
-   - `fetch_and_store_new_tenders()` se ejecuta automáticamente
-   - Obtiene nuevas licitaciones del SECOP
-   - Clasifica relevancia con OpenAI
-   - Envía notificaciones a suscripciones activas
-
-2. **API REST**:
-   - `GET /api/v1/tenders`: Listar licitaciones con filtros
-   - `GET /api/v1/tenders/{id}`: Detalle de licitación
-   - `POST /api/v1/subscriptions`: Crear suscripción
-   - `GET /api/v1/subscriptions`: Listar suscripciones
-
-3. **Frontend**:
-   - Dashboard con tabla de licitaciones
-   - Filtros por fecha, departamento, relevancia
-   - Enlaces directos a procesos en SECOP
-
-## 🧪 Tests
+## Tests
 
 ```bash
 cd backend
 pytest app/tests/
 ```
 
-## 🔐 Seguridad (MVP)
+## Estructura del proyecto
 
-Para el MVP, la autenticación es opcional. Si configuras `API_KEY` en `.env`, puedes agregar middleware para proteger endpoints de escritura.
+```text
+LicitIA-2/
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/
+│   │   ├── services/       # secop_client, secop_filters, tender_ingestion
+│   │   ├── models/
+│   │   └── tests/
+│   ├── alembic/
+│   └── init_railway.sh
+├── frontend/
+├── Dockerfile              # Build Railway (monorepo)
+├── railway.toml
+└── README.md
+```
 
-## 📝 Notas Importantes
+## Notas de seguridad
 
-- **SECOP Dataset**: Necesitas encontrar el dataset correcto en datos.gov.co y ajustar los nombres de campos en `secop_client.py` según el esquema real.
-- **OpenAI**: Se usa `gpt-4o-mini` por defecto (modelo económico). Ajusta `OPENAI_MODEL_NAME` si prefieres otro.
-- **Clasificación**: Si OpenAI falla, se usa un fallback basado en palabras clave.
-- **Notificaciones**: Email y WhatsApp son opcionales. Si no configuras credenciales, simplemente se omiten.
+- No commitear `.env` ni credenciales en el repositorio.
+- Usar Variables de entorno en Railway para secretos.
+- Rotar contraseñas si alguna credencial fue expuesta en logs o chats.
 
-## 🐛 Troubleshooting
+## Próximos pasos
 
-### Error de conexión a PostgreSQL
-- Verifica que PostgreSQL esté corriendo
-- Revisa `DATABASE_URL` en `.env`
+- [ ] Desplegar frontend en Railway y actualizar `CORS_ORIGINS`
+- [ ] Dashboard: mostrar `reference`, `current_phase`, `location`
+- [ ] Siguientes user stories del MVP acotado
 
-### Error al obtener datos de SECOP
-- Verifica `SECOP_DATASET_ID` en `.env`
-- Revisa los nombres de campos en `secop_client.py` - pueden variar según el dataset
+## Licencia
 
-### Frontend no se conecta al backend
-- Verifica que el backend esté corriendo en puerto 8000
-- Revisa la configuración de proxy en `vite.config.ts`
-
-## 📚 Próximos Pasos
-
-- [ ] Autenticación completa (JWT)
-- [ ] Panel de administración
-- [ ] Más filtros y búsqueda avanzada
-- [ ] Exportación de datos (CSV, Excel)
-- [ ] Dashboard con estadísticas
-- [ ] Webhooks para integraciones
-
-## 📄 Licencia
-
-Este es un proyecto MVP. Úsalo como base para tu desarrollo.
-
+Proyecto MVP — uso interno y desarrollo.
