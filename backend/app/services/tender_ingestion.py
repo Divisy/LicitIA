@@ -7,6 +7,7 @@ from app.models.subscription import Subscription
 from app.services.secop_client import SecopTenderDTO, fetch_mvp_secop_tenders
 from app.config import settings
 from app.services.notifications import send_email_alert, send_whatsapp_alert
+from app.services.document_extraction import extract_documents_for_pending_tenders
 
 logger = get_logger(__name__)
 
@@ -15,6 +16,7 @@ def _apply_secop_fields(target: Tender, secop_tender: SecopTenderDTO) -> None:
     """Copy SECOP fields from DTO onto a Tender model instance."""
     target.entity_name = secop_tender.entity_name
     target.reference = secop_tender.reference
+    target.portfolio_id = secop_tender.portfolio_id
     target.object_text = secop_tender.object_text
     target.current_phase = secop_tender.current_phase
     target.department = secop_tender.department
@@ -121,6 +123,13 @@ def fetch_and_store_new_tenders() -> None:
             settings.FETCH_INTERVAL_HOURS,
         )
         logger.info("=" * 60)
+
+        doc_stats = extract_documents_for_pending_tenders(db)
+        logger.info(
+            "Document extraction: %s tenders processed, %s files saved",
+            doc_stats["tenders_processed"],
+            doc_stats["documents_saved"],
+        )
 
         for tender in new_tenders:
             try:

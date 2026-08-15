@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy import Column, String, Text, Numeric, DateTime, Float, Boolean, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 from app.core.db import Base
 import enum
 
@@ -22,6 +23,7 @@ class Tender(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     external_id = Column(String(255), unique=True, nullable=False, index=True)
+    portfolio_id = Column(String(100), nullable=True, index=True)
     reference = Column(String(255), nullable=True, index=True)
     source = Column(SQLEnum(TenderSource), nullable=False)
     entity_name = Column(String(500), nullable=False)
@@ -42,7 +44,13 @@ class Tender(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     relevance_score = Column(Float, nullable=True)
     is_relevant_interventoria_vial = Column(Boolean, default=False, nullable=False, index=True)
-    
+
+    documents = relationship(
+        "TenderDocument",
+        back_populates="tender",
+        cascade="all, delete-orphan",
+    )
+
     @property
     def location(self) -> Optional[str]:
         parts = [p for p in (self.department, self.municipality) if p]

@@ -50,3 +50,29 @@ class TenderListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class TenderDocumentResponse(BaseModel):
+    """Downloaded tender document metadata."""
+    id: UUID
+    tender_id: UUID
+    external_document_id: str
+    document_type: str
+    file_name: str
+    file_path: str
+    download_url: str
+    file_size: Optional[int] = None
+    extension: Optional[str] = None
+    description: Optional[str] = None
+    downloaded_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TenderDocumentListResponse(BaseModel):
+    """List of documents for a tender."""
+    items: List[TenderDocumentResponse]
+    total: int

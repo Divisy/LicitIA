@@ -8,8 +8,14 @@ from uuid import UUID
 from app.core.db import get_db
 from app.core.logging import get_logger
 from app.models.tender import Tender
+from app.models.tender_document import TenderDocument
 from app.models.company_experience import CompanyExperience
-from app.schemas.tender import TenderResponse, TenderListResponse
+from app.schemas.tender import (
+    TenderResponse,
+    TenderListResponse,
+    TenderDocumentResponse,
+    TenderDocumentListResponse,
+)
 from app.services.experience_matching import match_tender_against_experiences, MIN_MATCH_THRESHOLD
 
 router = APIRouter()
@@ -208,4 +214,27 @@ async def get_tender(
             tender_response.matching_experiences = matching_experiences if matching_experiences else None
     
     return tender_response
+
+
+@router.get("/tenders/{tender_id}/documents", response_model=TenderDocumentListResponse)
+async def list_tender_documents(
+    tender_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """List downloaded key documents for a tender."""
+    tender = db.query(Tender).filter(Tender.id == tender_id).first()
+    if not tender:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
+    documents = (
+        db.query(TenderDocument)
+        .filter(TenderDocument.tender_id == tender_id)
+        .order_by(TenderDocument.document_type, TenderDocument.file_name)
+        .all()
+    )
+
+    return TenderDocumentListResponse(
+        items=[TenderDocumentResponse.model_validate(doc) for doc in documents],
+        total=len(documents),
+    )
 

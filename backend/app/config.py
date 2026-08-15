@@ -39,6 +39,12 @@ class Settings(BaseSettings):
 
     # SECOP ingestion window (days) for MVP daily sync
     SECOP_FETCH_LOOKBACK_DAYS: int = 1
+
+    # SECOP documents dataset (Archivos Descarga desde 2025)
+    SECOP_DOCUMENTS_DATASET_ID: str = "dmgg-8hin"
+    DOCUMENTS_STORAGE_PATH: str = "storage/documents"
+    DOCUMENT_EXTRACTION_ENABLED: bool = True
+    DOCUMENT_EXTRACTION_BATCH_SIZE: int = 25
     
     class Config:
         env_file = [".env", "../.env"]  # Check backend/.env and root/.env

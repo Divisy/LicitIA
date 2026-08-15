@@ -19,6 +19,7 @@ class SecopTenderDTO(BaseModel):
     """DTO for SECOP tender data."""
     external_id: str
     reference: Optional[str] = None
+    portfolio_id: Optional[str] = None
     entity_name: str
     object_text: str
     current_phase: Optional[str] = None
@@ -34,6 +35,33 @@ class SecopTenderDTO(BaseModel):
     contract_modality: Optional[str] = None  # Modalidad de contratación
     unspsc_code: Optional[str] = None
     source: str
+
+
+def fetch_portfolio_id_for_external_id(external_id: str) -> Optional[str]:
+    """Look up id_del_portafolio for a tender external id."""
+    if not settings.SECOP_DATASET_ID or not external_id:
+        return None
+
+    base_url = f"{settings.SECOP_BASE_URL}/{settings.SECOP_DATASET_ID}.json"
+    safe_id = external_id.replace("'", "''")
+    params = {
+        "$limit": 1,
+        "$where": f"id_del_proceso='{safe_id}'",
+        "$select": "id_del_portafolio",
+    }
+    headers = {}
+    if settings.SECOP_APP_TOKEN:
+        headers["X-App-Token"] = settings.SECOP_APP_TOKEN
+
+    try:
+        response = requests.get(base_url, params=params, headers=headers, timeout=30)
+        response.raise_for_status()
+        rows = response.json()
+        if rows:
+            return rows[0].get("id_del_portafolio")
+    except requests.RequestException as exc:
+        logger.warning("Could not fetch portfolio_id for %s: %s", external_id, exc)
+    return None
 
 
 def build_location(
@@ -450,6 +478,7 @@ def fetch_recent_tenders(
                     tender_dto = SecopTenderDTO(
                         external_id=str(item.get("id_del_proceso", "")),
                         reference=item.get("referencia_del_proceso"),
+                        portfolio_id=item.get("id_del_portafolio"),
                         entity_name=str(item.get("entidad", "Unknown")),
                         object_text=object_text,
                         current_phase=item.get("fase"),

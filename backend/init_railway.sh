@@ -46,6 +46,8 @@ EOF
 
 echo "Migrations completed successfully"
 
+mkdir -p storage/documents
+
 echo "=========================================="
 echo "Starting FastAPI server..."
 echo "=========================================="
