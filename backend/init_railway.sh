@@ -26,6 +26,33 @@ with engine.begin() as conn:
     conn.execute(text('ALTER TABLE tenders ADD COLUMN IF NOT EXISTS "reference" VARCHAR(255)'))
     conn.execute(text('ALTER TABLE tenders ADD COLUMN IF NOT EXISTS current_phase VARCHAR(200)'))
     conn.execute(text('ALTER TABLE tenders ADD COLUMN IF NOT EXISTS unspsc_code VARCHAR(50)'))
+    conn.execute(text('ALTER TABLE tenders ADD COLUMN IF NOT EXISTS portfolio_id VARCHAR(100)'))
+    conn.execute(text('CREATE INDEX IF NOT EXISTS ix_tenders_portfolio_id ON tenders (portfolio_id)'))
+
+    conn.execute(text(
+        """
+        CREATE TABLE IF NOT EXISTS tender_documents (
+            id UUID PRIMARY KEY,
+            tender_id UUID NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
+            external_document_id VARCHAR(100) NOT NULL,
+            document_type VARCHAR(50) NOT NULL,
+            file_name VARCHAR(500) NOT NULL,
+            file_path VARCHAR(1000) NOT NULL,
+            download_url VARCHAR(2000) NOT NULL,
+            file_size BIGINT,
+            extension VARCHAR(20),
+            description TEXT,
+            downloaded_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL,
+            CONSTRAINT uq_tender_document UNIQUE (tender_id, external_document_id)
+        )
+        """
+    ))
+    conn.execute(text('CREATE INDEX IF NOT EXISTS ix_tender_documents_tender_id ON tender_documents (tender_id)'))
+    conn.execute(text('CREATE INDEX IF NOT EXISTS ix_tender_documents_external_document_id ON tender_documents (external_document_id)'))
+    conn.execute(text('CREATE INDEX IF NOT EXISTS ix_tender_documents_document_type ON tender_documents (document_type)'))
+
     rows = conn.execute(
         text(
             """
@@ -33,14 +60,30 @@ with engine.begin() as conn:
             FROM information_schema.columns
             WHERE table_schema = 'public'
               AND table_name = 'tenders'
-              AND column_name IN ('reference', 'current_phase', 'unspsc_code')
+              AND column_name IN ('reference', 'current_phase', 'unspsc_code', 'portfolio_id')
             """
         )
     ).fetchall()
     columns = sorted(row[0] for row in rows)
-    print(f"MVP tender columns present: {columns}")
-    if len(columns) < 3:
-        raise RuntimeError(f"Missing MVP columns on tenders table. Found: {columns}")
+    print(f"Tender columns present: {columns}")
+    if len(columns) < 4:
+        raise RuntimeError(f"Missing tender columns. Found: {columns}")
+
+    table_exists = conn.execute(
+        text(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = 'tender_documents'
+            )
+            """
+        )
+    ).scalar()
+    print(f"tender_documents table present: {table_exists}")
+    if not table_exists:
+        raise RuntimeError("tender_documents table was not created")
 
 EOF
 
