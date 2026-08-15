@@ -7,7 +7,6 @@ Create Date: 2026-08-15 16:00:00.000000
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
 
 
 revision: str = "d4f8a1b2c3e4"
@@ -17,11 +16,35 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("tenders", sa.Column("reference", sa.String(length=255), nullable=True))
-    op.add_column("tenders", sa.Column("current_phase", sa.String(length=200), nullable=True))
-    op.add_column("tenders", sa.Column("unspsc_code", sa.String(length=50), nullable=True))
-    op.create_index(op.f("ix_tenders_reference"), "tenders", ["reference"], unique=False)
-    op.create_index(op.f("ix_tenders_unspsc_code"), "tenders", ["unspsc_code"], unique=False)
+    # Idempotent: columns may already exist from init_railway.sh on production.
+    op.execute(
+        """
+        ALTER TABLE tenders
+        ADD COLUMN IF NOT EXISTS reference VARCHAR(255);
+        """
+    )
+    op.execute(
+        """
+        ALTER TABLE tenders
+        ADD COLUMN IF NOT EXISTS current_phase VARCHAR(200);
+        """
+    )
+    op.execute(
+        """
+        ALTER TABLE tenders
+        ADD COLUMN IF NOT EXISTS unspsc_code VARCHAR(50);
+        """
+    )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_tenders_reference ON tenders (reference);
+        """
+    )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_tenders_unspsc_code ON tenders (unspsc_code);
+        """
+    )
 
 
 def downgrade() -> None:
