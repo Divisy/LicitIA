@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     
     # Scheduler
     FETCH_INTERVAL_HOURS: int = 2
+
+    # SECOP ingestion window (days) for MVP daily sync
+    SECOP_FETCH_LOOKBACK_DAYS: int = 1
     
     class Config:
         env_file = [".env", "../.env"]  # Check backend/.env and root/.env

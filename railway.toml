@@ -1,0 +1,9 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "./init_railway.sh"
+healthcheckPath = "/api/v1/health"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
