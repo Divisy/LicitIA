@@ -6,9 +6,10 @@ import './TenderTable.scss'
 
 interface TenderTableProps {
   tenders: Tender[]
+  onSelectTender?: (tender: Tender) => void
 }
 
-const TenderTable: React.FC<TenderTableProps> = ({ tenders }) => {
+const TenderTable: React.FC<TenderTableProps> = ({ tenders, onSelectTender }) => {
   const formatDate = (dateString: string | null): string => {
     if (!dateString) return 'N/A'
     try {
@@ -128,6 +129,11 @@ const TenderTable: React.FC<TenderTableProps> = ({ tenders }) => {
   
   return (
     <div className="tender-table-container">
+      {onSelectTender && (
+        <p className="tender-table-hint">
+          Haz clic en una fila para ver el detalle y los documentos de la licitación.
+        </p>
+      )}
       <DataTable
         rows={rows}
         headers={headers}
@@ -147,15 +153,26 @@ const TenderTable: React.FC<TenderTableProps> = ({ tenders }) => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {rows.map((row) => (
-                <TableRow {...getRowProps({ row })} key={row.id}>
+              {rows.map((row) => {
+                const tender = tenders.find((item) => item.id === row.id)
+                return (
+                <TableRow
+                  {...getRowProps({ row })}
+                  key={row.id}
+                  className={onSelectTender ? 'tender-table-row--clickable' : undefined}
+                  onClick={() => tender && onSelectTender?.(tender)}
+                >
                   {row.cells.map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      onClick={cell.info.header === 'link' ? (event) => event.stopPropagation() : undefined}
+                    >
                       {cell.value}
                     </TableCell>
                   ))}
                 </TableRow>
-              ))}
+                )
+              })}
             </TableBody>
           </Table>
         )}

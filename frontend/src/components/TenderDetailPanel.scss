@@ -1,0 +1,120 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/type' as *;
+
+.tender-detail-modal .cds--modal-container {
+  max-width: 48rem;
+}
+
+.tender-detail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-06;
+}
+
+.tender-detail-panel__summary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-04;
+  margin-bottom: $spacing-03;
+}
+
+.tender-detail-panel__entity {
+  @include type-style('heading-03');
+  margin: 0;
+}
+
+.tender-detail-panel__object {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin: 0 0 $spacing-05;
+}
+
+.tender-detail-panel__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-04;
+  margin-bottom: $spacing-05;
+}
+
+.tender-detail-panel__meta-label {
+  display: block;
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin-bottom: $spacing-02;
+}
+
+.tender-detail-panel__secop-link {
+  display: inline-flex;
+}
+
+.tender-detail-panel__documents-title {
+  @include type-style('heading-02');
+  margin: 0 0 $spacing-04;
+}
+
+.tender-detail-panel__loading {
+  padding: $spacing-05 0;
+}
+
+.tender-detail-panel__empty {
+  padding: $spacing-05;
+}
+
+.tender-detail-panel__empty-hint {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  margin: $spacing-03 0 0;
+}
+
+.tender-detail-panel__groups {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+}
+
+.tender-detail-panel__group-title {
+  @include type-style('heading-01');
+  margin: 0 0 $spacing-03;
+}
+
+.tender-detail-panel__file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-02;
+  overflow: hidden;
+}
+
+.tender-detail-panel__file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-04;
+  padding: $spacing-04;
+  border-bottom: 1px solid var(--cds-border-subtle);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.tender-detail-panel__file-info {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-03;
+  min-width: 0;
+}
+
+.tender-detail-panel__file-name {
+  display: block;
+  @include type-style('body-compact-01');
+  word-break: break-word;
+}
+
+.tender-detail-panel__file-meta {
+  display: block;
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+}

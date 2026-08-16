@@ -2,6 +2,21 @@
 @use '@carbon/react/scss/theme' as *;
 @use '@carbon/react/scss/type' as *;
 
+.tender-table-hint {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  margin: 0 0 $spacing-04;
+  padding: $spacing-04 $spacing-05 0;
+}
+
+.tender-table-row--clickable {
+  cursor: pointer;
+
+  &:hover td {
+    background: var(--cds-layer-hover);
+  }
+}
+
 .tender-table-container {
   background: var(--cds-layer);
   border: 1px solid var(--cds-border-subtle);

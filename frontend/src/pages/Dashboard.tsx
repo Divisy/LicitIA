@@ -10,6 +10,7 @@ import {
 import { View, Download } from '@carbon/icons-react'
 import FiltersBar from '../components/FiltersBar'
 import TenderTable from '../components/TenderTable'
+import TenderDetailPanel from '../components/TenderDetailPanel'
 import OnboardingWizard from '../components/onboarding/OnboardingWizard'
 import OnboardingBanner from '../components/onboarding/OnboardingBanner'
 import EmptyState from '../components/empty-states/EmptyState'
@@ -40,6 +41,7 @@ const Dashboard: React.FC = () => {
   const [matchExperience, setMatchExperience] = useState<boolean>(false)
   const [onlyInterventoria, setOnlyInterventoria] = useState<boolean>(false)
   const [showAll, setShowAll] = useState<boolean>(false)
+  const [selectedTender, setSelectedTender] = useState<Tender | null>(null)
   
   const fetchTenders = async (loadAll: boolean = false) => {
     setLoading(true)
@@ -307,10 +309,19 @@ const Dashboard: React.FC = () => {
       {!loading && !error && tenders.length > 0 && (
         <Grid className="dashboard-grid">
           <Column lg={16} md={8} sm={4}>
-            <TenderTable tenders={tenders} />
+            <TenderTable
+              tenders={tenders}
+              onSelectTender={setSelectedTender}
+            />
           </Column>
         </Grid>
       )}
+
+      <TenderDetailPanel
+        tender={selectedTender}
+        open={selectedTender !== null}
+        onClose={() => setSelectedTender(null)}
+      />
     </div>
   )
 }

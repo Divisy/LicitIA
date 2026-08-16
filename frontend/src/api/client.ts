@@ -78,6 +78,7 @@ export interface MatchingExperience {
 export interface Tender {
   id: string;
   external_id: string;
+  reference: string | null;
   source: string;
   entity_name: string;
   object_text: string;
@@ -184,6 +185,46 @@ export async function getTenders(
 export async function getTender(id: string): Promise<Tender> {
   const response = await client.get<Tender>(`/tenders/${id}`);
   return response.data;
+}
+
+export interface TenderDocument {
+  id: string;
+  tender_id: string;
+  external_document_id: string;
+  document_type: string;
+  file_name: string;
+  file_path: string;
+  download_url: string;
+  file_size: number | null;
+  extension: string | null;
+  description: string | null;
+  downloaded_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TenderDocumentListResponse {
+  items: TenderDocument[];
+  total: number;
+}
+
+export async function getTenderDocuments(
+  tenderId: string
+): Promise<TenderDocumentListResponse> {
+  const response = await client.get<TenderDocumentListResponse>(
+    `/tenders/${tenderId}/documents`
+  );
+  return {
+    items: response.data?.items || [],
+    total: response.data?.total || 0,
+  };
+}
+
+export function getTenderDocumentDownloadUrl(
+  tenderId: string,
+  documentId: string
+): string {
+  return `${API_BASE_URL}/tenders/${tenderId}/documents/${documentId}/download`;
 }
 
 export interface ExcelImportResponse {
