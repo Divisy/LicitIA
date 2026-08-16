@@ -15,6 +15,14 @@ logger = get_logger(__name__)
 
 _CHUNK_SIZE = 64 * 1024
 
+# SECOP file server blocks requests without browser-like headers (403 otherwise).
+_SECOP_DOWNLOAD_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (compatible; LicitIA/1.0; +https://licitia.app)"
+    ),
+    "Referer": "https://www.datos.gov.co/",
+}
+
 
 class SecopDocumentDTO(BaseModel):
     """DTO for a SECOP downloadable document."""
@@ -133,7 +141,7 @@ def download_document_file(document: SecopDocumentDTO, destination: Path) -> boo
         logger.debug("Document already exists at %s", destination)
         return True
 
-    headers = {}
+    headers = dict(_SECOP_DOWNLOAD_HEADERS)
     if settings.SECOP_APP_TOKEN:
         headers["X-App-Token"] = settings.SECOP_APP_TOKEN
 

@@ -89,7 +89,9 @@ EOF
 
 echo "Migrations completed successfully"
 
-mkdir -p storage/documents
+DOCS_PATH="${DOCUMENTS_STORAGE_PATH:-storage/documents}"
+mkdir -p "$DOCS_PATH"
+echo "Document storage ready at: $DOCS_PATH"
 
 echo "=========================================="
 echo "Starting FastAPI server..."
