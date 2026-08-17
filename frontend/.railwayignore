@@ -1,4 +1,4 @@
-Dockerfile
-Dockerfile.*
-*.dockerfile
-
+node_modules
+dist
+dist-ssr
+*.local
