@@ -289,6 +289,8 @@ Para el MVP, la autenticación es opcional. Si configuras `API_KEY` en `.env`, p
 
 ## 📚 Próximos Pasos
 
+- [ ] US 1.2.3 — Ampliar clasificador SECOP, reprocesar sin docs y mejorar UX ([spec](docs/US-1.2.3-cobertura-documentos-secop.md))
+- [ ] US 1.2.4 — Extracción de documentos dentro de ZIP/RAR (futura)
 - [ ] Columna referencia en tabla de licitaciones (mejor UX)
 - [ ] Autenticación completa (JWT)
 - [ ] Vista previa embebida de PDF en el navegador
