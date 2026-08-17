@@ -1,9 +1,5 @@
 """Tender API endpoints."""
-from pathlib import Path
-import mimetypes
-
 from fastapi import APIRouter, Depends, Query, HTTPException
-from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import date, datetime
@@ -14,7 +10,7 @@ from app.core.logging import get_logger
 from app.models.tender import Tender
 from app.models.tender_document import TenderDocument
 from app.models.company_experience import CompanyExperience
-from app.config import settings
+from app.services.document_storage import get_document_storage
 from app.schemas.tender import (
     TenderResponse,
     TenderListResponse,
@@ -25,17 +21,6 @@ from app.services.experience_matching import match_tender_against_experiences, M
 
 router = APIRouter()
 logger = get_logger(__name__)
-
-
-def _resolve_stored_document_path(file_path: str) -> Path:
-    """Resolve a stored document path and ensure it stays within the storage root."""
-    root = Path(settings.DOCUMENTS_STORAGE_PATH).resolve()
-    candidate = (root / file_path).resolve()
-    if root not in candidate.parents and candidate != root:
-        raise HTTPException(status_code=400, detail="Invalid document path")
-    if not candidate.is_file():
-        raise HTTPException(status_code=404, detail="Document file not found on server")
-    return candidate
 
 
 @router.get("/tenders", response_model=TenderListResponse)
@@ -273,12 +258,13 @@ async def download_tender_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    file_path = _resolve_stored_document_path(document.file_path)
-    media_type = mimetypes.guess_type(document.file_name)[0] or "application/octet-stream"
-
-    return FileResponse(
-        path=file_path,
-        filename=document.file_name,
-        media_type=media_type,
-    )
+    storage = get_document_storage()
+    try:
+        if not storage.exists(document.file_path):
+            raise HTTPException(status_code=404, detail="Document file not found on server")
+        return storage.build_download_response(document.file_path, document.file_name)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document path")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Document file not found on server")
 

@@ -169,7 +169,31 @@ alembic upgrade head
 
 ### US 1.2 — Extracción automática de documentos SECOP ✅
 
-Tras cada job de ingesta, el sistema descarga documentos clave (pliego de condiciones, anexo técnico, presupuesto) desde el dataset `dmgg-8hin`, los guarda en `DOCUMENTS_STORAGE_PATH` y registra metadatos en `tender_documents`.
+Descarga automática de pliego, anexo técnico y presupuesto desde SECOP (`dmgg-8hin`) tras cada job de ingesta.
+
+### US 1.2.1 — Almacenamiento en Cloudflare R2 (en implementación)
+
+Migración del almacenamiento de documentos desde el Volume de Railway (`/data`, 500 MB) hacia **Cloudflare R2** (API S3).
+
+**Variables de entorno (backend):**
+
+```bash
+DOCUMENT_STORAGE_BACKEND=r2
+DOCUMENT_STORAGE_WRITE_LOCAL=false
+R2_ACCOUNT_ID=...
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_BUCKET_NAME=licitia-documents
+R2_PREFIX=prod
+```
+
+**Migrar archivos existentes en `/data`:**
+
+```bash
+cd backend
+PYTHONPATH=. python scripts/migrate_documents_to_r2.py
+PYTHONPATH=. python scripts/migrate_documents_to_r2.py --delete-local
+```
 
 ### US 1.3 — Documentos en la interfaz ✅
 
@@ -241,8 +265,7 @@ Para el MVP, la autenticación es opcional. Si configuras `API_KEY` en `.env`, p
 
 ## 📚 Próximos Pasos
 
-- [ ] US 1.2.2 — Backfill histórico de documentos pendientes
-- [ ] Almacenamiento en Cloudflare R2 (escalar más allá del Volume de 500 MB)
+- [ ] US 1.2.2 — Backfill histórico de documentos pendientes (tras activar R2)
 - [ ] Columna referencia en tabla de licitaciones (mejor UX)
 - [ ] Autenticación completa (JWT)
 - [ ] Vista previa embebida de PDF en el navegador

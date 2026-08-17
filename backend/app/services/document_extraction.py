@@ -1,7 +1,7 @@
 """Orchestrates extraction and storage of SECOP tender documents (user story 1.2)."""
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -11,10 +11,12 @@ from app.models.tender import Tender
 from app.models.tender_document import TenderDocument
 from app.services.secop_documents import (
     SecopDocumentDTO,
+    build_document_object_key,
     build_document_storage_path,
     download_document_file,
     fetch_documents_for_portfolio,
 )
+from app.services.document_storage import get_document_storage
 from app.services.secop_client import fetch_portfolio_id_for_external_id
 
 logger = get_logger(__name__)
@@ -24,7 +26,7 @@ def _upsert_document_record(
     db: Session,
     tender: Tender,
     document: SecopDocumentDTO,
-    file_path: Path,
+    object_key: str,
 ) -> TenderDocument:
     existing = (
         db.query(TenderDocument)
@@ -35,7 +37,7 @@ def _upsert_document_record(
         .first()
     )
 
-    relative_path = str(file_path.relative_to(Path(settings.DOCUMENTS_STORAGE_PATH)))
+    relative_path = object_key
 
     if existing:
         existing.document_type = document.document_type.value
@@ -88,8 +90,15 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> int:
         logger.info("No key documents found for tender %s", tender.external_id)
         return 0
 
+    storage = get_document_storage()
     saved_count = 0
     for document in documents:
+        object_key = build_document_object_key(
+            tender.external_id,
+            document.document_type,
+            document.file_name,
+            document.external_document_id,
+        )
         destination = build_document_storage_path(
             tender.external_id,
             document.document_type,
@@ -100,7 +109,19 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> int:
         if not download_document_file(document, destination):
             continue
 
-        _upsert_document_record(db, tender, document, destination)
+        try:
+            storage.persist_local_file(destination, object_key)
+        except Exception as exc:
+            logger.error(
+                "Failed to persist document %s for tender %s: %s",
+                object_key,
+                tender.external_id,
+                exc,
+                exc_info=True,
+            )
+            continue
+
+        _upsert_document_record(db, tender, document, object_key)
         saved_count += 1
 
     if saved_count:

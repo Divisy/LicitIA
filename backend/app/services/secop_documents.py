@@ -119,18 +119,33 @@ def fetch_documents_for_portfolio(portfolio_id: str) -> List[SecopDocumentDTO]:
     return documents
 
 
+def build_document_object_key(
+    external_id: str,
+    document_type: DocumentType,
+    file_name: str,
+    external_document_id: str,
+) -> str:
+    """Build storage object key: {external_id}/{type}/{id}_{filename}."""
+    folder_name = _safe_filename(external_id)
+    type_folder = document_type.value
+    safe_name = _safe_filename(unquote(file_name))
+    return f"{folder_name}/{type_folder}/{external_document_id}_{safe_name}"
+
+
 def build_document_storage_path(
     external_id: str,
     document_type: DocumentType,
     file_name: str,
     external_document_id: str,
 ) -> Path:
-    """Build local storage path: {base}/{external_id}/{type}/{id}_{filename}."""
+    """Build local staging/final path under DOCUMENTS_STORAGE_PATH."""
     root = Path(settings.DOCUMENTS_STORAGE_PATH)
-    folder_name = _safe_filename(external_id)
-    type_folder = document_type.value
-    safe_name = _safe_filename(unquote(file_name))
-    return root / folder_name / type_folder / f"{external_document_id}_{safe_name}"
+    return root / build_document_object_key(
+        external_id,
+        document_type,
+        file_name,
+        external_document_id,
+    )
 
 
 def download_document_file(document: SecopDocumentDTO, destination: Path) -> bool:

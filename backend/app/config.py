@@ -45,6 +45,25 @@ class Settings(BaseSettings):
     DOCUMENTS_STORAGE_PATH: str = "storage/documents"
     DOCUMENT_EXTRACTION_ENABLED: bool = True
     DOCUMENT_EXTRACTION_BATCH_SIZE: int = 25
+
+    # Document storage backend: local (Railway Volume) or r2 (Cloudflare R2)
+    DOCUMENT_STORAGE_BACKEND: str = "local"
+    # When using R2, keep a copy on the local volume (default: false to save disk)
+    DOCUMENT_STORAGE_WRITE_LOCAL: bool = False
+
+    # Cloudflare R2 (S3-compatible)
+    R2_ACCOUNT_ID: Optional[str] = None
+    R2_ACCESS_KEY_ID: Optional[str] = None
+    R2_SECRET_ACCESS_KEY: Optional[str] = None
+    R2_BUCKET_NAME: Optional[str] = None
+    R2_PREFIX: str = ""
+    R2_REGION: str = "auto"
+
+    @property
+    def r2_endpoint_url(self) -> Optional[str]:
+        if not self.R2_ACCOUNT_ID:
+            return None
+        return f"https://{self.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
     
     class Config:
         env_file = [".env", "../.env"]  # Check backend/.env and root/.env
