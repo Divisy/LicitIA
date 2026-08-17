@@ -136,7 +136,11 @@ cd frontend
 # Instalar dependencias
 npm install
 
-### Frontend contra API de producción (local)
+# Iniciar servidor de desarrollo (API local en :8000)
+npm run dev
+```
+
+#### Frontend contra API de producción (local)
 
 ```bash
 cd frontend
@@ -173,18 +177,30 @@ Tras cada job de ingesta, el sistema descarga documentos clave (pliego de condic
 
 ### US 1.3 — Documentos en la interfaz ✅
 
-El personal de licitaciones puede ver y descargar documentos desde el dashboard sin SSH ni DBeaver.
+**User Story 1.3 cerrada.** El personal de licitaciones puede ver y descargar documentos clave desde el dashboard sin SSH, DBeaver ni acceso directo al servidor.
+
+**Criterio de aceptación:** desde el dashboard, al consultar una licitación, el usuario ve su información principal, los documentos agrupados por tipo (pliego de condiciones, anexo técnico, presupuesto), puede descargar cada archivo disponible y ve un mensaje claro si no hay documentos archivados.
 
 **Flujo:** Dashboard → clic en fila de licitación → panel de detalle → documentos agrupados por tipo → Descargar.
 
-**API:**
+**Backend:**
 
 - `GET /api/v1/tenders/{tender_id}/documents` — listado de metadatos
-- `GET /api/v1/tenders/{tender_id}/documents/{document_id}/download` — descarga del archivo
+- `GET /api/v1/tenders/{tender_id}/documents/{document_id}/download` — descarga del archivo (desde `DOCUMENTS_STORAGE_PATH`, con validación de path)
 
-**UI:** componente `TenderDetailPanel` (modal Carbon), integrado en `Dashboard` vía clic en `TenderTable`.
+**Frontend:**
 
-**Validación en producción:** descarga de PDF y Excel desde `licitia-frontend-production` contra licitaciones con documentos archivados (p. ej. `LP-013-2026`, `LP-002-2026`, `ICCU-LP-042-2026`).
+- `TenderDetailPanel` (modal Carbon), integrado en `Dashboard` vía clic en `TenderTable`
+- `getTenderDocuments()` y `getTenderDocumentDownloadUrl()` en `frontend/src/api/client.ts`
+
+**Deploy en Railway (monorepo, servicios separados):**
+
+| Servicio | Root Directory | URL |
+|----------|----------------|-----|
+| `vigilant-joy` | `backend/` | https://vigilant-joy-production.up.railway.app |
+| `licitia-frontend` | `frontend/` | https://licitia-frontend-production.up.railway.app |
+
+**Validación en producción:** descarga de PDF y Excel desde `licitia-frontend-production` contra licitaciones con documentos archivados (p. ej. `LP-013-2026`, `LP-002-2026` Sucre, `ICCU-LP-042-2026`).
 
 ## 🔄 Flujo de Trabajo
 
