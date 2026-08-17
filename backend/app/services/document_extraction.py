@@ -1,7 +1,9 @@
 """Orchestrates extraction and storage of SECOP tender documents (user story 1.2)."""
+from __future__ import annotations
+
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
-from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -20,6 +22,53 @@ from app.services.document_storage import get_document_storage
 from app.services.secop_client import fetch_portfolio_id_for_external_id
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class TenderExtractionResult:
+    """Outcome of document extraction for a single tender."""
+
+    documents_saved: int = 0
+    outcome: str = "saved"
+    download_failures: int = 0
+
+
+@dataclass
+class ExtractionBatchStats:
+    """Aggregated stats for a batch of tender extractions."""
+
+    tenders_processed: int = 0
+    documents_saved: int = 0
+    no_portfolio: int = 0
+    no_secop_docs: int = 0
+    download_failures: int = 0
+    errors: int = 0
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "tenders_processed": self.tenders_processed,
+            "documents_saved": self.documents_saved,
+            "no_portfolio": self.no_portfolio,
+            "no_secop_docs": self.no_secop_docs,
+            "download_failures": self.download_failures,
+            "errors": self.errors,
+        }
+
+
+def pending_document_extraction_query(db: Session):
+    """Tenders not yet attempted for document extraction and without stored documents."""
+    return (
+        db.query(Tender)
+        .filter(
+            Tender.documents_extraction_attempted_at.is_(None),
+            ~Tender.documents.any(),
+        )
+        .order_by(Tender.created_at.desc())
+    )
+
+
+def count_pending_document_extractions(db: Session) -> int:
+    return pending_document_extraction_query(db).count()
 
 
 def _upsert_document_record(
@@ -67,14 +116,19 @@ def _upsert_document_record(
     return record
 
 
-def extract_documents_for_tender(db: Session, tender: Tender) -> int:
+def _mark_extraction_attempted(tender: Tender) -> None:
+    tender.documents_extraction_attempted_at = datetime.utcnow()
+    tender.updated_at = datetime.utcnow()
+
+
+def extract_documents_for_tender(db: Session, tender: Tender) -> TenderExtractionResult:
     """
     Download key documents for one tender and persist metadata.
 
-    Returns the number of documents successfully stored.
+    Marks the tender as attempted even when SECOP has no key documents.
     """
     if not settings.DOCUMENT_EXTRACTION_ENABLED:
-        return 0
+        return TenderExtractionResult(outcome="disabled")
 
     if not tender.portfolio_id:
         portfolio_id = fetch_portfolio_id_for_external_id(tender.external_id)
@@ -83,15 +137,18 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> int:
             db.flush()
         else:
             logger.debug("Tender %s has no portfolio_id, skipping documents", tender.external_id)
-            return 0
+            _mark_extraction_attempted(tender)
+            return TenderExtractionResult(outcome="no_portfolio")
 
     documents = fetch_documents_for_portfolio(tender.portfolio_id)
     if not documents:
         logger.info("No key documents found for tender %s", tender.external_id)
-        return 0
+        _mark_extraction_attempted(tender)
+        return TenderExtractionResult(outcome="no_secop_docs")
 
     storage = get_document_storage()
     saved_count = 0
+    download_failures = 0
     for document in documents:
         object_key = build_document_object_key(
             tender.external_id,
@@ -107,6 +164,7 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> int:
         )
 
         if not download_document_file(document, destination):
+            download_failures += 1
             continue
 
         try:
@@ -119,6 +177,7 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> int:
                 exc,
                 exc_info=True,
             )
+            download_failures += 1
             continue
 
         _upsert_document_record(db, tender, document, object_key)
@@ -131,8 +190,19 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> int:
             tender.external_id,
             tender.reference,
         )
+        outcome = "saved" if download_failures == 0 else "partial"
+        _mark_extraction_attempted(tender)
+    elif download_failures:
+        outcome = "download_failed"
+    else:
+        outcome = "no_secop_docs"
+        _mark_extraction_attempted(tender)
 
-    return saved_count
+    return TenderExtractionResult(
+        documents_saved=saved_count,
+        outcome=outcome,
+        download_failures=download_failures,
+    )
 
 
 def extract_documents_for_pending_tenders(
@@ -140,28 +210,29 @@ def extract_documents_for_pending_tenders(
     limit: Optional[int] = None,
 ) -> dict[str, int]:
     """
-    Process tenders that have portfolio_id but no downloaded documents yet.
+    Process tenders that have not yet been attempted for document extraction.
 
-    Used after ingestion and for backfill batches.
+    Used after ingestion, for scheduled jobs, and for historical backfill batches.
     """
     batch_limit = limit or settings.DOCUMENT_EXTRACTION_BATCH_SIZE
+    tenders = pending_document_extraction_query(db).limit(batch_limit).all()
 
-    tenders = (
-        db.query(Tender)
-        .filter(~Tender.documents.any())
-        .order_by(Tender.created_at.desc())
-        .limit(batch_limit)
-        .all()
-    )
-
-    processed = 0
-    documents_saved = 0
+    stats = ExtractionBatchStats()
 
     for tender in tenders:
         try:
-            saved = extract_documents_for_tender(db, tender)
-            documents_saved += saved
-            processed += 1
+            result = extract_documents_for_tender(db, tender)
+            if result.outcome == "disabled":
+                break
+            stats.tenders_processed += 1
+            stats.documents_saved += result.documents_saved
+            stats.download_failures += result.download_failures
+            if result.outcome == "no_portfolio":
+                stats.no_portfolio += 1
+            elif result.outcome == "no_secop_docs":
+                stats.no_secop_docs += 1
+            elif result.outcome == "download_failed":
+                stats.errors += 1
             db.commit()
         except Exception as exc:
             logger.error(
@@ -171,10 +242,11 @@ def extract_documents_for_pending_tenders(
                 exc_info=True,
             )
             db.rollback()
+            stats.errors += 1
 
     logger.info(
         "Document extraction batch complete: %s tenders processed, %s files saved",
-        processed,
-        documents_saved,
+        stats.tenders_processed,
+        stats.documents_saved,
     )
-    return {"tenders_processed": processed, "documents_saved": documents_saved}
+    return stats.as_dict()

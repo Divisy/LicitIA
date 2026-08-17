@@ -28,6 +28,19 @@ with engine.begin() as conn:
     conn.execute(text('ALTER TABLE tenders ADD COLUMN IF NOT EXISTS unspsc_code VARCHAR(50)'))
     conn.execute(text('ALTER TABLE tenders ADD COLUMN IF NOT EXISTS portfolio_id VARCHAR(100)'))
     conn.execute(text('CREATE INDEX IF NOT EXISTS ix_tenders_portfolio_id ON tenders (portfolio_id)'))
+    conn.execute(text('ALTER TABLE tenders ADD COLUMN IF NOT EXISTS documents_extraction_attempted_at TIMESTAMP'))
+    conn.execute(text(
+        'CREATE INDEX IF NOT EXISTS ix_tenders_documents_extraction_attempted_at '
+        'ON tenders (documents_extraction_attempted_at)'
+    ))
+    conn.execute(text(
+        """
+        UPDATE tenders
+        SET documents_extraction_attempted_at = COALESCE(updated_at, created_at, NOW())
+        WHERE documents_extraction_attempted_at IS NULL
+          AND id IN (SELECT DISTINCT tender_id FROM tender_documents)
+        """
+    ))
 
     conn.execute(text(
         """

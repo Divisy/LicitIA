@@ -44,6 +44,7 @@ class Tender(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     relevance_score = Column(Float, nullable=True)
     is_relevant_interventoria_vial = Column(Boolean, default=False, nullable=False, index=True)
+    documents_extraction_attempted_at = Column(DateTime, nullable=True, index=True)
 
     documents = relationship(
         "TenderDocument",
