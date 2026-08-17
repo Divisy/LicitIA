@@ -194,10 +194,24 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
 
             {!loading && !error && documents.length === 0 && (
               <Tile className="tender-detail-panel__empty">
-                <p>No hay documentos archivados para esta licitación.</p>
-                <p className="tender-detail-panel__empty-hint">
-                  Puede estar pendiente de extracción o no disponible en SECOP.
-                </p>
+                {tender.documents_extraction_attempted_at ? (
+                  <>
+                    <p>No se encontraron documentos clave en SECOP para esta licitación.</p>
+                    <p className="tender-detail-panel__empty-hint">
+                      La extracción ya se ejecutó; es posible que la entidad no haya publicado
+                      pliego, anexo o presupuesto en datos abiertos, o que estén dentro de
+                      archivos comprimidos.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>Extracción de documentos pendiente.</p>
+                    <p className="tender-detail-panel__empty-hint">
+                      Los documentos clave se descargarán automáticamente en el próximo ciclo
+                      de extracción.
+                    </p>
+                  </>
+                )}
               </Tile>
             )}
 

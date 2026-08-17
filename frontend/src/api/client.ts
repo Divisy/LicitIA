@@ -94,6 +94,7 @@ export interface Tender {
   contract_modality: string | null;
   relevance_score: number | null;
   is_relevant_interventoria_vial: boolean;
+  documents_extraction_attempted_at: string | null;
   experience_match_score: number | null;
   matching_experiences: MatchingExperience[] | null;
   created_at: string;

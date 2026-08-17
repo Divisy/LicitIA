@@ -28,6 +28,7 @@ class TenderResponse(BaseModel):
     unspsc_code: Optional[str] = None
     relevance_score: Optional[float] = None
     is_relevant_interventoria_vial: bool
+    documents_extraction_attempted_at: Optional[datetime] = None
     experience_match_score: Optional[float] = Field(None, description="Match score against company experiences (0-1)")
     matching_experiences: Optional[List[dict]] = Field(None, description="List of matching experiences")
     created_at: datetime

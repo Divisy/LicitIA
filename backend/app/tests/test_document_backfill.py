@@ -1,10 +1,11 @@
-"""Tests for document backfill and extraction queue logic (US 1.2.2)."""
+"""Tests for document backfill and extraction queue logic (US 1.2.2 / 1.2.3)."""
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from app.models.tender import Tender, TenderSource
 from app.services.document_extraction import extract_documents_for_tender
-from app.services.document_backfill import reconcile_orphan_documents
+from app.services.document_backfill import reconcile_orphan_documents, reset_document_extraction_attempts
 
 
 @patch("app.services.document_extraction.settings")
@@ -53,6 +54,20 @@ def test_extract_marks_attempted_when_no_portfolio(mock_portfolio, mock_settings
 
     assert result.outcome == "no_portfolio"
     assert tender.documents_extraction_attempted_at is not None
+
+
+def test_reset_document_extraction_attempts_dry_run():
+    tender = MagicMock()
+    tender.documents_extraction_attempted_at = datetime.utcnow()
+
+    db = MagicMock()
+    db.query.return_value.filter.return_value.filter.return_value.all.return_value = [tender]
+
+    stats = reset_document_extraction_attempts(db, dry_run=True)
+
+    assert stats["eligible_for_reset"] == 1
+    assert stats["reset_count"] == 0
+    db.commit.assert_not_called()
 
 
 @patch("app.services.document_backfill.get_document_storage")

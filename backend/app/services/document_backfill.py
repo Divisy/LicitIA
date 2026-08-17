@@ -158,3 +158,43 @@ def run_backfill(
         db.query(TenderDocument.tender_id).distinct().count()
     )
     return totals
+
+
+def reset_document_extraction_attempts(
+    db: Session,
+    *,
+    dry_run: bool = False,
+    external_id: Optional[str] = None,
+    reference: Optional[str] = None,
+) -> dict[str, int]:
+    """
+    Clear documents_extraction_attempted_at for tenders without archived documents.
+
+    Used after classifier improvements (US 1.2.3) so backfill can retry them.
+    """
+    query = (
+        db.query(Tender)
+        .filter(~Tender.documents.any())
+        .filter(Tender.documents_extraction_attempted_at.isnot(None))
+    )
+
+    if external_id:
+        query = query.filter(Tender.external_id == external_id)
+    if reference:
+        query = query.filter(Tender.reference == reference)
+
+    tenders = query.all()
+    stats = {
+        "eligible_for_reset": len(tenders),
+        "reset_count": 0,
+    }
+
+    if dry_run or not tenders:
+        return stats
+
+    for tender in tenders:
+        tender.documents_extraction_attempted_at = None
+
+    db.commit()
+    stats["reset_count"] = len(tenders)
+    return stats

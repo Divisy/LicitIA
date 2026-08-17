@@ -219,6 +219,21 @@ PYTHONPATH=. python scripts/backfill_documents.py            # hasta vaciar cola
 
 El job diario (`extract_documents_for_pending_tenders`, lote de 25) sigue procesando pendientes automáticamente.
 
+### US 1.2.3 — Cobertura ampliada de documentos SECOP ✅
+
+Clasificador ampliado para nombres no estándar en SECOP (`proyecto de pliego`, `anexos de proyecto`, `analisis del sector`, `ppto`, etc.), reproceso de licitaciones sin docs y UX con estados claros en el panel de detalle.
+
+**Reprocesar tras mejorar reglas:**
+
+```bash
+cd backend
+PYTHONPATH=. python scripts/reset_document_extraction_attempts.py --dry-run
+PYTHONPATH=. python scripts/reset_document_extraction_attempts.py
+PYTHONPATH=. python scripts/backfill_documents.py --batch-size 25
+```
+
+**Estados en UI:** pendiente de extracción · procesada sin docs en SECOP · con documentos archivados.
+
 ### US 1.3 — Documentos en la interfaz ✅
 
 El personal de licitaciones puede ver y descargar documentos desde el dashboard sin SSH ni DBeaver.
@@ -289,7 +304,6 @@ Para el MVP, la autenticación es opcional. Si configuras `API_KEY` en `.env`, p
 
 ## 📚 Próximos Pasos
 
-- [ ] US 1.2.3 — Ampliar clasificador SECOP, reprocesar sin docs y mejorar UX ([spec](docs/US-1.2.3-cobertura-documentos-secop.md))
 - [ ] US 1.2.4 — Extracción de documentos dentro de ZIP/RAR (futura)
 - [ ] Columna referencia en tabla de licitaciones (mejor UX)
 - [ ] Autenticación completa (JWT)
