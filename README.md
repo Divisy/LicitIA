@@ -20,7 +20,7 @@ Monorepo con **dos servicios desplegables** en Railway:
 | `licitia-frontend` (frontend) | `frontend/` | React + Vite + TypeScript (nginx en prod) |
 
 - **Base de datos**: PostgreSQL (Railway)
-- **Documentos SECOP**: Railway Volume en `/data` (`DOCUMENTS_STORAGE_PATH`)
+- **Documentos SECOP**: **Cloudflare R2** en producción (`DOCUMENT_STORAGE_BACKEND=r2`); Volume Railway `/data` solo como staging temporal si `DOCUMENT_STORAGE_WRITE_LOCAL=true`
 - **Desarrollo local**: Docker Compose opcional
 
 ### Producción (Railway)
@@ -33,7 +33,7 @@ Monorepo con **dos servicios desplegables** en Railway:
 
 Variables clave en producción:
 
-- **Backend** (`vigilant-joy`): `DATABASE_URL`, `DOCUMENTS_STORAGE_PATH=/data`, `CORS_ORIGINS` (incluye URL del frontend)
+- **Backend** (`vigilant-joy`): `DATABASE_URL`, `DOCUMENTS_STORAGE_PATH=/data`, `DOCUMENT_STORAGE_BACKEND=r2`, `R2_*`, `CORS_ORIGINS` (incluye URL del frontend)
 - **Frontend** (`licitia-frontend`): `VITE_API_URL=https://vigilant-joy-production.up.railway.app/api/v1`
 
 ## 📋 Requisitos Previos
@@ -171,9 +171,9 @@ alembic upgrade head
 
 Descarga automática de pliego, anexo técnico y presupuesto desde SECOP (`dmgg-8hin`) tras cada job de ingesta.
 
-### US 1.2.1 — Almacenamiento en Cloudflare R2 (en implementación)
+### US 1.2.1 — Almacenamiento en Cloudflare R2 ✅
 
-Migración del almacenamiento de documentos desde el Volume de Railway (`/data`, 500 MB) hacia **Cloudflare R2** (API S3).
+Documentos clave persistidos en **Cloudflare R2** (API S3). En producción: `DOCUMENT_STORAGE_BACKEND=r2`, `DOCUMENT_STORAGE_WRITE_LOCAL=false`. Los 73 archivos existentes fueron migrados desde el Volume Railway; las descargas sirven desde R2 si no hay copia local.
 
 **Variables de entorno (backend):**
 
@@ -194,6 +194,8 @@ cd backend
 PYTHONPATH=. python scripts/migrate_documents_to_r2.py
 PYTHONPATH=. python scripts/migrate_documents_to_r2.py --delete-local
 ```
+
+**Validación en producción:** 73 documentos migrados a R2; descarga verificada desde el frontend (`LP-002-2026`, Sincelejo). Nuevas extracciones suben directo a R2 con `DOCUMENT_STORAGE_WRITE_LOCAL=false`.
 
 ### US 1.3 — Documentos en la interfaz ✅
 
@@ -265,7 +267,7 @@ Para el MVP, la autenticación es opcional. Si configuras `API_KEY` en `.env`, p
 
 ## 📚 Próximos Pasos
 
-- [ ] US 1.2.2 — Backfill histórico de documentos pendientes (tras activar R2)
+- [ ] US 1.2.2 — Backfill histórico de documentos pendientes (~196 licitaciones)
 - [ ] Columna referencia en tabla de licitaciones (mejor UX)
 - [ ] Autenticación completa (JWT)
 - [ ] Vista previa embebida de PDF en el navegador
