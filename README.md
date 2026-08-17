@@ -12,12 +12,29 @@ LicitIA es una plataforma que:
 
 ## 🏗️ Arquitectura
 
-- **Backend**: FastAPI (Python 3.11+)
-- **Base de datos**: PostgreSQL
-- **ORM**: SQLAlchemy 2.x + Alembic
-- **Jobs en background**: APScheduler
-- **Frontend**: React + Vite + TypeScript
-- **Containerización**: Docker Compose
+Monorepo con **dos servicios desplegables** en Railway:
+
+| Servicio | Root Directory | Stack |
+|----------|----------------|-------|
+| `vigilant-joy` (backend) | `backend/` | FastAPI, APScheduler, Alembic |
+| `licitia-frontend` (frontend) | `frontend/` | React + Vite + TypeScript (nginx en prod) |
+
+- **Base de datos**: PostgreSQL (Railway)
+- **Documentos SECOP**: Railway Volume en `/data` (`DOCUMENTS_STORAGE_PATH`)
+- **Desarrollo local**: Docker Compose opcional
+
+### Producción (Railway)
+
+| Componente | URL |
+|------------|-----|
+| Frontend | https://licitia-frontend-production.up.railway.app |
+| Backend API | https://vigilant-joy-production.up.railway.app/api/v1 |
+| API Docs | https://vigilant-joy-production.up.railway.app/docs |
+
+Variables clave en producción:
+
+- **Backend** (`vigilant-joy`): `DATABASE_URL`, `DOCUMENTS_STORAGE_PATH=/data`, `CORS_ORIGINS` (incluye URL del frontend)
+- **Frontend** (`licitia-frontend`): `VITE_API_URL=https://vigilant-joy-production.up.railway.app/api/v1`
 
 ## 📋 Requisitos Previos
 
@@ -119,9 +136,17 @@ cd frontend
 # Instalar dependencias
 npm install
 
-# Iniciar servidor de desarrollo
+### Frontend contra API de producción (local)
+
+```bash
+cd frontend
+# Crear frontend/.env.local (gitignored):
+# VITE_API_URL=/api/v1
+# VITE_PROXY_TARGET=https://vigilant-joy-production.up.railway.app
 npm run dev
 ```
+
+El proxy de Vite evita problemas de CORS en desarrollo local.
 
 ## 📊 Base de Datos
 
@@ -136,26 +161,51 @@ alembic upgrade head
 ### Modelos Principales
 
 - **Tender**: Licitaciones detectadas del SECOP
+- **TenderDocument**: Metadatos de documentos clave archivados (pliego, anexo técnico, presupuesto)
+- **CompanyExperience**: Experiencia de la empresa para matching
 - **Subscription**: Empresas suscritas para recibir alertas
+
+## 📄 User Stories (estado)
+
+### US 1.2 — Extracción automática de documentos SECOP ✅
+
+Tras cada job de ingesta, el sistema descarga documentos clave (pliego de condiciones, anexo técnico, presupuesto) desde el dataset `dmgg-8hin`, los guarda en `DOCUMENTS_STORAGE_PATH` y registra metadatos en `tender_documents`.
+
+### US 1.3 — Documentos en la interfaz ✅
+
+El personal de licitaciones puede ver y descargar documentos desde el dashboard sin SSH ni DBeaver.
+
+**Flujo:** Dashboard → clic en fila de licitación → panel de detalle → documentos agrupados por tipo → Descargar.
+
+**API:**
+
+- `GET /api/v1/tenders/{tender_id}/documents` — listado de metadatos
+- `GET /api/v1/tenders/{tender_id}/documents/{document_id}/download` — descarga del archivo
+
+**UI:** componente `TenderDetailPanel` (modal Carbon), integrado en `Dashboard` vía clic en `TenderTable`.
+
+**Validación en producción:** descarga de PDF y Excel desde `licitia-frontend-production` contra licitaciones con documentos archivados (p. ej. `LP-013-2026`, `LP-002-2026`, `ICCU-LP-042-2026`).
 
 ## 🔄 Flujo de Trabajo
 
-1. **Job periódico** (cada 2 horas por defecto):
-   - `fetch_and_store_new_tenders()` se ejecuta automáticamente
-   - Obtiene nuevas licitaciones del SECOP
-   - Clasifica relevancia con OpenAI
-   - Envía notificaciones a suscripciones activas
+1. **Job periódico** (cada 24 h en producción, `FETCH_INTERVAL_HOURS`):
+   - `fetch_and_store_new_tenders()` obtiene licitaciones del SECOP
+   - `extract_documents_for_pending_tenders()` descarga documentos clave (lote de 25)
+   - Envía notificaciones a suscripciones activas (si están configuradas)
 
 2. **API REST**:
-   - `GET /api/v1/tenders`: Listar licitaciones con filtros
+   - `GET /api/v1/tenders`: Listar licitaciones con filtros y matching de experiencia
    - `GET /api/v1/tenders/{id}`: Detalle de licitación
+   - `GET /api/v1/tenders/{id}/documents`: Documentos archivados de la licitación
+   - `GET /api/v1/tenders/{id}/documents/{document_id}/download`: Descargar archivo
    - `POST /api/v1/subscriptions`: Crear suscripción
-   - `GET /api/v1/subscriptions`: Listar suscripciones
+   - `GET /api/v1/experiences`: Experiencias de la empresa
 
 3. **Frontend**:
-   - Dashboard con tabla de licitaciones
-   - Filtros por fecha, departamento, relevancia
-   - Enlaces directos a procesos en SECOP
+   - Dashboard con tabla de licitaciones (clic en fila abre detalle)
+   - Panel de documentos agrupados por tipo con descarga directa
+   - Filtros por fecha, departamento, matching con experiencia
+   - Enlace a ficha del proceso en SECOP
 
 ## 🧪 Tests
 
@@ -191,12 +241,11 @@ Para el MVP, la autenticación es opcional. Si configuras `API_KEY` en `.env`, p
 
 ## 📚 Próximos Pasos
 
+- [ ] US 1.2.2 — Backfill histórico de documentos pendientes
+- [ ] Almacenamiento en Cloudflare R2 (escalar más allá del Volume de 500 MB)
+- [ ] Columna referencia en tabla de licitaciones (mejor UX)
 - [ ] Autenticación completa (JWT)
-- [ ] Panel de administración
-- [ ] Más filtros y búsqueda avanzada
-- [ ] Exportación de datos (CSV, Excel)
-- [ ] Dashboard con estadísticas
-- [ ] Webhooks para integraciones
+- [ ] Vista previa embebida de PDF en el navegador
 
 ## 📄 Licencia
 
