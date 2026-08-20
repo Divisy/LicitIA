@@ -1,6 +1,7 @@
 """Extract key documents from SECOP ZIP/RAR archives (US 1.2.4)."""
 from __future__ import annotations
 
+import hashlib
 import shutil
 import tempfile
 import zipfile
@@ -80,10 +81,17 @@ class ArchiveExtractionResult:
     errors: list[str] = field(default_factory=list)
 
 
+MAX_EXTERNAL_DOCUMENT_ID_LENGTH = 100
+
+
 def build_internal_document_id(archive_external_id: str, inner_path: str) -> str:
     """Stable synthetic id for a file inside a SECOP archive."""
     normalized = inner_path.replace("\\", "/").lstrip("/")
-    return f"{archive_external_id}:{normalized}"
+    synthetic = f"{archive_external_id}:{normalized}"
+    if len(synthetic) <= MAX_EXTERNAL_DOCUMENT_ID_LENGTH:
+        return synthetic
+    digest = hashlib.sha256(synthetic.encode("utf-8")).hexdigest()[:16]
+    return f"{archive_external_id}:{digest}"
 
 
 def is_archive_excluded_by_name(file_name: str) -> bool:

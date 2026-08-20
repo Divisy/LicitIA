@@ -49,6 +49,14 @@ def test_build_internal_document_id():
     assert build_internal_document_id("999", "folder/pliego.pdf") == "999:folder/pliego.pdf"
 
 
+def test_build_internal_document_id_truncates_long_paths():
+    long_path = "ANEXOS - FORMATOS PRESENTACIÓN OFERTA/" + ("x" * 200) + ".docx"
+    synthetic = build_internal_document_id("820462077", long_path)
+    assert len(synthetic) <= 100
+    assert synthetic.startswith("820462077:")
+    assert synthetic == build_internal_document_id("820462077", long_path)
+
+
 def test_extract_zip_members_classifies_inner_files(tmp_path: Path):
     archive_path = tmp_path / "formatos.zip"
     with zipfile.ZipFile(archive_path, "w") as archive:
