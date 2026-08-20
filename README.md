@@ -224,7 +224,7 @@ El job diario (`extract_documents_for_pending_tenders`, lote de 25) sigue proces
 
 ### US 1.2.3 — Cobertura ampliada de documentos SECOP ✅
 
-Clasificador ampliado para nombres no estándar en SECOP (`proyecto de pliego`, `anexos de proyecto`, `analisis del sector`, `ppto`, etc.), reproceso de licitaciones sin docs y UX con estados claros en el panel de detalle.
+Clasificador ampliado para nombres no estándar en SECOP (`proyecto de pliego`, `anexos de proyecto`, `analisis del sector`, `ppto`, `formulario 1`, etc.), reproceso de licitaciones sin docs y UX con estados claros en el panel de detalle.
 
 **Reprocesar tras mejorar reglas:**
 
@@ -242,6 +242,21 @@ PYTHONPATH=. python scripts/resync_documents.py --only-without-pliego --batch-si
 ```
 
 **Estados en UI:** pendiente de extracción · procesada sin docs en SECOP · con documentos archivados.
+
+### US 1.2.4 — Extracción de documentos ZIP/RAR 🔄
+
+Descomprime archivos `.zip`/`.rar` de SECOP, clasifica el contenido interno (mismas reglas US 1.2.3) y archiva solo PDF/XLSX/DOCX clave. Los contenedores no se muestran en la UI.
+
+Spec: [docs/US-1.2.4-extraccion-documentos-zip-rar.md](docs/US-1.2.4-extraccion-documentos-zip-rar.md)
+
+```bash
+cd backend
+PYTHONPATH=. python scripts/extract_compressed_documents.py --dry-run
+PYTHONPATH=. python scripts/extract_compressed_documents.py --batch-size 10
+PYTHONPATH=. python scripts/extract_compressed_documents.py --external-id CO1.REQ.10837635
+```
+
+Variables: `ARCHIVE_EXTRACTION_ENABLED`, `ARCHIVE_MAX_DOWNLOAD_BYTES`, `ARCHIVE_MAX_UNCOMPRESSED_BYTES`, `ARCHIVE_MAX_FILES`.
 
 ### US 1.3 — Documentos en la interfaz ✅
 
@@ -316,7 +331,7 @@ Para el MVP, la autenticación es opcional. Si configuras `API_KEY` en `.env`, p
 
 ## 📚 Próximos Pasos
 
-- [ ] US 1.2.4 — Extracción de documentos dentro de ZIP/RAR (futura)
+- [ ] US 1.2.4 — Extracción de documentos dentro de ZIP/RAR 🔄 ([spec](docs/US-1.2.4-extraccion-documentos-zip-rar.md))
 - [ ] US 1.2.5 — Clasificación de documentos por contenido PDF ([spec](docs/US-1.2.5-clasificacion-documentos-por-contenido-pdf.md))
 - [ ] Columna referencia en tabla de licitaciones (mejor UX)
 - [ ] Autenticación completa (JWT)

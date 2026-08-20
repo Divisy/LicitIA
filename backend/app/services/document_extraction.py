@@ -16,8 +16,10 @@ from app.services.secop_documents import (
     build_document_object_key,
     build_document_storage_path,
     download_document_file,
-    fetch_documents_for_portfolio,
+    fetch_archive_candidates_for_portfolio,
+    fetch_loose_key_documents_for_portfolio,
 )
+from app.services.archive_extraction import extract_archives_for_tender
 from app.services.document_storage import get_document_storage
 from app.services.secop_client import fetch_portfolio_id_for_external_id
 
@@ -31,6 +33,8 @@ class TenderExtractionResult:
     documents_saved: int = 0
     documents_added: int = 0
     documents_updated: int = 0
+    archives_processed: int = 0
+    archive_documents_saved: int = 0
     outcome: str = "saved"
     download_failures: int = 0
 
@@ -176,8 +180,14 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> TenderExtractio
             _mark_extraction_attempted(tender)
             return TenderExtractionResult(outcome="no_portfolio")
 
-    documents = fetch_documents_for_portfolio(tender.portfolio_id)
-    if not documents:
+    documents = fetch_loose_key_documents_for_portfolio(tender.portfolio_id)
+    archive_candidates = (
+        fetch_archive_candidates_for_portfolio(tender.portfolio_id)
+        if settings.ARCHIVE_EXTRACTION_ENABLED
+        else []
+    )
+
+    if not documents and not archive_candidates:
         logger.info("No key documents found for tender %s", tender.external_id)
         _mark_extraction_attempted(tender)
         return TenderExtractionResult(outcome="no_secop_docs")
@@ -225,6 +235,16 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> TenderExtractio
         else:
             updated_count += 1
 
+    archive_result = extract_archives_for_tender(
+        db,
+        tender,
+        tender.portfolio_id,
+        storage,
+        _upsert_document_record,
+    )
+    saved_count += archive_result.documents_saved
+    added_count += archive_result.documents_added
+
     if saved_count:
         logger.info(
             "Saved %s documents for tender %s (%s)",
@@ -244,6 +264,8 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> TenderExtractio
         documents_saved=saved_count,
         documents_added=added_count,
         documents_updated=updated_count,
+        archives_processed=archive_result.archives_processed,
+        archive_documents_saved=archive_result.documents_saved,
         outcome=outcome,
         download_failures=download_failures,
     )
@@ -324,6 +346,31 @@ def resync_documents_for_processed_tenders(
         stats.documents_added,
     )
     return stats.as_dict()
+
+
+def extract_compressed_documents_for_tender(db: Session, tender: Tender) -> "ArchiveExtractionResult":
+    """Run archive extraction only for one tender (US 1.2.4 reproceso)."""
+    from app.services.archive_extraction import ArchiveExtractionResult, extract_archives_for_tender
+
+    if not settings.ARCHIVE_EXTRACTION_ENABLED:
+        return ArchiveExtractionResult()
+
+    if not tender.portfolio_id:
+        portfolio_id = fetch_portfolio_id_for_external_id(tender.external_id)
+        if portfolio_id:
+            tender.portfolio_id = portfolio_id
+            db.flush()
+        else:
+            return ArchiveExtractionResult(errors=["no_portfolio"])
+
+    storage = get_document_storage()
+    return extract_archives_for_tender(
+        db,
+        tender,
+        tender.portfolio_id,
+        storage,
+        _upsert_document_record,
+    )
 
 
 def extract_documents_for_pending_tenders(

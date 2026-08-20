@@ -10,10 +10,12 @@ from app.services.document_extraction import resync_documents_for_processed_tend
 
 
 @patch("app.services.document_extraction.settings")
-@patch("app.services.document_extraction.fetch_documents_for_portfolio", return_value=[])
+@patch("app.services.document_extraction.fetch_archive_candidates_for_portfolio", return_value=[])
+@patch("app.services.document_extraction.fetch_loose_key_documents_for_portfolio", return_value=[])
 @patch("app.services.document_extraction.fetch_portfolio_id_for_external_id", return_value="portfolio-1")
-def test_extract_marks_attempted_when_secop_has_no_docs(mock_portfolio, mock_fetch, mock_settings):
+def test_extract_marks_attempted_when_secop_has_no_docs(mock_portfolio, mock_fetch, mock_archives, mock_settings):
     mock_settings.DOCUMENT_EXTRACTION_ENABLED = True
+    mock_settings.ARCHIVE_EXTRACTION_ENABLED = True
 
     tender = Tender(
         id=uuid4(),
@@ -106,19 +108,26 @@ def test_run_document_resync_dry_run(mock_query, mock_resync):
 
 
 @patch("app.services.document_extraction.settings")
+@patch("app.services.document_extraction.extract_archives_for_tender")
 @patch("app.services.document_extraction.get_document_storage")
 @patch("app.services.document_extraction.download_document_file", return_value=True)
-@patch("app.services.document_extraction.fetch_documents_for_portfolio")
+@patch("app.services.document_extraction.fetch_archive_candidates_for_portfolio", return_value=[])
+@patch("app.services.document_extraction.fetch_loose_key_documents_for_portfolio")
 def test_resync_adds_missing_documents(
     mock_fetch,
+    mock_archives,
     mock_download,
     mock_storage_factory,
+    mock_extract_archives,
     mock_settings,
 ):
+    from app.services.archive_extraction import ArchiveExtractionResult
     from app.services.secop_document_filters import DocumentType
     from app.services.secop_documents import SecopDocumentDTO
 
     mock_settings.DOCUMENT_EXTRACTION_ENABLED = True
+    mock_settings.ARCHIVE_EXTRACTION_ENABLED = True
+    mock_extract_archives.return_value = ArchiveExtractionResult()
     mock_storage_factory.return_value = MagicMock()
 
     existing_doc = MagicMock()

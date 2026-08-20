@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     DOCUMENT_EXTRACTION_ENABLED: bool = True
     DOCUMENT_EXTRACTION_BATCH_SIZE: int = 25
 
+    # Archive extraction (US 1.2.4)
+    ARCHIVE_EXTRACTION_ENABLED: bool = True
+    ARCHIVE_MAX_DOWNLOAD_BYTES: int = 104_857_600  # 100 MB
+    ARCHIVE_MAX_UNCOMPRESSED_BYTES: int = 524_288_000  # 500 MB
+    ARCHIVE_MAX_FILES: int = 200
+    ARCHIVE_MAX_DEPTH: int = 1
+
     # Document storage backend: local (Railway Volume) or r2 (Cloudflare R2)
     DOCUMENT_STORAGE_BACKEND: str = "local"
     # When using R2, keep a copy on the local volume (default: false to save disk)

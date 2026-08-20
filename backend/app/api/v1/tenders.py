@@ -11,6 +11,7 @@ from app.models.tender import Tender
 from app.models.tender_document import TenderDocument
 from app.models.company_experience import CompanyExperience
 from app.services.document_storage import get_document_storage
+from app.services.secop_documents import is_archive_filename
 from app.schemas.tender import (
     TenderResponse,
     TenderListResponse,
@@ -233,10 +234,13 @@ async def list_tender_documents(
         .order_by(TenderDocument.document_type, TenderDocument.file_name)
         .all()
     )
+    visible_documents = [
+        document for document in documents if not is_archive_filename(document.file_name)
+    ]
 
     return TenderDocumentListResponse(
-        items=[TenderDocumentResponse.model_validate(doc) for doc in documents],
-        total=len(documents),
+        items=[TenderDocumentResponse.model_validate(doc) for doc in visible_documents],
+        total=len(visible_documents),
     )
 
 

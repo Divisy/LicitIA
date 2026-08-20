@@ -13,6 +13,7 @@ from app.models.tender_document import TenderDocument
 from app.services.document_extraction import (
     count_pending_document_extractions,
     count_processed_tenders_for_resync,
+    extract_compressed_documents_for_tender,
     extract_documents_for_pending_tenders,
     processed_document_resync_query,
     resync_documents_for_processed_tenders,
@@ -292,6 +293,88 @@ def run_document_resync(
             time.sleep(pause_seconds)
 
     totals["eligible_for_resync_remaining"] = eligible_query.count()
+    totals["tenders_with_documents"] = (
+        db.query(TenderDocument.tender_id).distinct().count()
+    )
+    return totals
+
+
+def run_compressed_document_extraction(
+    db: Session,
+    *,
+    max_batches: Optional[int] = None,
+    batch_size: Optional[int] = None,
+    pause_seconds: float = 2.0,
+    dry_run: bool = False,
+    external_id: Optional[str] = None,
+    reference: Optional[str] = None,
+) -> dict[str, int]:
+    """Reprocess SECOP archives for already-ingested tenders (US 1.2.4)."""
+    query = processed_document_resync_query(db)
+    if external_id:
+        query = query.filter(Tender.external_id == external_id)
+    if reference:
+        query = query.filter(Tender.reference == reference)
+
+    eligible = query.count()
+    if dry_run:
+        summary = summarize_document_storage(db)
+        return {**summary, "eligible_for_archive_extraction": eligible, "batches_run": 0}
+
+    tender_ids = [row[0] for row in query.with_entities(Tender.id).all()]
+    totals = {
+        "eligible_for_archive_extraction": eligible,
+        "batches_run": 0,
+        "tenders_processed": 0,
+        "archives_processed": 0,
+        "archives_failed": 0,
+        "documents_saved": 0,
+        "documents_added": 0,
+        "containers_removed": 0,
+        "errors": 0,
+    }
+
+    effective_batch_size = batch_size or settings.DOCUMENT_EXTRACTION_BATCH_SIZE
+    batches_left = max_batches
+
+    for offset in range(0, len(tender_ids), effective_batch_size):
+        if batches_left is not None and batches_left <= 0:
+            break
+
+        chunk_ids = tender_ids[offset : offset + effective_batch_size]
+        tenders = db.query(Tender).filter(Tender.id.in_(chunk_ids)).all()
+        if not tenders:
+            break
+
+        totals["batches_run"] += 1
+        for tender in tenders:
+            try:
+                result = extract_compressed_documents_for_tender(db, tender)
+                totals["tenders_processed"] += 1
+                totals["archives_processed"] += result.archives_processed
+                totals["archives_failed"] += result.archives_failed
+                totals["documents_saved"] += result.documents_saved
+                totals["documents_added"] += result.documents_added
+                totals["containers_removed"] += result.containers_removed
+                if result.errors:
+                    totals["errors"] += len(result.errors)
+                db.commit()
+            except Exception as exc:
+                logger.error(
+                    "Compressed document extraction failed for tender %s: %s",
+                    tender.external_id,
+                    exc,
+                    exc_info=True,
+                )
+                db.rollback()
+                totals["errors"] += 1
+
+        if batches_left is not None:
+            batches_left -= 1
+
+        if offset + effective_batch_size < len(tender_ids) and pause_seconds > 0:
+            time.sleep(pause_seconds)
+
     totals["tenders_with_documents"] = (
         db.query(TenderDocument.tender_id).distinct().count()
     )

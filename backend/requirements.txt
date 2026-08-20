@@ -36,6 +36,9 @@ openpyxl==3.1.2
 # File uploads
 python-multipart==0.0.6
 
+# Archive extraction (US 1.2.4)
+rarfile==4.2
+
 # AI/ML for semantic matching
 # Compatible versions for sentence-transformers 2.2.2
 sentence-transformers==2.2.2

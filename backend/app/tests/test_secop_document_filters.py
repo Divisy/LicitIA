@@ -11,6 +11,10 @@ def test_classify_pliego_expanded_keywords():
     assert classify_document("5. PROYECTO DE PLIEGOS.pdf") == DocumentType.PLIEGO_CONDICIONES
     assert classify_document("PROYECTO PLIEGO LP-001-2026.pdf") == DocumentType.PLIEGO_CONDICIONES
     assert classify_document("PREPLIEGO DEFINITIVO.pdf") == DocumentType.PLIEGO_CONDICIONES
+    assert classify_document("PLIEGO DEFINITIVO.pdf") == DocumentType.PLIEGO_CONDICIONES
+    assert classify_document("6. Pliegos Definitivos  LP-005-2026.pdf") == DocumentType.PLIEGO_CONDICIONES
+    assert classify_document("PC-MT-LP-003-2026-PROYECTO DE-PLIEGO.pdf") == DocumentType.PLIEGO_CONDICIONES
+    assert classify_document("6. PLIEGO BASE - LP 116.pdf") == DocumentType.PLIEGO_CONDICIONES
 
 
 def test_classify_anexo_tecnico():

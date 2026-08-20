@@ -86,11 +86,12 @@ En `TenderDetailPanel`, distinguir estados:
 
 Requiere exponer `documents_extraction_attempted_at` (o un enum `document_extraction_status`) en `TenderResponse` del API.
 
-### Fase D — Fuera de alcance de esta US (ver US 1.2.4)
+### Fase D — Fuera de alcance de esta US
 
-- Descomprimir `.zip` / `.rar` y clasificar archivos internos.
+Ver **[US 1.2.4 — Extracción ZIP/RAR](US-1.2.4-extraccion-documentos-zip-rar.md)** (descompresión e inspección de contenido interno).
+
 - Re-ingesta SECOP (US 1.1).
-- Extracción de texto / análisis de PDFs.
+- Extracción de texto / análisis de PDFs (US 1.2.5).
 
 ---
 
@@ -153,30 +154,4 @@ PYTHONPATH=. python scripts/resync_documents.py --batch-size 25
 
 ---
 
-# US 1.2.4 — Extracción de documentos en archivos comprimidos (ZIP/RAR) *(futura)*
-
-## USER STORY
-
-**As a** sistema de LicitIA  
-**Quiero** descomprimir archivos `.zip` y `.rar` descargados desde SECOP y clasificar su contenido  
-**Para** extraer pliego, anexo y presupuesto cuando la entidad los publica empaquetados (ej. `OTROS DOCUMENTOS.rar`, `ANEXOS.zip`)
-
-## BACKGROUND
-
-Caso validado: `LP No. DHMA-LOP-SPOP-001` (El Agrado) — solo presupuesto suelto; pliego/anexo presumiblemente en `OTROS DOCUMENTOS.rar` o `FORMATOS.rar`.
-
-## SOLUCIÓN (borrador)
-
-- Tras descargar un `.zip`/`.rar` clasificado como key doc o `otro` relevante, extraer en staging temporal.
-- Clasificar cada archivo interno con las mismas reglas de US 1.2.3.
-- Subir solo PDF/XLSX/DOCX clave a R2; descartar planos/binarios según política.
-- Límite de tamaño y profundidad (anti zip-bomb).
-
-## FUERA DE ALCANCE
-
-- OCR de PDFs escaneados.
-- Descarga masiva fuera del pipeline por licitación.
-
-## DEPENDENCIAS
-
-- **US 1.2.3** (clasificador ampliado) debe estar desplegada antes.
+**Siguiente en roadmap:** [US 1.2.4 — Extracción ZIP/RAR](US-1.2.4-extraccion-documentos-zip-rar.md)

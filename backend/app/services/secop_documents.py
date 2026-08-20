@@ -47,8 +47,41 @@ def _safe_filename(name: str) -> str:
     return cleaned or "documento"
 
 
-def fetch_documents_for_portfolio(portfolio_id: str) -> List[SecopDocumentDTO]:
-    """Fetch document metadata from SECOP Archivos Descarga dataset."""
+def is_archive_filename(file_name: str) -> bool:
+    return Path(file_name).suffix.lower() in {".zip", ".rar"}
+
+
+def _build_document_dto(item: dict, portfolio_id: str) -> Optional[SecopDocumentDTO]:
+    external_id = str(item.get("id_documento") or "").strip()
+    if not external_id:
+        return None
+
+    file_name = str(item.get("nombre_archivo") or item.get("descripci_n") or "documento").strip()
+    description = item.get("descripci_n")
+    download_url = _extract_url(item.get("url_descarga_documento"))
+    if not download_url:
+        return None
+
+    file_size = None
+    if item.get("tamanno_archivo"):
+        try:
+            file_size = int(item["tamanno_archivo"])
+        except (TypeError, ValueError):
+            file_size = None
+
+    return SecopDocumentDTO(
+        external_document_id=external_id,
+        portfolio_id=portfolio_id,
+        file_name=file_name,
+        download_url=download_url,
+        file_size=file_size,
+        extension=item.get("extensi_n"),
+        description=str(description) if description else None,
+        document_type=classify_document(file_name, str(description) if description else None),
+    )
+
+
+def _fetch_raw_portfolio_items(portfolio_id: str) -> list[dict]:
     if not portfolio_id or not settings.SECOP_DOCUMENTS_DATASET_ID:
         return []
 
@@ -66,53 +99,52 @@ def fetch_documents_for_portfolio(portfolio_id: str) -> List[SecopDocumentDTO]:
     try:
         response = requests.get(base_url, params=params, headers=headers, timeout=60)
         response.raise_for_status()
-        raw_items = response.json()
+        return response.json()
     except requests.RequestException as exc:
         logger.error("Error fetching SECOP documents for %s: %s", portfolio_id, exc)
         return []
 
+
+def fetch_all_documents_for_portfolio(portfolio_id: str) -> List[SecopDocumentDTO]:
+    """Fetch all SECOP document metadata for a portfolio (including otro)."""
     documents: List[SecopDocumentDTO] = []
     seen_ids: set[str] = set()
 
-    for item in raw_items:
+    for item in _fetch_raw_portfolio_items(portfolio_id):
         external_id = str(item.get("id_documento") or "").strip()
         if not external_id or external_id in seen_ids:
             continue
         seen_ids.add(external_id)
+        document = _build_document_dto(item, portfolio_id)
+        if document:
+            documents.append(document)
 
-        file_name = str(item.get("nombre_archivo") or item.get("descripci_n") or "documento").strip()
-        description = item.get("descripci_n")
-        doc_type = classify_document(file_name, str(description) if description else None)
+    return documents
 
-        if not is_key_document(doc_type):
-            continue
 
-        download_url = _extract_url(item.get("url_descarga_documento"))
-        if not download_url:
-            continue
+def fetch_loose_key_documents_for_portfolio(portfolio_id: str) -> List[SecopDocumentDTO]:
+    """Key SECOP documents that are not archive containers."""
+    return [
+        document
+        for document in fetch_all_documents_for_portfolio(portfolio_id)
+        if is_key_document(document.document_type) and not is_archive_filename(document.file_name)
+    ]
 
-        file_size = None
-        if item.get("tamanno_archivo"):
-            try:
-                file_size = int(item["tamanno_archivo"])
-            except (TypeError, ValueError):
-                file_size = None
 
-        documents.append(
-            SecopDocumentDTO(
-                external_document_id=external_id,
-                portfolio_id=portfolio_id,
-                file_name=file_name,
-                download_url=download_url,
-                file_size=file_size,
-                extension=item.get("extensi_n"),
-                description=str(description) if description else None,
-                document_type=doc_type,
-            )
-        )
+def fetch_archive_candidates_for_portfolio(portfolio_id: str) -> List[SecopDocumentDTO]:
+    """SECOP archives (.zip/.rar) that may contain key documents."""
+    return [
+        document
+        for document in fetch_all_documents_for_portfolio(portfolio_id)
+        if is_archive_filename(document.file_name)
+    ]
 
+
+def fetch_documents_for_portfolio(portfolio_id: str) -> List[SecopDocumentDTO]:
+    """Fetch key SECOP documents for a portfolio (excludes archive containers)."""
+    documents = fetch_loose_key_documents_for_portfolio(portfolio_id)
     logger.info(
-        "Found %s key documents for portfolio %s",
+        "Found %s loose key documents for portfolio %s",
         len(documents),
         portfolio_id,
     )
@@ -128,8 +160,9 @@ def build_document_object_key(
     """Build storage object key: {external_id}/{type}/{id}_{filename}."""
     folder_name = _safe_filename(external_id)
     type_folder = document_type.value
+    safe_id = _safe_filename(external_document_id).replace(" ", "_")
     safe_name = _safe_filename(unquote(file_name))
-    return f"{folder_name}/{type_folder}/{external_document_id}_{safe_name}"
+    return f"{folder_name}/{type_folder}/{safe_id}_{safe_name}"
 
 
 def build_document_storage_path(

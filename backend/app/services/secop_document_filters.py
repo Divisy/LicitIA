@@ -83,6 +83,11 @@ def classify_document(filename: str, description: Optional[str] = None) -> Docum
         if any(keyword in haystack for keyword in keywords):
             return doc_type
 
+    # Fallback: any filename mentioning pliego/pliegos → pliego de condiciones.
+    # Covers variants like "PLIEGO DEFINITIVO", "DE-PLIEGO", "6. Pliegos Definitivos".
+    if re.search(r"\bpliegos?\b", haystack):
+        return DocumentType.PLIEGO_CONDICIONES
+
     return DocumentType.OTRO
 
 

@@ -199,6 +199,22 @@ class DocumentStorageService:
             headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
         )
 
+    def delete_object(self, object_key: str) -> None:
+        """Remove a stored document blob from local disk and/or R2."""
+        key = normalize_object_key(object_key)
+        local_file = self.local_path(key)
+        if local_file.is_file():
+            local_file.unlink(missing_ok=True)
+
+        if self._s3 is not None:
+            try:
+                self._s3.delete_object(
+                    Bucket=settings.R2_BUCKET_NAME,
+                    Key=self._bucket_key(key),
+                )
+            except Exception as exc:
+                logger.warning("Failed to delete R2 object %s: %s", key, exc)
+
 
 _storage_service: Optional[DocumentStorageService] = None
 
