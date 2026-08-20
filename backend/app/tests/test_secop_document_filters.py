@@ -38,6 +38,13 @@ def test_classify_presupuesto_expanded_keywords():
     ) == DocumentType.PRESUPUESTO
     assert classify_document("PPTO OFICIAL OBRA.pdf") == DocumentType.PRESUPUESTO
     assert classify_document("15_APU Ppto_Segovia.xlsx") == DocumentType.PRESUPUESTO
+    assert classify_document("Formulario 1 - Economico Sumapaz V3.xlsx") == DocumentType.PRESUPUESTO
+    assert classify_document("22. Formulario 1 - Propuesta economica CM-005-2026.xlsx") == DocumentType.PRESUPUESTO
+
+
+def test_classify_presupuesto_formulario_1_does_not_false_positive():
+    assert classify_document("ANÁLISIS ECONÓMICO DEL SECTOR CALLE LA L.pdf") == DocumentType.OTRO
+    assert classify_document("Estudio del Sector Obra Sumapaz.pdf") == DocumentType.ANEXO_TECNICO
 
 
 def test_classify_real_world_cases():
