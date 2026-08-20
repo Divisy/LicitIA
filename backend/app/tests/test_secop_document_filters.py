@@ -46,8 +46,16 @@ def test_classify_presupuesto_expanded_keywords():
     assert classify_document("22. Formulario 1 - Propuesta economica CM-005-2026.xlsx") == DocumentType.PRESUPUESTO
 
 
-def test_classify_presupuesto_formulario_1_does_not_false_positive():
-    assert classify_document("ANÁLISIS ECONÓMICO DEL SECTOR CALLE LA L.pdf") == DocumentType.OTRO
+def test_classify_word_fallbacks():
+    assert classify_document("MEMORIA TECNICA OBRA.pdf") == DocumentType.ANEXO_TECNICO
+    assert classify_document("ANEXO 3 - REQUISITOS.pdf") == DocumentType.ANEXO_TECNICO
+    assert classify_document("LISTA DE PRECIOS UNITARIOS.xlsx") == DocumentType.PRESUPUESTO
+    assert classify_document("PROPUESTA ECONOMICA V2.xlsx") == DocumentType.PRESUPUESTO
+    assert classify_document("DOCUMENTO ECONOMICO LP-010.pdf") == DocumentType.PRESUPUESTO
+
+
+def test_classify_sector_analysis_still_anexo_via_phrase():
+    assert classify_document("ANÁLISIS ECONÓMICO DEL SECTOR CALLE LA L.pdf") == DocumentType.PRESUPUESTO
     assert classify_document("Estudio del Sector Obra Sumapaz.pdf") == DocumentType.ANEXO_TECNICO
 
 

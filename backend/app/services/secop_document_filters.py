@@ -66,6 +66,33 @@ _KEYWORD_RULES: list[tuple[DocumentType, tuple[str, ...]]] = [
     ),
 ]
 
+# Word-level fallbacks when no phrase keyword matches (order: pliego → anexo → presupuesto).
+_FALLBACK_RULES: list[tuple[DocumentType, tuple[re.Pattern[str], ...]]] = [
+    (
+        DocumentType.PLIEGO_CONDICIONES,
+        (re.compile(r"\bpliegos?\b"),),
+    ),
+    (
+        DocumentType.ANEXO_TECNICO,
+        (
+            re.compile(r"\banexos?\b"),
+            re.compile(r"\btecnicos?\b"),
+            re.compile(r"\btecnicas?\b"),
+        ),
+    ),
+    (
+        DocumentType.PRESUPUESTO,
+        (
+            re.compile(r"\bpresupuestos?\b"),
+            re.compile(r"\beconomicas?\b"),
+            re.compile(r"\bprecios\b"),
+            re.compile(r"\bppto\b"),
+            re.compile(r"\bapu\b"),
+            re.compile(r"\beconomicos?\b"),
+        ),
+    ),
+]
+
 
 def _normalize_text(value: str) -> str:
     text = unicodedata.normalize("NFKD", value or "")
@@ -83,10 +110,9 @@ def classify_document(filename: str, description: Optional[str] = None) -> Docum
         if any(keyword in haystack for keyword in keywords):
             return doc_type
 
-    # Fallback: any filename mentioning pliego/pliegos → pliego de condiciones.
-    # Covers variants like "PLIEGO DEFINITIVO", "DE-PLIEGO", "6. Pliegos Definitivos".
-    if re.search(r"\bpliegos?\b", haystack):
-        return DocumentType.PLIEGO_CONDICIONES
+    for doc_type, patterns in _FALLBACK_RULES:
+        if any(pattern.search(haystack) for pattern in patterns):
+            return doc_type
 
     return DocumentType.OTRO
 
