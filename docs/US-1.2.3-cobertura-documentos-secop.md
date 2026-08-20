@@ -70,6 +70,8 @@ Tras desplegar el clasificador mejorado:
 
 2. Ejecutar backfill acelerado existente (`backfill_documents.py`) para re-extraer hacia R2.
 
+2b. Ejecutar re-sincronización incremental (`resync_documents.py`) sobre licitaciones **ya procesadas** para añadir documentos que el clasificador anterior omitió sin borrar filas existentes.
+
 3. Registrar métricas antes/después: licitaciones con docs, docs por tipo, errores.
 
 ### Fase C — Mejorar UX en frontend
@@ -138,6 +140,8 @@ cd backend
 PYTHONPATH=. python scripts/reset_document_extraction_attempts.py --dry-run
 PYTHONPATH=. python scripts/reset_document_extraction_attempts.py
 PYTHONPATH=. python scripts/backfill_documents.py --batch-size 25
+PYTHONPATH=. python scripts/resync_documents.py --dry-run
+PYTHONPATH=. python scripts/resync_documents.py --batch-size 25
 ```
 
 **Impacto estimado:** +5–15 % licitaciones con al menos un documento (principalmente las clasificadas como `otro` con nombres alternativos). No resuelve archivos dentro de `.rar`/`.zip` (US 1.2.4).

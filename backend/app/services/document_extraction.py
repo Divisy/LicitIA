@@ -29,6 +29,8 @@ class TenderExtractionResult:
     """Outcome of document extraction for a single tender."""
 
     documents_saved: int = 0
+    documents_added: int = 0
+    documents_updated: int = 0
     outcome: str = "saved"
     download_failures: int = 0
 
@@ -71,12 +73,46 @@ def count_pending_document_extractions(db: Session) -> int:
     return pending_document_extraction_query(db).count()
 
 
+def processed_document_resync_query(db: Session, *, only_without_pliego: bool = False):
+    """Tenders already attempted for extraction (candidates for incremental SECOP resync)."""
+    from sqlalchemy import and_, exists, not_
+
+    from app.models.tender_document import TenderDocument
+
+    query = (
+        db.query(Tender)
+        .filter(Tender.documents_extraction_attempted_at.isnot(None))
+        .order_by(Tender.documents_extraction_attempted_at.asc())
+    )
+
+    if only_without_pliego:
+        pliego_exists = (
+            exists()
+            .where(
+                and_(
+                    TenderDocument.tender_id == Tender.id,
+                    TenderDocument.document_type == "pliego_condiciones",
+                )
+            )
+        )
+        query = query.filter(not_(pliego_exists))
+
+    return query
+
+
+def count_processed_tenders_for_resync(db: Session, *, only_without_pliego: bool = False) -> int:
+    return processed_document_resync_query(
+        db,
+        only_without_pliego=only_without_pliego,
+    ).count()
+
+
 def _upsert_document_record(
     db: Session,
     tender: Tender,
     document: SecopDocumentDTO,
     object_key: str,
-) -> TenderDocument:
+) -> tuple[TenderDocument, bool]:
     existing = (
         db.query(TenderDocument)
         .filter(
@@ -98,7 +134,7 @@ def _upsert_document_record(
         existing.description = document.description
         existing.downloaded_at = datetime.utcnow()
         existing.updated_at = datetime.utcnow()
-        return existing
+        return existing, False
 
     record = TenderDocument(
         tender_id=tender.id,
@@ -113,7 +149,7 @@ def _upsert_document_record(
         downloaded_at=datetime.utcnow(),
     )
     db.add(record)
-    return record
+    return record, True
 
 
 def _mark_extraction_attempted(tender: Tender) -> None:
@@ -148,6 +184,8 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> TenderExtractio
 
     storage = get_document_storage()
     saved_count = 0
+    added_count = 0
+    updated_count = 0
     download_failures = 0
     for document in documents:
         object_key = build_document_object_key(
@@ -180,8 +218,12 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> TenderExtractio
             download_failures += 1
             continue
 
-        _upsert_document_record(db, tender, document, object_key)
+        _, created = _upsert_document_record(db, tender, document, object_key)
         saved_count += 1
+        if created:
+            added_count += 1
+        else:
+            updated_count += 1
 
     if saved_count:
         logger.info(
@@ -200,9 +242,88 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> TenderExtractio
 
     return TenderExtractionResult(
         documents_saved=saved_count,
+        documents_added=added_count,
+        documents_updated=updated_count,
         outcome=outcome,
         download_failures=download_failures,
     )
+
+
+@dataclass
+class ResyncBatchStats:
+    """Aggregated stats for incremental document resync batches."""
+
+    tenders_processed: int = 0
+    tenders_with_new_docs: int = 0
+    documents_saved: int = 0
+    documents_added: int = 0
+    documents_updated: int = 0
+    no_portfolio: int = 0
+    no_secop_docs: int = 0
+    download_failures: int = 0
+    errors: int = 0
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "tenders_processed": self.tenders_processed,
+            "tenders_with_new_docs": self.tenders_with_new_docs,
+            "documents_saved": self.documents_saved,
+            "documents_added": self.documents_added,
+            "documents_updated": self.documents_updated,
+            "no_portfolio": self.no_portfolio,
+            "no_secop_docs": self.no_secop_docs,
+            "download_failures": self.download_failures,
+            "errors": self.errors,
+        }
+
+
+def resync_documents_for_processed_tenders(
+    db: Session,
+    tenders: list[Tender],
+) -> dict[str, int]:
+    """
+    Re-fetch SECOP key documents for the given already-processed tenders.
+
+    Idempotent: adds missing documents and refreshes metadata for existing rows
+    when the classifier or SECOP catalog changes.
+    """
+    stats = ResyncBatchStats()
+
+    for tender in tenders:
+        try:
+            result = extract_documents_for_tender(db, tender)
+            if result.outcome == "disabled":
+                break
+            stats.tenders_processed += 1
+            stats.documents_saved += result.documents_saved
+            stats.documents_added += result.documents_added
+            stats.documents_updated += result.documents_updated
+            stats.download_failures += result.download_failures
+            if result.documents_added > 0:
+                stats.tenders_with_new_docs += 1
+            if result.outcome == "no_portfolio":
+                stats.no_portfolio += 1
+            elif result.outcome == "no_secop_docs":
+                stats.no_secop_docs += 1
+            elif result.outcome == "download_failed":
+                stats.errors += 1
+            db.commit()
+        except Exception as exc:
+            logger.error(
+                "Document resync failed for tender %s: %s",
+                tender.external_id,
+                exc,
+                exc_info=True,
+            )
+            db.rollback()
+            stats.errors += 1
+
+    logger.info(
+        "Document resync batch complete: %s tenders processed, %s new files added",
+        stats.tenders_processed,
+        stats.documents_added,
+    )
+    return stats.as_dict()
 
 
 def extract_documents_for_pending_tenders(

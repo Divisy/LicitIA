@@ -5,7 +5,8 @@ from uuid import uuid4
 
 from app.models.tender import Tender, TenderSource
 from app.services.document_extraction import extract_documents_for_tender
-from app.services.document_backfill import reconcile_orphan_documents, reset_document_extraction_attempts
+from app.services.document_backfill import reconcile_orphan_documents, reset_document_extraction_attempts, run_document_resync
+from app.services.document_extraction import resync_documents_for_processed_tenders
 
 
 @patch("app.services.document_extraction.settings")
@@ -88,3 +89,73 @@ def test_reconcile_orphans_dry_run(mock_storage_factory):
     assert stats["orphans_found"] == 1
     assert stats["orphans_deleted"] == 0
     db.delete.assert_not_called()
+
+
+@patch("app.services.document_backfill.resync_documents_for_processed_tenders")
+@patch("app.services.document_backfill.processed_document_resync_query")
+def test_run_document_resync_dry_run(mock_query, mock_resync):
+    db = MagicMock()
+    mock_query.return_value.count.return_value = 215
+
+    with patch("app.services.document_backfill.summarize_document_storage", return_value={"total_tenders": 215}):
+        stats = run_document_resync(db, dry_run=True)
+
+    assert stats["eligible_for_resync"] == 215
+    assert stats["batches_run"] == 0
+    mock_resync.assert_not_called()
+
+
+@patch("app.services.document_extraction.settings")
+@patch("app.services.document_extraction.get_document_storage")
+@patch("app.services.document_extraction.download_document_file", return_value=True)
+@patch("app.services.document_extraction.fetch_documents_for_portfolio")
+def test_resync_adds_missing_documents(
+    mock_fetch,
+    mock_download,
+    mock_storage_factory,
+    mock_settings,
+):
+    from app.services.secop_document_filters import DocumentType
+    from app.services.secop_documents import SecopDocumentDTO
+
+    mock_settings.DOCUMENT_EXTRACTION_ENABLED = True
+    mock_storage_factory.return_value = MagicMock()
+
+    existing_doc = MagicMock()
+    existing_doc.external_document_id = "111"
+    existing_doc.document_type = "presupuesto"
+
+    tender = MagicMock()
+    tender.id = uuid4()
+    tender.external_id = "CO1.REQ.1"
+    tender.portfolio_id = "portfolio-1"
+    tender.reference = "LP-001"
+    tender.documents = [existing_doc]
+
+    mock_fetch.return_value = [
+        SecopDocumentDTO(
+            external_document_id="111",
+            portfolio_id="portfolio-1",
+            file_name="PRESUPUESTO.pdf",
+            download_url="https://example.com/111",
+            document_type=DocumentType.PRESUPUESTO,
+        ),
+        SecopDocumentDTO(
+            external_document_id="222",
+            portfolio_id="portfolio-1",
+            file_name="PROYECTO DE PLIEGO.pdf",
+            download_url="https://example.com/222",
+            document_type=DocumentType.PLIEGO_CONDICIONES,
+        ),
+    ]
+
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.side_effect = [existing_doc, None]
+
+    stats = resync_documents_for_processed_tenders(db, [tender])
+
+    assert stats["tenders_processed"] == 1
+    assert stats["documents_added"] == 1
+    assert stats["documents_updated"] == 1
+    assert stats["tenders_with_new_docs"] == 1
+    db.commit.assert_called_once()

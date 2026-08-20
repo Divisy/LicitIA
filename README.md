@@ -5,6 +5,7 @@ MVP SaaS para detectar y alertar sobre licitaciones públicas de interventoría 
 ## 🎯 Descripción
 
 LicitIA es una plataforma que:
+
 - Detecta automáticamente licitaciones públicas del SECOP (últimos 60 días)
 - Hace matching inteligente con la experiencia previa de la empresa
 - Filtra licitaciones que coinciden con el historial de proyectos (score ≥ 60%)
@@ -14,10 +15,10 @@ LicitIA es una plataforma que:
 
 Monorepo con **dos servicios desplegables** en Railway:
 
-| Servicio | Root Directory | Stack |
-|----------|----------------|-------|
-| `vigilant-joy` (backend) | `backend/` | FastAPI, APScheduler, Alembic |
-| `licitia-frontend` (frontend) | `frontend/` | React + Vite + TypeScript (nginx en prod) |
+| Servicio                      | Root Directory | Stack                                     |
+| ----------------------------- | -------------- | ----------------------------------------- |
+| `vigilant-joy` (backend)      | `backend/`     | FastAPI, APScheduler, Alembic             |
+| `licitia-frontend` (frontend) | `frontend/`    | React + Vite + TypeScript (nginx en prod) |
 
 - **Base de datos**: PostgreSQL (Railway)
 - **Documentos SECOP**: **Cloudflare R2** en producción (`DOCUMENT_STORAGE_BACKEND=r2`); Volume Railway `/data` solo como staging temporal si `DOCUMENT_STORAGE_WRITE_LOCAL=true`
@@ -25,11 +26,11 @@ Monorepo con **dos servicios desplegables** en Railway:
 
 ### Producción (Railway)
 
-| Componente | URL |
-|------------|-----|
-| Frontend | https://licitia-frontend-production.up.railway.app |
+| Componente  | URL                                                   |
+| ----------- | ----------------------------------------------------- |
+| Frontend    | https://licitia-frontend-production.up.railway.app    |
 | Backend API | https://vigilant-joy-production.up.railway.app/api/v1 |
-| API Docs | https://vigilant-joy-production.up.railway.app/docs |
+| API Docs    | https://vigilant-joy-production.up.railway.app/docs   |
 
 Variables clave en producción:
 
@@ -55,6 +56,7 @@ cp .env.example .env
 ```
 
 Edita `.env` y completa:
+
 - `SECOP_DATASET_ID`: ID del dataset de SECOP en datos.gov.co
 - `OPENAI_API_KEY`: Tu clave de API de OpenAI
 - `SMTP_USER` y `SMTP_PASSWORD`: Para enviar emails (opcional)
@@ -67,6 +69,7 @@ docker-compose -f docker/docker-compose.yml up --build
 ```
 
 Esto iniciará:
+
 - PostgreSQL en el puerto 5432
 - Backend API en http://localhost:8000
 - Frontend en http://localhost:3000
@@ -227,9 +230,15 @@ Clasificador ampliado para nombres no estándar en SECOP (`proyecto de pliego`, 
 
 ```bash
 cd backend
+# Licitaciones sin ningún documento archivado
 PYTHONPATH=. python scripts/reset_document_extraction_attempts.py --dry-run
 PYTHONPATH=. python scripts/reset_document_extraction_attempts.py
 PYTHONPATH=. python scripts/backfill_documents.py --batch-size 25
+
+# Re-sincronización incremental masiva (licitaciones ya procesadas)
+PYTHONPATH=. python scripts/resync_documents.py --dry-run
+PYTHONPATH=. python scripts/resync_documents.py --batch-size 25
+PYTHONPATH=. python scripts/resync_documents.py --only-without-pliego --batch-size 25
 ```
 
 **Estados en UI:** pendiente de extracción · procesada sin docs en SECOP · con documentos archivados.
@@ -291,20 +300,24 @@ Para el MVP, la autenticación es opcional. Si configuras `API_KEY` en `.env`, p
 ## 🐛 Troubleshooting
 
 ### Error de conexión a PostgreSQL
+
 - Verifica que PostgreSQL esté corriendo
 - Revisa `DATABASE_URL` en `.env`
 
 ### Error al obtener datos de SECOP
+
 - Verifica `SECOP_DATASET_ID` en `.env`
 - Revisa los nombres de campos en `secop_client.py` - pueden variar según el dataset
 
 ### Frontend no se conecta al backend
+
 - Verifica que el backend esté corriendo en puerto 8000
 - Revisa la configuración de proxy en `vite.config.ts`
 
 ## 📚 Próximos Pasos
 
 - [ ] US 1.2.4 — Extracción de documentos dentro de ZIP/RAR (futura)
+- [ ] US 1.2.5 — Clasificación de documentos por contenido PDF ([spec](docs/US-1.2.5-clasificacion-documentos-por-contenido-pdf.md))
 - [ ] Columna referencia en tabla de licitaciones (mejor UX)
 - [ ] Autenticación completa (JWT)
 - [ ] Vista previa embebida de PDF en el navegador
@@ -312,4 +325,3 @@ Para el MVP, la autenticación es opcional. Si configuras `API_KEY` en `.env`, p
 ## 📄 Licencia
 
 Este es un proyecto MVP. Úsalo como base para tu desarrollo.
-
