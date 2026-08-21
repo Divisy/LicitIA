@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
@@ -79,26 +80,27 @@ def _parse_duration_months(duration: Optional[str]) -> Optional[float]:
     if not duration:
         return None
     lowered = duration.lower()
-    combo = re.search(r"(\d+(?:[.,]\d+)?)\s*meses?\s+y\s+(\d+(?:[.,]\d+)?)\s*d[ií]as?", lowered)
+    normalized = unicodedata.normalize("NFKD", lowered)
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+    combo = re.search(r"(\d+(?:[.,]\d+)?)\s*meses?\s+y\s+(\d+(?:[.,]\d+)?)\s*dias?", normalized)
     if combo:
         months = float(combo.group(1).replace(",", "."))
         days = float(combo.group(2).replace(",", "."))
         return months + (days / 30.0)
 
-    match = lowered.split()
-    if len(match) < 2:
-        return None
-    try:
-        amount = float(match[0].replace(",", "."))
-    except ValueError:
-        return None
-    unit = match[1]
-    if unit.startswith("mes"):
-        return amount
-    if unit.startswith("dia"):
-        return amount / 30.0
-    if unit.startswith("ano") or unit.startswith("año"):
-        return amount * 12.0
+    months_match = re.search(r"(\d+(?:[.,]\d+)?)\s*meses?", normalized)
+    if months_match:
+        return float(months_match.group(1).replace(",", "."))
+
+    days_match = re.search(r"(\d+(?:[.,]\d+)?)\s*dias?", normalized)
+    if days_match:
+        return float(days_match.group(1).replace(",", ".")) / 30.0
+
+    years_match = re.search(r"(\d+(?:[.,]\d+)?)\s*anos?", normalized)
+    if years_match:
+        return float(years_match.group(1).replace(",", ".")) * 12.0
+
     return None
 
 

@@ -123,7 +123,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
       setSummaryLoading(true)
       setSummaryError(null)
       try {
-        const response = await getTenderSummary(tender.id)
+        const response = await getTenderSummary(tender.id, true)
         if (!cancelled) {
           setSummary(response)
         }
@@ -168,9 +168,22 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     const keys =
       SUMMARY_FIELD_KEYS_BY_KIND[summary.contract_kind] || DEFAULT_SUMMARY_FIELD_KEYS
     const byKey = new Map(summary.fields.map((field) => [field.key, field]))
-    return keys.map((key) => byKey.get(key)).filter(
-      (field): field is TenderSummaryField => Boolean(field)
-    )
+    return keys.map((key) => {
+      const field = byKey.get(key)
+      if (field) {
+        return field
+      }
+      return {
+        key,
+        label: SUMMARY_FIELD_LABELS[key] || key,
+        priority: 'P2',
+        source: 'computed',
+        status: 'unavailable' as const,
+        value: null,
+        display_value: null,
+        source_document_id: null,
+      }
+    })
   }, [summary])
 
   const renderSummaryValue = (field: TenderSummaryField) => {

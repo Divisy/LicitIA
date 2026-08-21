@@ -149,6 +149,7 @@ def test_build_summary_omits_aiu_for_interventoria():
 def test_parse_duration_months_for_monthly_cash_flow():
     assert _parse_duration_months("7 meses") == 7.0
     assert _parse_duration_months("2 meses y 15 días") == 2.5
+    assert _parse_duration_months("120 días") == 4.0
     assert _parse_duration_months("Hasta 31 de Diciembre de 2026") is None
 
 
