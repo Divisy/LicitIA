@@ -73,6 +73,72 @@ const SUMMARY_FIELD_LABELS: Record<string, string> = {
   monthly_cost: 'Flujo de caja',
 }
 
+function normalizeDurationText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+function parseDurationMonths(duration: string | null | undefined): number | null {
+  if (!duration) {
+    return null
+  }
+  const text = normalizeDurationText(duration)
+  const combo = text.match(/(\d+(?:[.,]\d+)?)\s*meses?\s+y\s+(\d+(?:[.,]\d+)?)\s*dias?/)
+  if (combo) {
+    const months = parseFloat(combo[1].replace(',', '.'))
+    const days = parseFloat(combo[2].replace(',', '.'))
+    return months + days / 30
+  }
+  const months = text.match(/(\d+(?:[.,]\d+)?)\s*meses?/)
+  if (months) {
+    return parseFloat(months[1].replace(',', '.'))
+  }
+  const days = text.match(/(\d+(?:[.,]\d+)?)\s*dias?/)
+  if (days) {
+    return parseFloat(days[1].replace(',', '.')) / 30
+  }
+  const years = text.match(/(\d+(?:[.,]\d+)?)\s*anos?/)
+  if (years) {
+    return parseFloat(years[1].replace(',', '.')) * 12
+  }
+  return null
+}
+
+function resolveTotalCost(
+  fields: TenderSummaryField[],
+  tenderAmount: number | null | undefined
+): number | null {
+  const total = fields.find((field) => field.key === 'total_cost')
+  if (total?.status === 'available' && total.value != null) {
+    const value = Number(total.value)
+    return Number.isFinite(value) ? value : null
+  }
+  if (tenderAmount != null && tenderAmount > 0) {
+    return tenderAmount
+  }
+  return null
+}
+
+function computeMonthlyCashFlow(
+  fields: TenderSummaryField[],
+  tenderAmount: number | null | undefined
+): number | null {
+  const duration = fields.find((field) => field.key === 'execution_duration')
+  const durationText = String(duration?.display_value || duration?.value || '')
+  const months = parseDurationMonths(durationText)
+  const total = resolveTotalCost(fields, tenderAmount)
+  if (!months || !total) {
+    return null
+  }
+  return Math.round(total / months)
+}
+
+function formatMonthlyCashFlow(amount: number): string {
+  return `$ ${Math.round(amount).toLocaleString('es-CO').replace(/,/g, '.')}/mes`
+}
+
 const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
   tender,
   open,
@@ -169,22 +235,40 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
       SUMMARY_FIELD_KEYS_BY_KIND[summary.contract_kind] || DEFAULT_SUMMARY_FIELD_KEYS
     const byKey = new Map(summary.fields.map((field) => [field.key, field]))
     return keys.map((key) => {
-      const field = byKey.get(key)
-      if (field) {
-        return field
+      let field =
+        byKey.get(key) ||
+        ({
+          key,
+          label: SUMMARY_FIELD_LABELS[key] || key,
+          priority: 'P2',
+          source: 'computed',
+          status: 'unavailable' as const,
+          value: null,
+          display_value: null,
+          source_document_id: null,
+        } as TenderSummaryField)
+
+      if (key === 'monthly_cost') {
+        const computed = computeMonthlyCashFlow(summary.fields, tender?.amount)
+        if (computed != null) {
+          field = {
+            ...field,
+            label: SUMMARY_FIELD_LABELS.monthly_cost,
+            status: 'available',
+            value: computed,
+            display_value: formatMonthlyCashFlow(computed),
+          }
+        } else {
+          field = {
+            ...field,
+            label: SUMMARY_FIELD_LABELS.monthly_cost,
+          }
+        }
       }
-      return {
-        key,
-        label: SUMMARY_FIELD_LABELS[key] || key,
-        priority: 'P2',
-        source: 'computed',
-        status: 'unavailable' as const,
-        value: null,
-        display_value: null,
-        source_document_id: null,
-      }
+
+      return field
     })
-  }, [summary])
+  }, [summary, tender?.amount])
 
   const renderSummaryValue = (field: TenderSummaryField) => {
     if (field.status === 'not_applicable') {
@@ -193,10 +277,8 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     if (field.status === 'unavailable' || !field.display_value) {
       return 'No disponible'
     }
-    if (field.key === 'monthly_cost') {
-      return field.display_value.endsWith('/mes')
-        ? field.display_value
-        : `${field.display_value}/mes`
+    if (field.key === 'monthly_cost' && field.value != null) {
+      return formatMonthlyCashFlow(Number(field.value))
     }
     return field.display_value
   }
