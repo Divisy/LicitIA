@@ -3,7 +3,6 @@ import {
   TextInput,
   DatePicker,
   DatePickerInput,
-  Checkbox,
   Button,
 } from '@carbon/react'
 import {
@@ -22,13 +21,11 @@ interface FiltersBarProps {
   department: string
   companyName: string
   contractKind: ContractKindFilter
-  matchExperience: boolean
   onDateFromChange: (value: string) => void
   onDateToChange: (value: string) => void
   onDepartmentChange: (value: string) => void
   onCompanyNameChange: (value: string) => void
   onContractKindChange: (value: ContractKindFilter) => void
-  onMatchExperienceChange: (value: boolean) => void
   onSubmit: () => void
 }
 
@@ -67,13 +64,11 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
   department,
   companyName,
   contractKind,
-  matchExperience,
   onDateFromChange,
   onDateToChange,
   onDepartmentChange,
   onCompanyNameChange,
   onContractKindChange,
-  onMatchExperienceChange,
   onSubmit,
 }) => {
   const handleDateFromChange = (event: React.SyntheticEvent<HTMLInputElement>) => {
@@ -213,15 +208,6 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
               </div>
             </div>
 
-            <div className="filters-bar-checkboxes">
-              <Checkbox
-                id="match-experience"
-                labelText="Solo coincidencias con experiencia"
-                checked={matchExperience}
-                onChange={(_, { checked }) => onMatchExperienceChange(checked)}
-              />
-            </div>
-
             <div className="filters-bar-actions">
               <Button
                 type="submit"
@@ -234,12 +220,6 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
             </div>
           </div>
         </section>
-
-        {matchExperience && !companyName && (
-          <div className="filters-bar-hint filters-bar-hint--warning">
-            Ingresa el nombre de la empresa para ver coincidencias
-          </div>
-        )}
       </form>
     </div>
   )

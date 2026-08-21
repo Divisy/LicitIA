@@ -38,7 +38,6 @@ const Dashboard: React.FC = () => {
   const [dateTo, setDateTo] = useState<string>('')
   const [department, setDepartment] = useState<string>('')
   const [companyName, setCompanyName] = useState<string>('')
-  const [matchExperience, setMatchExperience] = useState<boolean>(false)
   const [contractKind, setContractKind] = useState<ContractKindFilter>('')
   const [showAll, setShowAll] = useState<boolean>(false)
   const [selectedTender, setSelectedTender] = useState<Tender | null>(null)
@@ -51,7 +50,7 @@ const Dashboard: React.FC = () => {
     setError(null)
     
     try {
-      const limit = loadAll || matchExperience ? 1000 : 50
+      const limit = loadAll ? 1000 : 50
       const effectiveContractKind =
         contractKindOverride !== undefined ? contractKindOverride : contractKind
       
@@ -72,11 +71,7 @@ const Dashboard: React.FC = () => {
       if (effectiveContractKind) {
         params.contract_kind = effectiveContractKind
       }
-      if (matchExperience) {
-        params.match_experience = true
-        params.min_match_score = 0.55
-        params.company_name = companyName.trim() || "BEC"
-      } else if (companyName) {
+      if (companyName) {
         params.company_name = companyName
       }
       
@@ -243,13 +238,11 @@ const Dashboard: React.FC = () => {
             department={department}
             companyName={companyName}
             contractKind={contractKind}
-            matchExperience={matchExperience}
             onDateFromChange={setDateFrom}
             onDateToChange={setDateTo}
             onDepartmentChange={setDepartment}
             onCompanyNameChange={setCompanyName}
             onContractKindChange={handleContractKindChange}
-            onMatchExperienceChange={setMatchExperience}
             onSubmit={handleFilterSubmit}
           />
         </Column>
