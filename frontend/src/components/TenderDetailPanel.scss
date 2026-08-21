@@ -59,12 +59,7 @@
   align-items: center;
   justify-content: space-between;
   gap: $spacing-04;
-}
-
-.tender-detail-panel__summary-groups {
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-05;
+  margin-bottom: $spacing-03;
 }
 
 .tender-detail-panel__summary-list {

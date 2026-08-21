@@ -38,13 +38,18 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   presupuesto: 'Presupuesto',
 }
 
-const SUMMARY_PRIORITY_ORDER = ['P0', 'P1', 'P2', 'P3'] as const
+const SUMMARY_FIELD_KEYS = [
+  'aiu_percentage',
+  'lots_groups',
+  'execution_duration',
+  'advance_payment_percentage',
+] as const
 
-const SUMMARY_PRIORITY_LABELS: Record<string, string> = {
-  P0: 'Información principal',
-  P1: 'Condiciones contractuales',
-  P2: 'Detalle económico y contractual',
-  P3: 'Adjudicación',
+const SUMMARY_FIELD_LABELS: Record<string, string> = {
+  aiu_percentage: 'Porcentaje de AIU',
+  lots_groups: 'Grupos o lotes',
+  execution_duration: 'Duración de la obra',
+  advance_payment_percentage: 'Anticipo',
 }
 
 const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
@@ -135,15 +140,14 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     return groups
   }, [documents])
 
-  const groupedSummaryFields = useMemo(() => {
-    const groups: Record<string, TenderSummaryField[]> = {}
-    for (const field of summary?.fields || []) {
-      if (!groups[field.priority]) {
-        groups[field.priority] = []
-      }
-      groups[field.priority].push(field)
+  const summaryFields = useMemo(() => {
+    if (!summary?.fields) {
+      return []
     }
-    return groups
+    const byKey = new Map(summary.fields.map((field) => [field.key, field]))
+    return SUMMARY_FIELD_KEYS.map((key) => byKey.get(key)).filter(
+      (field): field is TenderSummaryField => Boolean(field)
+    )
   }, [summary])
 
   const renderSummaryValue = (field: TenderSummaryField) => {
@@ -263,28 +267,17 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
             )}
 
             {!summaryLoading && !summaryError && summary && (
-              <div className="tender-detail-panel__summary-groups">
-                {SUMMARY_PRIORITY_ORDER.filter(
-                  (priority) => (groupedSummaryFields[priority] || []).length > 0
-                ).map((priority) => (
-                  <div key={priority} className="tender-detail-panel__summary-group">
-                    <h5 className="tender-detail-panel__group-title">
-                      {SUMMARY_PRIORITY_LABELS[priority] || priority}
-                    </h5>
-                    <dl className="tender-detail-panel__summary-list">
-                      {(groupedSummaryFields[priority] || []).map((field) => (
-                        <div
-                          key={field.key}
-                          className={`tender-detail-panel__summary-item tender-detail-panel__summary-item--${field.status}`}
-                        >
-                          <dt>{field.label}</dt>
-                          <dd>{renderSummaryValue(field)}</dd>
-                        </div>
-                      ))}
-                    </dl>
+              <dl className="tender-detail-panel__summary-list">
+                {summaryFields.map((field) => (
+                  <div
+                    key={field.key}
+                    className={`tender-detail-panel__summary-item tender-detail-panel__summary-item--${field.status}`}
+                  >
+                    <dt>{SUMMARY_FIELD_LABELS[field.key] || field.label}</dt>
+                    <dd>{renderSummaryValue(field)}</dd>
                   </div>
                 ))}
-              </div>
+              </dl>
             )}
           </section>
 
