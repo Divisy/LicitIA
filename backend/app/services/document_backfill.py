@@ -13,12 +13,14 @@ from app.models.tender_document import TenderDocument
 from app.services.document_extraction import (
     count_pending_document_extractions,
     count_processed_tenders_for_resync,
+    deduplicate_visible_documents,
     extract_compressed_documents_for_tender,
     extract_documents_for_pending_tenders,
     processed_document_resync_query,
     resync_documents_for_processed_tenders,
 )
 from app.services.document_storage import get_document_storage
+from app.services.secop_document_filters import normalize_document_filename
 
 logger = get_logger(__name__)
 
@@ -64,6 +66,63 @@ def reconcile_orphan_documents(db: Session, fix: bool = False) -> dict[str, int]
         if not tender.documents:
             tender.documents_extraction_attempted_at = None
             stats["tenders_flagged_for_retry"] += 1
+
+    db.commit()
+    return stats
+
+
+def reconcile_duplicate_documents(db: Session, fix: bool = False) -> dict[str, int]:
+    """
+    Remove duplicate tender_documents rows that share type + normalized filename.
+
+    SECOP may publish multiple catalog ids for the same file. Keeps the newest row
+    and deletes duplicate metadata plus unused blobs from storage.
+    """
+    storage = get_document_storage()
+    groups: dict[tuple, list[TenderDocument]] = {}
+    for document in db.query(TenderDocument).order_by(TenderDocument.created_at.asc()).all():
+        key = (
+            document.tender_id,
+            document.document_type,
+            normalize_document_filename(document.file_name),
+        )
+        groups.setdefault(key, []).append(document)
+
+    duplicates: list[TenderDocument] = []
+    duplicate_groups = 0
+    keeper_paths: set[str] = set()
+
+    for group in groups.values():
+        if len(group) == 1:
+            keeper_paths.add(group[0].file_path)
+            continue
+        duplicate_groups += 1
+        keeper = deduplicate_visible_documents(group)[0]
+        keeper_paths.add(keeper.file_path)
+        duplicates.extend(document for document in group if document.id != keeper.id)
+
+    stats = {
+        "duplicate_groups": duplicate_groups,
+        "duplicate_rows": len(duplicates),
+        "blobs_deleted": 0,
+        "rows_deleted": 0,
+    }
+    if not fix or not duplicates:
+        return stats
+
+    for duplicate in duplicates:
+        if duplicate.file_path not in keeper_paths:
+            try:
+                storage.delete_object(duplicate.file_path)
+                stats["blobs_deleted"] += 1
+            except Exception as exc:
+                logger.warning(
+                    "Failed to delete duplicate blob %s: %s",
+                    duplicate.file_path,
+                    exc,
+                )
+        db.delete(duplicate)
+        stats["rows_deleted"] += 1
 
     db.commit()
     return stats

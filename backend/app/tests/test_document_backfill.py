@@ -5,7 +5,12 @@ from uuid import uuid4
 
 from app.models.tender import Tender, TenderSource
 from app.services.document_extraction import extract_documents_for_tender
-from app.services.document_backfill import reconcile_orphan_documents, reset_document_extraction_attempts, run_document_resync
+from app.services.document_backfill import (
+    reconcile_duplicate_documents,
+    reconcile_orphan_documents,
+    reset_document_extraction_attempts,
+    run_document_resync,
+)
 from app.services.document_extraction import resync_documents_for_processed_tenders
 
 
@@ -167,4 +172,41 @@ def test_resync_adds_missing_documents(
     assert stats["documents_added"] == 1
     assert stats["documents_updated"] == 1
     assert stats["tenders_with_new_docs"] == 1
+    db.commit.assert_called_once()
+
+
+@patch("app.services.document_backfill.get_document_storage")
+def test_reconcile_duplicate_documents_fix(mock_storage_factory):
+    storage = MagicMock()
+    mock_storage_factory.return_value = storage
+
+    tender_id = uuid4()
+    older = MagicMock()
+    older.id = uuid4()
+    older.tender_id = tender_id
+    older.document_type = "pliego_condiciones"
+    older.file_name = "Documento Base.docx"
+    older.file_path = "CO1.REQ.1/pliego/old.docx"
+    older.downloaded_at = datetime(2026, 1, 1)
+    older.created_at = datetime(2026, 1, 1)
+
+    newer = MagicMock()
+    newer.id = uuid4()
+    newer.tender_id = tender_id
+    newer.document_type = "pliego_condiciones"
+    newer.file_name = "Documento Base.docx"
+    newer.file_path = "CO1.REQ.1/pliego/new.docx"
+    newer.downloaded_at = datetime(2026, 2, 1)
+    newer.created_at = datetime(2026, 2, 1)
+
+    db = MagicMock()
+    db.query.return_value.order_by.return_value.all.return_value = [older, newer]
+
+    stats = reconcile_duplicate_documents(db, fix=True)
+
+    assert stats["duplicate_groups"] == 1
+    assert stats["duplicate_rows"] == 1
+    assert stats["rows_deleted"] == 1
+    assert stats["blobs_deleted"] == 1
+    db.delete.assert_called_once_with(older)
     db.commit.assert_called_once()
