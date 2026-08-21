@@ -66,6 +66,34 @@ _KEYWORD_RULES: list[tuple[DocumentType, tuple[str, ...]]] = [
     ),
 ]
 
+# Explicit naming patterns that must win over generic pliego words in the same filename
+# (e.g. "Presupuesto Oficial … Proyecto Prepliegos" or "Anexo Técnico … Proyecto Pliegos").
+_STRONG_PRESUPUESTO_KEYWORDS: tuple[str, ...] = (
+    "presupuesto oficial",
+    "formulario 1",
+    "formul1 presupuesto",
+    "formulario presupuesto",
+    "propuesta economica",
+    "propuesta económica",
+    "formulario economico",
+    "formulario económico",
+    "oferta economica",
+    "oferta económica",
+)
+
+_STRONG_ANEXO_KEYWORDS: tuple[str, ...] = (
+    "anexo tecnico",
+    "anexo técnico",
+    "anexos tecnicos",
+    "anexos técnicos",
+    "especificaciones tecnicas",
+    "especificaciones técnicas",
+    "especificaciones generales",
+    "estudio del sector",
+    "analisis del sector",
+    "análisis del sector",
+)
+
 # Word-level fallbacks when no phrase keyword matches (order: pliego → anexo → presupuesto).
 _FALLBACK_RULES: list[tuple[DocumentType, tuple[re.Pattern[str], ...]]] = [
     (
@@ -110,6 +138,11 @@ def normalize_document_filename(file_name: str) -> str:
 def classify_document(filename: str, description: Optional[str] = None) -> DocumentType:
     """Classify a SECOP document by filename and optional description."""
     haystack = _normalize_text(f"{filename} {description or ''}")
+
+    if any(keyword in haystack for keyword in _STRONG_PRESUPUESTO_KEYWORDS):
+        return DocumentType.PRESUPUESTO
+    if any(keyword in haystack for keyword in _STRONG_ANEXO_KEYWORDS):
+        return DocumentType.ANEXO_TECNICO
 
     for doc_type, keywords in _KEYWORD_RULES:
         if any(keyword in haystack for keyword in keywords):

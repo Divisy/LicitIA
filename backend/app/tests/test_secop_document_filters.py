@@ -65,6 +65,25 @@ def test_classify_real_world_cases():
     assert classify_document("AVISO DE CONVOCATORIA.pdf") == DocumentType.OTRO
 
 
+def test_classify_presupuesto_wins_over_prepliegos_in_filename():
+    assert classify_document(
+        "Presupuesto Oficial - Formulario 1 - Proyecto Prepliegos - Dragado Bocas Rio Atrato.xlsx"
+    ) == DocumentType.PRESUPUESTO
+
+
+def test_classify_anexo_wins_over_proyecto_pliegos_in_filename():
+    assert classify_document(
+        "Anexo 1 - Anexo Tecnico -Proyecto Pliegos- Interventoria - Dragado Bocas Rio Atrato.pdf"
+    ) == DocumentType.ANEXO_TECNICO
+    assert classify_document(
+        "Estudios Previos y Analisis del Sector - Proyecto Pliegos-Interventoria - Dragado Bocas Rio Atrato.pdf"
+    ) == DocumentType.ANEXO_TECNICO
+
+
+def test_classify_anexo_al_pliego_stays_pliego():
+    assert classify_document("ANEXO AL PLIEGO.pdf") == DocumentType.PLIEGO_CONDICIONES
+
+
 def test_classify_otro():
     assert classify_document("Aviso de Convocatoria.pdf") == DocumentType.OTRO
     assert classify_document("CDP 2026.pdf") == DocumentType.OTRO
