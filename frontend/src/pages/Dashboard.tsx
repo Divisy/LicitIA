@@ -43,12 +43,17 @@ const Dashboard: React.FC = () => {
   const [showAll, setShowAll] = useState<boolean>(false)
   const [selectedTender, setSelectedTender] = useState<Tender | null>(null)
   
-  const fetchTenders = async (loadAll: boolean = false) => {
+  const fetchTenders = async (
+    loadAll: boolean = false,
+    contractKindOverride?: ContractKindFilter
+  ) => {
     setLoading(true)
     setError(null)
     
     try {
       const limit = loadAll || matchExperience ? 1000 : 50
+      const effectiveContractKind =
+        contractKindOverride !== undefined ? contractKindOverride : contractKind
       
       const params: TenderFilters = {
         limit: limit,
@@ -64,8 +69,8 @@ const Dashboard: React.FC = () => {
       if (department) {
         params.department = department
       }
-      if (contractKind) {
-        params.contract_kind = contractKind
+      if (effectiveContractKind) {
+        params.contract_kind = effectiveContractKind
       }
       if (matchExperience) {
         params.match_experience = true
@@ -176,6 +181,12 @@ const Dashboard: React.FC = () => {
     setShowAll(false)
     fetchTenders(false)
   }
+
+  const handleContractKindChange = (value: ContractKindFilter) => {
+    setContractKind(value)
+    setShowAll(false)
+    fetchTenders(false, value)
+  }
   
   const handleLoadAll = () => {
     setShowAll(true)
@@ -237,7 +248,7 @@ const Dashboard: React.FC = () => {
             onDateToChange={setDateTo}
             onDepartmentChange={setDepartment}
             onCompanyNameChange={setCompanyName}
-            onContractKindChange={setContractKind}
+            onContractKindChange={handleContractKindChange}
             onMatchExperienceChange={setMatchExperience}
             onSubmit={handleFilterSubmit}
           />
