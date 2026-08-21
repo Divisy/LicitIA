@@ -51,6 +51,12 @@ class Tender(Base):
         back_populates="tender",
         cascade="all, delete-orphan",
     )
+    summary = relationship(
+        "TenderSummary",
+        back_populates="tender",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     @property
     def location(self) -> Optional[str]:

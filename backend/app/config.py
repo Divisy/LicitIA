@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     ARCHIVE_MAX_FILES: int = 200
     ARCHIVE_MAX_DEPTH: int = 1
 
+    # Tender summary extraction (US 1.4)
+    TENDER_SUMMARY_EXTRACTION_ENABLED: bool = True
+
     # Document storage backend: local (Railway Volume) or r2 (Cloudflare R2)
     DOCUMENT_STORAGE_BACKEND: str = "local"
     # When using R2, keep a copy on the local volume (default: false to save disk)

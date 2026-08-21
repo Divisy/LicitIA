@@ -228,6 +228,37 @@ export function getTenderDocumentDownloadUrl(
   return `${API_BASE_URL}/tenders/${tenderId}/documents/${documentId}/download`;
 }
 
+export interface TenderSummaryField {
+  key: string;
+  label: string;
+  priority: string;
+  source: string;
+  status: 'available' | 'not_applicable' | 'unavailable';
+  value: unknown;
+  display_value: string | null;
+  source_document_id: string | null;
+}
+
+export interface TenderSummary {
+  tender_id: string;
+  contract_kind: string;
+  contract_kind_label: string;
+  extracted_at: string;
+  fields: TenderSummaryField[];
+  cached: boolean;
+}
+
+export async function getTenderSummary(
+  tenderId: string,
+  refresh = false
+): Promise<TenderSummary> {
+  const response = await client.get<TenderSummary>(
+    `/tenders/${tenderId}/summary`,
+    { params: refresh ? { refresh: true } : undefined }
+  );
+  return response.data;
+}
+
 export interface ExcelImportResponse {
   imported: number;
   errors: string[];

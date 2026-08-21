@@ -19,7 +19,11 @@ from app.schemas.tender import (
     TenderDocumentResponse,
     TenderDocumentListResponse,
 )
+from app.config import settings
+from app.models.tender_summary import TenderSummary
+from app.schemas.tender_summary import TenderSummaryResponse, TenderSummaryFieldResponse
 from app.services.experience_matching import match_tender_against_experiences, MIN_MATCH_THRESHOLD
+from app.services.tender_summary.service import build_tender_summary, persist_tender_summary
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -273,4 +277,42 @@ async def download_tender_document(
         raise HTTPException(status_code=400, detail="Invalid document path")
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Document file not found on server")
+
+
+@router.get("/tenders/{tender_id}/summary", response_model=TenderSummaryResponse)
+async def get_tender_summary(
+    tender_id: UUID,
+    refresh: bool = Query(False, description="Recompute summary from stored documents"),
+    db: Session = Depends(get_db),
+):
+    """Return extracted general tender information (US 1.4)."""
+    if not settings.TENDER_SUMMARY_EXTRACTION_ENABLED:
+        raise HTTPException(status_code=503, detail="Tender summary extraction is disabled")
+
+    tender = db.query(Tender).filter(Tender.id == tender_id).first()
+    if not tender:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
+    cached = None if refresh else db.query(TenderSummary).filter(TenderSummary.tender_id == tender_id).first()
+    if cached and cached.summary_json:
+        payload = cached.summary_json
+        return TenderSummaryResponse(
+            tender_id=tender.id,
+            contract_kind=payload["contract_kind"],
+            contract_kind_label=payload["contract_kind_label"],
+            extracted_at=cached.extracted_at,
+            fields=[TenderSummaryFieldResponse(**field) for field in payload["fields"]],
+            cached=True,
+        )
+
+    payload = build_tender_summary(tender)
+    record = persist_tender_summary(db, tender, payload)
+    return TenderSummaryResponse(
+        tender_id=tender.id,
+        contract_kind=payload["contract_kind"],
+        contract_kind_label=payload["contract_kind_label"],
+        extracted_at=record.extracted_at,
+        fields=[TenderSummaryFieldResponse(**field) for field in payload["fields"]],
+        cached=False,
+    )
 

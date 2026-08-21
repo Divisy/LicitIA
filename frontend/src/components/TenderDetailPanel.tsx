@@ -12,8 +12,11 @@ import { Download, Launch, Document } from '@carbon/icons-react'
 import {
   Tender,
   TenderDocument,
+  TenderSummary,
+  TenderSummaryField,
   getTenderDocuments,
   getTenderDocumentDownloadUrl,
+  getTenderSummary,
 } from '../api/client'
 import './TenderDetailPanel.scss'
 
@@ -35,19 +38,33 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   presupuesto: 'Presupuesto',
 }
 
+const SUMMARY_PRIORITY_ORDER = ['P0', 'P1', 'P2', 'P3'] as const
+
+const SUMMARY_PRIORITY_LABELS: Record<string, string> = {
+  P0: 'Información principal',
+  P1: 'Condiciones contractuales',
+  P2: 'Detalle económico y contractual',
+  P3: 'Adjudicación',
+}
+
 const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
   tender,
   open,
   onClose,
 }) => {
   const [documents, setDocuments] = useState<TenderDocument[]>([])
+  const [summary, setSummary] = useState<TenderSummary | null>(null)
   const [loading, setLoading] = useState(false)
+  const [summaryLoading, setSummaryLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open || !tender) {
       setDocuments([])
+      setSummary(null)
       setError(null)
+      setSummaryError(null)
       return
     }
 
@@ -76,7 +93,32 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
       }
     }
 
+    const loadSummary = async () => {
+      setSummaryLoading(true)
+      setSummaryError(null)
+      try {
+        const response = await getTenderSummary(tender.id)
+        if (!cancelled) {
+          setSummary(response)
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setSummaryError(
+            err?.response?.data?.detail ||
+              err?.message ||
+              'No se pudo cargar la información general'
+          )
+          setSummary(null)
+        }
+      } finally {
+        if (!cancelled) {
+          setSummaryLoading(false)
+        }
+      }
+    }
+
     loadDocuments()
+    loadSummary()
     return () => {
       cancelled = true
     }
@@ -92,6 +134,27 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     }
     return groups
   }, [documents])
+
+  const groupedSummaryFields = useMemo(() => {
+    const groups: Record<string, TenderSummaryField[]> = {}
+    for (const field of summary?.fields || []) {
+      if (!groups[field.priority]) {
+        groups[field.priority] = []
+      }
+      groups[field.priority].push(field)
+    }
+    return groups
+  }, [summary])
+
+  const renderSummaryValue = (field: TenderSummaryField) => {
+    if (field.status === 'not_applicable') {
+      return field.display_value || 'No aplica'
+    }
+    if (field.status === 'unavailable' || !field.display_value) {
+      return 'No disponible'
+    }
+    return field.display_value
+  }
 
   const formatDate = (dateString: string | null): string => {
     if (!dateString) return 'N/A'
@@ -175,6 +238,54 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
             >
               Ver proceso en SECOP
             </Link>
+          </section>
+
+          <section className="tender-detail-panel__summary-info">
+            <div className="tender-detail-panel__summary-info-header">
+              <h4 className="tender-detail-panel__documents-title">Información general</h4>
+              {summary?.contract_kind_label && (
+                <Tag type="gray" size="sm">
+                  {summary.contract_kind_label}
+                </Tag>
+              )}
+            </div>
+
+            {summaryLoading && (
+              <div className="tender-detail-panel__loading">
+                <Loading description="Extrayendo información..." withOverlay={false} small />
+              </div>
+            )}
+
+            {!summaryLoading && summaryError && (
+              <Tile className="tender-detail-panel__empty">
+                <p>{summaryError}</p>
+              </Tile>
+            )}
+
+            {!summaryLoading && !summaryError && summary && (
+              <div className="tender-detail-panel__summary-groups">
+                {SUMMARY_PRIORITY_ORDER.filter(
+                  (priority) => (groupedSummaryFields[priority] || []).length > 0
+                ).map((priority) => (
+                  <div key={priority} className="tender-detail-panel__summary-group">
+                    <h5 className="tender-detail-panel__group-title">
+                      {SUMMARY_PRIORITY_LABELS[priority] || priority}
+                    </h5>
+                    <dl className="tender-detail-panel__summary-list">
+                      {(groupedSummaryFields[priority] || []).map((field) => (
+                        <div
+                          key={field.key}
+                          className={`tender-detail-panel__summary-item tender-detail-panel__summary-item--${field.status}`}
+                        >
+                          <dt>{field.label}</dt>
+                          <dd>{renderSummaryValue(field)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="tender-detail-panel__documents">
