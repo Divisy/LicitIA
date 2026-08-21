@@ -22,8 +22,47 @@ from app.services.secop_documents import (
 from app.services.archive_extraction import extract_archives_for_tender
 from app.services.document_storage import get_document_storage
 from app.services.secop_client import fetch_portfolio_id_for_external_id
+from app.services.secop_document_filters import normalize_document_filename
 
 logger = get_logger(__name__)
+
+
+def deduplicate_visible_documents(documents: list[TenderDocument]) -> list[TenderDocument]:
+    """Keep one row per document type + normalized filename (SECOP may publish duplicates)."""
+    best_by_key: dict[tuple[str, str], TenderDocument] = {}
+    for document in documents:
+        key = (document.document_type, normalize_document_filename(document.file_name))
+        current = best_by_key.get(key)
+        if current is None:
+            best_by_key[key] = document
+            continue
+        current_ts = current.downloaded_at or current.created_at
+        candidate_ts = document.downloaded_at or document.created_at
+        if candidate_ts and (current_ts is None or candidate_ts >= current_ts):
+            best_by_key[key] = document
+    return sorted(
+        best_by_key.values(),
+        key=lambda doc: (doc.document_type, doc.file_name.lower()),
+    )
+
+
+def _find_duplicate_by_filename(
+    db: Session,
+    tender: Tender,
+    document: SecopDocumentDTO,
+) -> Optional[TenderDocument]:
+    normalized_name = normalize_document_filename(document.file_name)
+    for existing in (
+        db.query(TenderDocument)
+        .filter(
+            TenderDocument.tender_id == tender.id,
+            TenderDocument.document_type == document.document_type.value,
+        )
+        .all()
+    ):
+        if normalize_document_filename(existing.file_name) == normalized_name:
+            return existing
+    return None
 
 
 @dataclass
@@ -139,6 +178,19 @@ def _upsert_document_record(
         existing.downloaded_at = datetime.utcnow()
         existing.updated_at = datetime.utcnow()
         return existing, False
+
+    duplicate = _find_duplicate_by_filename(db, tender, document)
+    if duplicate:
+        duplicate.external_document_id = document.external_document_id
+        duplicate.file_name = document.file_name
+        duplicate.file_path = relative_path
+        duplicate.download_url = document.download_url
+        duplicate.file_size = document.file_size
+        duplicate.extension = document.extension
+        duplicate.description = document.description
+        duplicate.downloaded_at = datetime.utcnow()
+        duplicate.updated_at = datetime.utcnow()
+        return duplicate, False
 
     record = TenderDocument(
         tender_id=tender.id,

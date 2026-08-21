@@ -102,6 +102,11 @@ def _normalize_text(value: str) -> str:
     return text.strip()
 
 
+def normalize_document_filename(file_name: str) -> str:
+    """Normalize a filename for duplicate detection across SECOP catalog versions."""
+    return _normalize_text(file_name)
+
+
 def classify_document(filename: str, description: Optional[str] = None) -> DocumentType:
     """Classify a SECOP document by filename and optional description."""
     haystack = _normalize_text(f"{filename} {description or ''}")
