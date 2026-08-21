@@ -60,6 +60,45 @@ def test_extract_pliego_fields_from_text():
     assert result.lots_groups == "Sí"
 
 
+def test_extract_plazo_from_table_with_spanish_words():
+    text = """
+    PRESUPUESTO OFICIAL, PLAZO Y UBICACION
+    Plazo del contrato
+    MEJORAMIENTO VIAL DEL ACCESO BARRIO LA CARPA
+    DOS MESES Y QUINCE DIAS
+    MIL CUATROCIENTOS DIECINUEVE MILLONES
+    """
+    result = extract_from_pliego_text(text)
+    assert result.execution_duration == "2 meses y 15 días"
+
+
+def test_extract_plazo_until_date():
+    text = """
+    PLAZO Y UBICACION
+    Plazo del contrato HASTA 31 DE DICIEMBRE DE 2026
+    """
+    result = extract_from_pliego_text(text)
+    assert result.execution_duration == "Hasta 31 de Diciembre de 2026"
+
+
+def test_extract_pliego_from_real_local_pdf():
+    from pathlib import Path
+
+    from pypdf import PdfReader
+
+    pdf = Path(
+        "storage/documents/CO1.REQ.10533907/pliego_condiciones/"
+        "811207733_Documento Base - Licitacion - Cucuta Pto Sder - Proyecto de Pliego.pdf"
+    )
+    if not pdf.is_file():
+        return
+
+    reader = PdfReader(str(pdf))
+    text = "\n".join((page.extract_text() or "") for page in reader.pages[:35])
+    result = extract_from_pliego_text(text)
+    assert result.execution_duration == "Hasta 31 de Diciembre de 2026"
+
+
 def test_build_summary_marks_aiu_not_applicable_for_interventoria():
     tender = _tender()
     summary = build_tender_summary(tender)

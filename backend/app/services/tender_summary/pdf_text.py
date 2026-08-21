@@ -9,7 +9,7 @@ from app.models.tender_document import TenderDocument
 from app.services.document_storage import DocumentStorageService
 
 logger = get_logger(__name__)
-_MAX_PAGES = 12
+_MAX_PAGES = 35
 
 
 def extract_pdf_text(document: TenderDocument, storage: DocumentStorageService) -> str:

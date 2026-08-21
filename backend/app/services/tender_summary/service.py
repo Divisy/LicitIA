@@ -1,6 +1,7 @@
 """Build structured tender summary payload (US 1.4)."""
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
@@ -77,7 +78,14 @@ def _visible_documents(tender: Tender) -> list[TenderDocument]:
 def _parse_duration_months(duration: Optional[str]) -> Optional[float]:
     if not duration:
         return None
-    match = duration.lower().split()
+    lowered = duration.lower()
+    combo = re.search(r"(\d+(?:[.,]\d+)?)\s*meses?\s+y\s+(\d+(?:[.,]\d+)?)\s*d[ií]as?", lowered)
+    if combo:
+        months = float(combo.group(1).replace(",", "."))
+        days = float(combo.group(2).replace(",", "."))
+        return months + (days / 30.0)
+
+    match = lowered.split()
     if len(match) < 2:
         return None
     try:
