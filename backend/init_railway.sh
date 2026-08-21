@@ -98,6 +98,23 @@ with engine.begin() as conn:
     if not table_exists:
         raise RuntimeError("tender_documents table was not created")
 
+    conn.execute(text(
+        """
+        CREATE TABLE IF NOT EXISTS tender_summaries (
+            tender_id UUID PRIMARY KEY REFERENCES tenders(id) ON DELETE CASCADE,
+            contract_kind VARCHAR(50) NOT NULL DEFAULT 'desconocido',
+            summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            extracted_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+        """
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_tender_summaries_contract_kind "
+        "ON tender_summaries (contract_kind)"
+    ))
+
 EOF
 
 echo "Migrations completed successfully"
