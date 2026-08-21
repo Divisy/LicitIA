@@ -82,6 +82,14 @@
   }
 }
 
+.tender-detail-panel__summary-hint {
+  display: block;
+  @include type-style('label-01');
+  color: var(--cds-text-helper);
+  font-weight: 400;
+  margin-top: $spacing-01;
+}
+
 .tender-detail-panel__summary-item--unavailable dd,
 .tender-detail-panel__summary-item--not_applicable dd {
   color: var(--cds-text-secondary);

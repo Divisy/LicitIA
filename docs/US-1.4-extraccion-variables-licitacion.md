@@ -20,7 +20,7 @@ Mostrar en el detalle de cada licitación la información general acordada, con 
 | P2 | Precios con ajuste | Pliego PDF |
 | P2 | Grupos o lotes | Pliego PDF |
 | P2 | Relación contrato vs presupuesto | Pliego + presupuesto |
-| P2 | Costo mensual | Calculado (`costo_total ÷ duración en meses`) |
+| P2 | Flujo de caja mensual (est.) | Calculado (`costo_total ÷ duración en meses`) — aproximación de desembolso mensual lineal |
 | P3 | Fecha adjudicación | Pliego PDF (SECOP cuando exista) |
 
 ## Regla AIU

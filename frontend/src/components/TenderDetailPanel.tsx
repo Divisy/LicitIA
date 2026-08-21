@@ -45,10 +45,21 @@ const SUMMARY_FIELD_KEYS_BY_KIND: Record<string, readonly string[]> = {
     'execution_duration',
     'advance_payment_percentage',
     'payment_method',
+    'monthly_cost',
   ],
-  interventoria: ['lots_groups', 'execution_duration', 'payment_method'],
-  estudios_disenos: ['lots_groups', 'execution_duration', 'payment_method'],
-  desconocido: ['lots_groups', 'execution_duration', 'payment_method'],
+  interventoria: [
+    'lots_groups',
+    'execution_duration',
+    'payment_method',
+    'monthly_cost',
+  ],
+  estudios_disenos: [
+    'lots_groups',
+    'execution_duration',
+    'payment_method',
+    'monthly_cost',
+  ],
+  desconocido: ['lots_groups', 'execution_duration', 'payment_method', 'monthly_cost'],
 }
 
 const DEFAULT_SUMMARY_FIELD_KEYS = SUMMARY_FIELD_KEYS_BY_KIND.desconocido
@@ -59,6 +70,7 @@ const SUMMARY_FIELD_LABELS: Record<string, string> = {
   execution_duration: 'Duración de la obra',
   advance_payment_percentage: 'Anticipo',
   payment_method: 'Forma de pago',
+  monthly_cost: 'Flujo de caja mensual (est.)',
 }
 
 const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
@@ -284,7 +296,14 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                     key={field.key}
                     className={`tender-detail-panel__summary-item tender-detail-panel__summary-item--${field.status}`}
                   >
-                    <dt>{SUMMARY_FIELD_LABELS[field.key] || field.label}</dt>
+                          <dt>
+                            {SUMMARY_FIELD_LABELS[field.key] || field.label}
+                            {field.key === 'monthly_cost' && (
+                              <span className="tender-detail-panel__summary-hint">
+                                Costo total ÷ duración en meses
+                              </span>
+                            )}
+                          </dt>
                     <dd>{renderSummaryValue(field)}</dd>
                   </div>
                 ))}

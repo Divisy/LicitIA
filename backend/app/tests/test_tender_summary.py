@@ -5,7 +5,7 @@ from uuid import uuid4
 from app.models.tender import Tender, TenderSource
 from app.services.tender_summary.contract_kind import ContractKind, detect_contract_kind
 from app.services.tender_summary.pliego_extraction import extract_from_pliego_text
-from app.services.tender_summary.service import build_tender_summary
+from app.services.tender_summary.service import _parse_duration_months, build_tender_summary
 
 
 def _tender(**kwargs) -> Tender:
@@ -144,6 +144,12 @@ def test_build_summary_omits_aiu_for_interventoria():
     assert "aiu_percentage" not in keys
     assert "advance_payment_percentage" not in keys
     assert summary["contract_kind"] == "interventoria"
+
+
+def test_parse_duration_months_for_monthly_cash_flow():
+    assert _parse_duration_months("7 meses") == 7.0
+    assert _parse_duration_months("2 meses y 15 días") == 2.5
+    assert _parse_duration_months("Hasta 31 de Diciembre de 2026") is None
 
 
 def test_build_summary_includes_secop_fields():

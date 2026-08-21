@@ -316,7 +316,7 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
             ),
             _field(
                 key="monthly_cost",
-                label="Costo mensual estimado",
+                label="Flujo de caja mensual estimado",
                 priority="P2",
                 source="computed",
                 status="available" if monthly_cost is not None else "unavailable",
