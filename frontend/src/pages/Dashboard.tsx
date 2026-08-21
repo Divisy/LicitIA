@@ -16,7 +16,7 @@ import OnboardingBanner from '../components/onboarding/OnboardingBanner'
 import EmptyState from '../components/empty-states/EmptyState'
 import Logo from '../components/Logo'
 import { useOnboarding } from '../hooks/useOnboarding'
-import { getTenders, Tender, TenderFilters } from '../api/client'
+import { getTenders, Tender, TenderFilters, ContractKindFilter } from '../api/client'
 import './Dashboard.scss'
 
 const Dashboard: React.FC = () => {
@@ -39,7 +39,7 @@ const Dashboard: React.FC = () => {
   const [department, setDepartment] = useState<string>('')
   const [companyName, setCompanyName] = useState<string>('')
   const [matchExperience, setMatchExperience] = useState<boolean>(false)
-  const [onlyInterventoria, setOnlyInterventoria] = useState<boolean>(false)
+  const [contractKind, setContractKind] = useState<ContractKindFilter>('')
   const [showAll, setShowAll] = useState<boolean>(false)
   const [selectedTender, setSelectedTender] = useState<Tender | null>(null)
   
@@ -64,8 +64,8 @@ const Dashboard: React.FC = () => {
       if (department) {
         params.department = department
       }
-      if (onlyInterventoria) {
-        params.only_interventoria = true
+      if (contractKind) {
+        params.contract_kind = contractKind
       }
       if (matchExperience) {
         params.match_experience = true
@@ -231,14 +231,14 @@ const Dashboard: React.FC = () => {
             dateTo={dateTo}
             department={department}
             companyName={companyName}
+            contractKind={contractKind}
             matchExperience={matchExperience}
-            onlyInterventoria={onlyInterventoria}
             onDateFromChange={setDateFrom}
             onDateToChange={setDateTo}
             onDepartmentChange={setDepartment}
             onCompanyNameChange={setCompanyName}
+            onContractKindChange={setContractKind}
             onMatchExperienceChange={setMatchExperience}
-            onOnlyInterventoriaChange={setOnlyInterventoria}
             onSubmit={handleFilterSubmit}
           />
         </Column>

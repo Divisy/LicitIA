@@ -35,12 +35,33 @@ def test_detect_contract_kind_interventoria():
     assert detect_contract_kind(tender) == ContractKind.INTERVENTORIA
 
 
+def test_detect_contract_kind_interventoria_obra():
+    tender = _tender(object_text="Interventoria tecnica de la ejecucion de obra vial")
+    assert detect_contract_kind(tender) == ContractKind.INTERVENTORIA
+
+
 def test_detect_contract_kind_ejecucion_obra():
     tender = _tender(
         object_text="Construccion y mejoramiento de vias urbanas",
         contract_type="Obra",
     )
     assert detect_contract_kind(tender) == ContractKind.EJECUCION_OBRA
+
+
+def test_detect_contract_kind_ejecucion_obra_with_estudios():
+    tender = _tender(
+        object_text="Estudios y diseños y construccion de puente vehicular",
+        contract_type="Obra",
+    )
+    assert detect_contract_kind(tender) == ContractKind.EJECUCION_OBRA
+
+
+def test_detect_contract_kind_estudios_disenos():
+    tender = _tender(
+        object_text="Consultoria para estudios de prefactibilidad vial",
+        contract_type="Prestacion de servicios",
+    )
+    assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS
 
 
 def test_extract_pliego_fields_from_text():

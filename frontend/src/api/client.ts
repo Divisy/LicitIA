@@ -108,10 +108,17 @@ export interface TenderListResponse {
   offset: number;
 }
 
+export type ContractKindFilter =
+  | ''
+  | 'estudios_disenos'
+  | 'interventoria'
+  | 'ejecucion_obra'
+
 export interface TenderFilters {
   department?: string;
   contract_type?: string;
   contract_modality?: string;
+  contract_kind?: ContractKindFilter;
   date_from?: string;
   date_to?: string;
   match_experience?: boolean;
@@ -135,6 +142,9 @@ export async function getTenders(
   }
   if (filters.contract_modality) {
     params.append("contract_modality", filters.contract_modality);
+  }
+  if (filters.contract_kind) {
+    params.append("contract_kind", filters.contract_kind);
   }
   if (filters.date_from) {
     params.append("date_from", filters.date_from);

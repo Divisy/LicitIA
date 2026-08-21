@@ -33,6 +33,10 @@
 .filters-bar-field {
   flex: 0 0 auto;
   min-width: 140px;
+
+  &--category {
+    min-width: 220px;
+  }
   
   .cds--date-picker,
   .cds--text-input-wrapper {

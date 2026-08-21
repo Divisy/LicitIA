@@ -1,16 +1,15 @@
 import React from 'react'
 import { 
-  Grid, 
-  Column, 
   TextInput, 
   DatePicker, 
   DatePickerInput,
   Checkbox,
   Button,
-  Tile,
-  FormGroup
+  Select,
+  SelectItem,
 } from '@carbon/react'
-import { Search, Filter } from '@carbon/icons-react'
+import { Search } from '@carbon/icons-react'
+import { ContractKindFilter } from '../api/client'
 import './FiltersBar.scss'
 
 interface FiltersBarProps {
@@ -18,30 +17,37 @@ interface FiltersBarProps {
   dateTo: string
   department: string
   companyName: string
+  contractKind: ContractKindFilter
   matchExperience: boolean
-  onlyInterventoria: boolean
   onDateFromChange: (value: string) => void
   onDateToChange: (value: string) => void
   onDepartmentChange: (value: string) => void
   onCompanyNameChange: (value: string) => void
+  onContractKindChange: (value: ContractKindFilter) => void
   onMatchExperienceChange: (value: boolean) => void
-  onOnlyInterventoriaChange: (value: boolean) => void
   onSubmit: () => void
 }
+
+const CONTRACT_KIND_OPTIONS: { value: ContractKindFilter; label: string }[] = [
+  { value: '', label: 'Todas las categorías' },
+  { value: 'estudios_disenos', label: 'Estudios y diseños' },
+  { value: 'interventoria', label: 'Interventoría' },
+  { value: 'ejecucion_obra', label: 'Ejecución de obra' },
+]
 
 const FiltersBar: React.FC<FiltersBarProps> = ({
   dateFrom,
   dateTo,
   department,
   companyName,
+  contractKind,
   matchExperience,
-  onlyInterventoria,
   onDateFromChange,
   onDateToChange,
   onDepartmentChange,
   onCompanyNameChange,
+  onContractKindChange,
   onMatchExperienceChange,
-  onOnlyInterventoriaChange,
   onSubmit,
 }) => {
   const handleDateFromChange = (event: React.SyntheticEvent<HTMLInputElement>) => {
@@ -65,6 +71,26 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
       >
         <div className="filters-bar-row">
           <div className="filters-bar-fields">
+            <div className="filters-bar-field filters-bar-field--category">
+              <Select
+                id="contract-kind"
+                labelText="Tipo de contrato"
+                size="sm"
+                value={contractKind}
+                onChange={(event) =>
+                  onContractKindChange(event.target.value as ContractKindFilter)
+                }
+              >
+                {CONTRACT_KIND_OPTIONS.map((option) => (
+                  <SelectItem
+                    key={option.value || 'all'}
+                    value={option.value}
+                    text={option.label}
+                  />
+                ))}
+              </Select>
+            </div>
+
             <div className="filters-bar-field">
               <DatePicker
                 datePickerType="single"
@@ -73,7 +99,7 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
                 <DatePickerInput
                   id="date-from"
                   placeholder="dd/mm/aaaa"
-                  labelText=""
+                  labelText="Desde"
                   size="sm"
                   value={dateFrom}
                   onChange={handleDateFromChange}
@@ -89,7 +115,7 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
                 <DatePickerInput
                   id="date-to"
                   placeholder="dd/mm/aaaa"
-                  labelText=""
+                  labelText="Hasta"
                   size="sm"
                   value={dateTo}
                   onChange={handleDateToChange}
@@ -100,33 +126,27 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
             <div className="filters-bar-field">
               <TextInput
                 id="department"
-                placeholder="Departamento"
+                labelText="Ubicación"
+                placeholder="Departamento o municipio"
                 value={department}
                 onChange={(e) => onDepartmentChange(e.target.value)}
                 size="sm"
-                hideLabel
               />
             </div>
             
             <div className="filters-bar-field">
               <TextInput
                 id="company-name"
+                labelText="Empresa"
                 placeholder="Nombre de empresa"
                 value={companyName}
                 onChange={(e) => onCompanyNameChange(e.target.value)}
                 size="sm"
-                hideLabel
               />
             </div>
           </div>
 
           <div className="filters-bar-checkboxes">
-            <Checkbox
-              id="only-interventoria"
-              labelText="Solo interventoría/supervisión"
-              checked={onlyInterventoria}
-              onChange={(_, { checked }) => onOnlyInterventoriaChange(checked)}
-            />
             <Checkbox
               id="match-experience"
               labelText="Solo coincidencias con experiencia"

@@ -23,6 +23,7 @@ from app.config import settings
 from app.models.tender_summary import TenderSummary
 from app.schemas.tender_summary import TenderSummaryResponse, TenderSummaryFieldResponse
 from app.services.experience_matching import match_tender_against_experiences, MIN_MATCH_THRESHOLD
+from app.services.tender_summary.contract_kind import apply_contract_kind_filter, parse_contract_kind
 from app.services.tender_summary.service import build_tender_summary, persist_tender_summary
 
 router = APIRouter()
@@ -37,7 +38,11 @@ async def list_tenders(
     date_from: Optional[date] = Query(None, description="Filter by publication date from"),
     date_to: Optional[date] = Query(None, description="Filter by publication date to"),
     match_experience: bool = Query(False, description="Only show tenders matching company experiences"),
-    only_interventoria: bool = Query(False, description="Filter by interventoría/supervisión keywords before matching (reduces processing time)"),
+    only_interventoria: bool = Query(False, description="Deprecated: use contract_kind=interventoria"),
+    contract_kind: Optional[str] = Query(
+        None,
+        description="Filter by category: estudios_disenos, interventoria, ejecucion_obra",
+    ),
     min_match_score: float = Query(0.55, ge=0.0, le=1.0, description="Minimum match score (0-1), default 0.55 for better quality"),
     company_name: Optional[str] = Query(None, description="Company name for experience matching"),
     limit: int = Query(50, ge=1, le=1000, description="Number of results (higher limit allowed for experience matching)"),
@@ -69,23 +74,15 @@ async def list_tenders(
     if date_to:
         query = query.filter(Tender.publication_date <= date_to)
     
-    # OPTIMIZATION: Filter by interventoría keywords BEFORE matching (reduces AI processing time)
-    # This reduces the dataset from ~1,748 to ~479 tenders (27% reduction)
-    if only_interventoria:
-        from sqlalchemy import func, or_
-        interventoria_keywords = [
-            'interventoría', 'interventoria', 
-            'supervisión', 'supervision'
-        ]
-        # Build OR conditions for each keyword
-        keyword_filters = [
-            func.lower(Tender.object_text).contains(keyword.lower())
-            for keyword in interventoria_keywords
-        ]
-        query = query.filter(or_(*keyword_filters))
-        # Count filtered tenders (without executing full query)
-        filtered_count = query.count()
-        logger.info(f"Filtered by interventoría keywords: {filtered_count} tenders remaining")
+    kind = parse_contract_kind(contract_kind)
+    if kind is not None:
+        query = apply_contract_kind_filter(query, kind)
+        logger.info("Filtered by contract_kind=%s", kind.value)
+    elif only_interventoria:
+        kind = parse_contract_kind("interventoria")
+        if kind is not None:
+            query = apply_contract_kind_filter(query, kind)
+        logger.info("Filtered by only_interventoria (legacy): %s tenders", query.count())
     
     # Experience matching setup
     experiences = []
