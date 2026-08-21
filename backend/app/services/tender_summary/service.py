@@ -172,42 +172,32 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
         )
     )
 
-    if not aiu_applies(contract_kind):
-        fields.append(
-            _field(
-                key="aiu_percentage",
-                label="Porcentaje de AIU",
-                priority="P0",
-                source="presupuesto",
-                status="not_applicable",
-                display_value="No aplica (interventoría / estudios y diseños)",
+    if aiu_applies(contract_kind):
+        if presupuesto_data and presupuesto_data.aiu_percentage is not None:
+            fields.append(
+                _field(
+                    key="aiu_percentage",
+                    label="Porcentaje de AIU",
+                    priority="P0",
+                    source="presupuesto",
+                    status="available",
+                    value=presupuesto_data.aiu_percentage,
+                    display_value=f"{presupuesto_data.aiu_percentage:.2f}%",
+                    source_document_id=presupuesto.id if presupuesto else None,
+                )
             )
-        )
-    elif presupuesto_data and presupuesto_data.aiu_percentage is not None:
-        fields.append(
-            _field(
-                key="aiu_percentage",
-                label="Porcentaje de AIU",
-                priority="P0",
-                source="presupuesto",
-                status="available",
-                value=presupuesto_data.aiu_percentage,
-                display_value=f"{presupuesto_data.aiu_percentage:.2f}%",
-                source_document_id=presupuesto.id if presupuesto else None,
+        else:
+            fields.append(
+                _field(
+                    key="aiu_percentage",
+                    label="Porcentaje de AIU",
+                    priority="P0",
+                    source="presupuesto",
+                    status="unavailable",
+                    display_value="No disponible",
+                    source_document_id=presupuesto.id if presupuesto else None,
+                )
             )
-        )
-    else:
-        fields.append(
-            _field(
-                key="aiu_percentage",
-                label="Porcentaje de AIU",
-                priority="P0",
-                source="presupuesto",
-                status="unavailable",
-                display_value="No disponible",
-                source_document_id=presupuesto.id if presupuesto else None,
-            )
-        )
 
     fields.extend(
         [
@@ -221,22 +211,38 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
                 display_value=pliego_data.execution_duration if pliego_data else None,
                 source_document_id=pliego.id if pliego else None,
             ),
-            _field(
-                key="advance_payment_percentage",
-                label="Porcentaje de anticipo",
-                priority="P1",
-                source="pliego",
-                status="available"
-                if pliego_data and pliego_data.advance_payment_percentage is not None
-                else "unavailable",
-                value=pliego_data.advance_payment_percentage if pliego_data else None,
-                display_value=(
-                    f"{pliego_data.advance_payment_percentage:.2f}%"
-                    if pliego_data and pliego_data.advance_payment_percentage is not None
-                    else None
-                ),
-                source_document_id=pliego.id if pliego else None,
-            ),
+        ]
+    )
+
+    if aiu_applies(contract_kind):
+        if pliego_data and pliego_data.advance_payment_percentage is not None:
+            fields.append(
+                _field(
+                    key="advance_payment_percentage",
+                    label="Porcentaje de anticipo",
+                    priority="P1",
+                    source="pliego",
+                    status="available",
+                    value=pliego_data.advance_payment_percentage,
+                    display_value=f"{pliego_data.advance_payment_percentage:.2f}%",
+                    source_document_id=pliego.id if pliego else None,
+                )
+            )
+        else:
+            fields.append(
+                _field(
+                    key="advance_payment_percentage",
+                    label="Porcentaje de anticipo",
+                    priority="P1",
+                    source="pliego",
+                    status="unavailable",
+                    display_value="No disponible",
+                    source_document_id=pliego.id if pliego else None,
+                )
+            )
+
+    fields.extend(
+        [
             _field(
                 key="payment_method",
                 label="Forma de pago",

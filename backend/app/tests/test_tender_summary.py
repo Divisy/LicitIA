@@ -137,11 +137,12 @@ def test_extract_pliego_from_real_local_pdf():
     assert result.execution_duration == "Hasta 31 de Diciembre de 2026"
 
 
-def test_build_summary_marks_aiu_not_applicable_for_interventoria():
+def test_build_summary_omits_aiu_for_interventoria():
     tender = _tender()
     summary = build_tender_summary(tender)
-    aiu = next(field for field in summary["fields"] if field["key"] == "aiu_percentage")
-    assert aiu["status"] == "not_applicable"
+    keys = {field["key"] for field in summary["fields"]}
+    assert "aiu_percentage" not in keys
+    assert "advance_payment_percentage" not in keys
     assert summary["contract_kind"] == "interventoria"
 
 

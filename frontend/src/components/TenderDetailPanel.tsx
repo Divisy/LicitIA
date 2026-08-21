@@ -38,13 +38,20 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   presupuesto: 'Presupuesto',
 }
 
-const SUMMARY_FIELD_KEYS = [
-  'aiu_percentage',
-  'lots_groups',
-  'execution_duration',
-  'advance_payment_percentage',
-  'payment_method',
-] as const
+const SUMMARY_FIELD_KEYS_BY_KIND: Record<string, readonly string[]> = {
+  ejecucion_obra: [
+    'aiu_percentage',
+    'lots_groups',
+    'execution_duration',
+    'advance_payment_percentage',
+    'payment_method',
+  ],
+  interventoria: ['lots_groups', 'execution_duration', 'payment_method'],
+  estudios_disenos: ['lots_groups', 'execution_duration', 'payment_method'],
+  desconocido: ['lots_groups', 'execution_duration', 'payment_method'],
+}
+
+const DEFAULT_SUMMARY_FIELD_KEYS = SUMMARY_FIELD_KEYS_BY_KIND.desconocido
 
 const SUMMARY_FIELD_LABELS: Record<string, string> = {
   aiu_percentage: 'Porcentaje de AIU',
@@ -146,8 +153,10 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     if (!summary?.fields) {
       return []
     }
+    const keys =
+      SUMMARY_FIELD_KEYS_BY_KIND[summary.contract_kind] || DEFAULT_SUMMARY_FIELD_KEYS
     const byKey = new Map(summary.fields.map((field) => [field.key, field]))
-    return SUMMARY_FIELD_KEYS.map((key) => byKey.get(key)).filter(
+    return keys.map((key) => byKey.get(key)).filter(
       (field): field is TenderSummaryField => Boolean(field)
     )
   }, [summary])
