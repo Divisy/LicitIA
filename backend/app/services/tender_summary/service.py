@@ -61,6 +61,13 @@ def _format_currency(amount: Optional[float]) -> Optional[str]:
     return f"$ {amount:,.0f}".replace(",", ".")
 
 
+def _format_monthly_cash_flow(amount: Optional[float]) -> Optional[str]:
+    formatted = _format_currency(amount)
+    if not formatted:
+        return None
+    return f"{formatted}/mes"
+
+
 def _format_date(value: Optional[datetime]) -> Optional[str]:
     if not value:
         return None
@@ -318,12 +325,12 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
             ),
             _field(
                 key="monthly_cost",
-                label="Flujo de caja mensual estimado",
+                label="Flujo de caja",
                 priority="P2",
                 source="computed",
                 status="available" if monthly_cost is not None else "unavailable",
                 value=monthly_cost,
-                display_value=_format_currency(monthly_cost),
+                display_value=_format_monthly_cash_flow(monthly_cost),
             ),
         ]
     )

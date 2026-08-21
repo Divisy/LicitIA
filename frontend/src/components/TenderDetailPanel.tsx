@@ -70,7 +70,7 @@ const SUMMARY_FIELD_LABELS: Record<string, string> = {
   execution_duration: 'Duración de la obra',
   advance_payment_percentage: 'Anticipo',
   payment_method: 'Forma de pago',
-  monthly_cost: 'Flujo de caja mensual (est.)',
+  monthly_cost: 'Flujo de caja',
 }
 
 const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
@@ -193,6 +193,11 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     if (field.status === 'unavailable' || !field.display_value) {
       return 'No disponible'
     }
+    if (field.key === 'monthly_cost') {
+      return field.display_value.endsWith('/mes')
+        ? field.display_value
+        : `${field.display_value}/mes`
+    }
     return field.display_value
   }
 
@@ -309,14 +314,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                     key={field.key}
                     className={`tender-detail-panel__summary-item tender-detail-panel__summary-item--${field.status}`}
                   >
-                          <dt>
-                            {SUMMARY_FIELD_LABELS[field.key] || field.label}
-                            {field.key === 'monthly_cost' && (
-                              <span className="tender-detail-panel__summary-hint">
-                                Costo total ÷ duración en meses
-                              </span>
-                            )}
-                          </dt>
+                          <dt>{SUMMARY_FIELD_LABELS[field.key] || field.label}</dt>
                     <dd>{renderSummaryValue(field)}</dd>
                   </div>
                 ))}
