@@ -43,6 +43,7 @@ const SUMMARY_FIELD_KEYS = [
   'lots_groups',
   'execution_duration',
   'advance_payment_percentage',
+  'payment_method',
 ] as const
 
 const SUMMARY_FIELD_LABELS: Record<string, string> = {
@@ -50,6 +51,7 @@ const SUMMARY_FIELD_LABELS: Record<string, string> = {
   lots_groups: 'Grupos o lotes',
   execution_duration: 'Duración de la obra',
   advance_payment_percentage: 'Anticipo',
+  payment_method: 'Forma de pago',
 }
 
 const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({

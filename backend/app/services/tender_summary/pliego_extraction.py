@@ -41,6 +41,21 @@ _PLAZO_REGION_MARKERS = (
     r"1\.1\s+objeto[^.\n]{0,60}plazo",
 )
 
+_PAYMENT_REGION_MARKERS = (
+    r"forma de pago",
+    r"modalidad de pago",
+    r"acuerdos comerciales",
+    r"cap[ií]tulo\s+vi\b",
+)
+
+_KNOWN_PAYMENT_TYPES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"precios\s+unitarios", re.IGNORECASE), "Precios unitarios"),
+    (re.compile(r"suma\s+alzada", re.IGNORECASE), "Suma alzada"),
+    (re.compile(r"pago\s+global", re.IGNORECASE), "Pago global"),
+    (re.compile(r"administraci[oó]n\s+delegada", re.IGNORECASE), "Administración delegada"),
+    (re.compile(r"pagos\s+parciales", re.IGNORECASE), "Pagos parciales"),
+)
+
 
 @dataclass
 class PliegoExtraction:
@@ -72,6 +87,32 @@ def _plazo_search_regions(text: str) -> list[str]:
             regions.append(text[match.start() : match.end() + 2500])
     regions.append(text)
     return regions
+
+
+def _payment_search_regions(text: str) -> list[str]:
+    regions: list[str] = []
+    for marker in _PAYMENT_REGION_MARKERS:
+        match = re.search(marker, text, flags=re.IGNORECASE)
+        if match:
+            regions.append(text[max(0, match.start() - 100) : match.end() + 1800])
+    regions.append(text)
+    return regions
+
+
+def _clean_payment_snippet(value: str) -> Optional[str]:
+    cleaned = re.sub(r"\s+", " ", value).strip().rstrip(".")
+    if len(cleaned) < 3 or len(cleaned) > 160:
+        return None
+    if re.search(r"\.{4,}|riesgo asociado|manual colombia|lugar geografico", cleaned, re.IGNORECASE):
+        return None
+    cleaned = re.split(r"\.\s+el anexo|\.\s+cuando el presupuesto", cleaned, maxsplit=1, flags=re.IGNORECASE)[0]
+    cleaned = cleaned.strip().rstrip(".")
+    for pattern, label in _KNOWN_PAYMENT_TYPES:
+        if pattern.search(cleaned):
+            return label
+    if cleaned:
+        return cleaned[0].upper() + cleaned[1:]
+    return None
 
 
 def _extract_execution_duration(text: str) -> Optional[str]:
@@ -149,6 +190,33 @@ def _extract_execution_duration_from_region(region: str) -> Optional[str]:
     return None
 
 
+def _extract_payment_method(text: str) -> Optional[str]:
+    explicit_patterns = (
+        r"forma de pago(?:\s+del\s+contrato)?\s+es\s+(?:por\s+)?([^.\n]{3,160})",
+        r"forma de pago(?:\s+del\s+contrato)?[^.\n]{0,80}ser[aá]\s+por\s+([^.\n]{3,160})",
+        r"modalidad de pago\s+(?:es\s+|ser[aá]\s+|seleccionada[^.\n]{0,40}?)?([^.\n]{3,160})",
+        r"(?:forma de pago|modalidad de pago)[:\s-]+([^.\n]{10,220})",
+    )
+
+    for region in _payment_search_regions(text):
+        for pattern in explicit_patterns:
+            match = re.search(pattern, region, flags=re.IGNORECASE)
+            if not match:
+                continue
+            cleaned = _clean_payment_snippet(match.group(1))
+            if cleaned:
+                return cleaned
+
+        forma_match = re.search(r"forma de pago.{0,220}", region, flags=re.IGNORECASE | re.DOTALL)
+        if forma_match:
+            chunk = forma_match.group(0)
+            for pattern, label in _KNOWN_PAYMENT_TYPES:
+                if pattern.search(chunk):
+                    return label
+
+    return None
+
+
 def _extract_advance_payment(text: str) -> Optional[float]:
     patterns = (
         r"(?:el\s+)?anticipo(?:\s+ser[aá]|\s+equivaldr[aá]|[^.\n]{0,30}?del)[^.\n]{0,80}?(\d{1,2}(?:[.,]\d+)?)\s*(?:%|por ciento)",
@@ -177,13 +245,7 @@ def extract_from_pliego_text(text: str) -> PliegoExtraction:
     if advance is not None:
         result.advance_payment_percentage = advance
 
-    payment_match = re.search(
-        r"(forma de pago|pagos parciales|modalidad de pago)[:\s-]+([^.\n]{10,220})",
-        normalized,
-        flags=re.IGNORECASE,
-    )
-    if payment_match:
-        result.payment_method = payment_match.group(2).strip()
+    result.payment_method = _extract_payment_method(normalized)
 
     if re.search(r"ajuste de precios|reajuste|formula polin[oó]mica", lowered):
         if re.search(r"no\s+habr[aá]|sin ajuste|no aplica", lowered):
