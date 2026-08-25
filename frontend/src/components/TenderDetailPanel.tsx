@@ -7,7 +7,6 @@ import {
   Link,
   Tag,
   Tile,
-  Button,
   InlineNotification,
 } from '@carbon/react'
 import { Download, Launch, Document, Upload } from '@carbon/icons-react'
@@ -43,6 +42,8 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
 }
 
 const ACCEPTED_DOCUMENT_EXTENSIONS = '.pdf,.xlsx,.xls,.xlsm'
+
+const ACCEPTED_DOCUMENT_MIME_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.xlsm']
 
 const SUMMARY_FIELD_KEYS_BY_KIND: Record<string, readonly string[]> = {
   ejecucion_obra: [
@@ -157,6 +158,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
   const [error, setError] = useState<string | null>(null)
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [uploadingType, setUploadingType] = useState<TenderDocumentType | null>(null)
+  const [dragOverType, setDragOverType] = useState<TenderDocumentType | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pendingUploadTypeRef = useRef<TenderDocumentType | null>(null)
@@ -281,18 +283,17 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     doc.external_document_id.startsWith('manual-') ||
     (doc.description || '').toLowerCase().includes('manual')
 
-  const handleUploadClick = (documentType: TenderDocumentType) => {
-    pendingUploadTypeRef.current = documentType
-    setUploadError(null)
-    fileInputRef.current?.click()
+  const isAcceptedUploadFile = (file: File) => {
+    const extension = `.${file.name.split('.').pop()?.toLowerCase() || ''}`
+    return ACCEPTED_DOCUMENT_MIME_EXTENSIONS.includes(extension)
   }
 
-  const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    const documentType = pendingUploadTypeRef.current
-    event.target.value = ''
-
-    if (!file || !documentType || !tender) {
+  const uploadDocumentFile = async (documentType: TenderDocumentType, file: File) => {
+    if (!tender) {
+      return
+    }
+    if (!isAcceptedUploadFile(file)) {
+      setUploadError('Solo se permiten archivos PDF, XLSX, XLS o XLSM')
       return
     }
 
@@ -310,7 +311,66 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     } finally {
       setUploadingType(null)
       pendingUploadTypeRef.current = null
+      setDragOverType(null)
     }
+  }
+
+  const handleUploadClick = (documentType: TenderDocumentType) => {
+    pendingUploadTypeRef.current = documentType
+    setUploadError(null)
+    fileInputRef.current?.click()
+  }
+
+  const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    const documentType = pendingUploadTypeRef.current
+    event.target.value = ''
+
+    if (!file || !documentType) {
+      return
+    }
+
+    await uploadDocumentFile(documentType, file)
+  }
+
+  const handleDragOver = (
+    event: React.DragEvent<HTMLDivElement>,
+    documentType: TenderDocumentType
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!uploadingType) {
+      setDragOverType(documentType)
+    }
+  }
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.currentTarget.contains(event.relatedTarget as Node)) {
+      return
+    }
+    setDragOverType(null)
+  }
+
+  const handleDrop = async (
+    event: React.DragEvent<HTMLDivElement>,
+    documentType: TenderDocumentType
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setDragOverType(null)
+
+    if (uploadingType) {
+      return
+    }
+
+    const file = event.dataTransfer.files?.[0]
+    if (!file) {
+      return
+    }
+
+    await uploadDocumentFile(documentType, file)
   }
 
   const renderSummaryValue = (field: TenderSummaryField) => {
@@ -497,17 +557,48 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                       </h5>
 
                       {docs.length === 0 ? (
-                        <div className="tender-detail-panel__missing">
-                          <p className="tender-detail-panel__missing-text">No disponible</p>
-                          <Button
-                            kind="tertiary"
-                            size="sm"
-                            renderIcon={Upload}
-                            disabled={isUploading || !!uploadingType}
-                            onClick={() => handleUploadClick(type)}
-                          >
-                            {isUploading ? 'Subiendo...' : 'Subir archivo'}
-                          </Button>
+                        <div
+                          className={[
+                            'tender-detail-panel__dropzone',
+                            dragOverType === type ? 'tender-detail-panel__dropzone--active' : '',
+                            isUploading ? 'tender-detail-panel__dropzone--uploading' : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                          onDragEnter={(event) => handleDragOver(event, type)}
+                          onDragOver={(event) => handleDragOver(event, type)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(event) => handleDrop(event, type)}
+                          onClick={() => {
+                            if (!isUploading && !uploadingType) {
+                              handleUploadClick(type)
+                            }
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              if (!isUploading && !uploadingType) {
+                                handleUploadClick(type)
+                              }
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Subir ${DOCUMENT_TYPE_LABELS[type] || type}`}
+                        >
+                          {isUploading ? (
+                            <Loading description="Subiendo documento..." withOverlay={false} small />
+                          ) : (
+                            <>
+                              <Upload size={20} className="tender-detail-panel__dropzone-icon" />
+                              <p className="tender-detail-panel__dropzone-title">
+                                Arrastra el archivo aquí
+                              </p>
+                              <p className="tender-detail-panel__dropzone-hint">
+                                o haz clic para seleccionar · PDF, XLSX, XLS
+                              </p>
+                            </>
+                          )}
                         </div>
                       ) : (
                         <ul className="tender-detail-panel__file-list">
