@@ -447,6 +447,36 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     }
   }
 
+const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
+  experiencia_general: [
+    'requirement_description',
+    'min_percentage_budget',
+    'min_amount_smmlv',
+    'time_window_years',
+    'accreditation_method',
+  ],
+  experiencia_especifica: [
+    'specific_scope',
+    'specific_min_percentage',
+    'activity_codes',
+  ],
+}
+
+const sortRequirementItems = (
+  sectionKey: string,
+  items: TenderRequirementSection['items']
+) => {
+  const order = REQUIREMENT_ITEM_ORDER[sectionKey] || []
+  return [...items].sort((a, b) => {
+    const aIndex = order.indexOf(a.key)
+    const bIndex = order.indexOf(b.key)
+    if (aIndex === -1 && bIndex === -1) return 0
+    if (aIndex === -1) return 1
+    if (bIndex === -1) return -1
+    return aIndex - bIndex
+  })
+}
+
   const renderRequirementSection = (section: TenderRequirementSection) => (
     <div key={section.key} className="tender-detail-panel__requirements-group">
       <div className="tender-detail-panel__requirements-group-header">
@@ -456,9 +486,9 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
         </Tag>
       </div>
 
-      {section.items.length > 0 ? (
+      {sortRequirementItems(section.key, section.items).length > 0 ? (
         <dl className="tender-detail-panel__requirements-list">
-          {section.items.map((item) => (
+          {sortRequirementItems(section.key, section.items).map((item) => (
             <div key={`${section.key}-${item.key}`} className="tender-detail-panel__requirements-item">
               <dt>{item.label}</dt>
               <dd>

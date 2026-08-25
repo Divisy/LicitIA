@@ -76,10 +76,20 @@ def _clean_requirement_text(value: str, max_len: int = 500) -> str:
 def _extract_labeled_block(normalized: str, label: str, stop_labels: tuple[str, ...]) -> Optional[str]:
     stop_pattern = "|".join(re.escape(stop) for stop in stop_labels)
     pattern = rf"{re.escape(label)}\s*[:\-]\s*(.+?)(?=(?:{stop_pattern})|\s+a\.\s|\s+b\.\s|$)"
-    match = re.search(pattern, normalized, flags=re.IGNORECASE | re.DOTALL)
-    if not match:
+    matches = list(re.finditer(pattern, normalized, flags=re.IGNORECASE | re.DOTALL))
+    if not matches:
         return None
-    return _clean_requirement_text(match.group(1))
+
+    best: Optional[str] = None
+    for match in matches:
+        candidate = _clean_requirement_text(match.group(1))
+        if not candidate or candidate.startswith("["):
+            continue
+        if len(candidate) < 25:
+            continue
+        if best is None or len(candidate) > len(best):
+            best = candidate
+    return best
 
 
 def _merge_items(existing: list[RequirementItem], new_items: list[RequirementItem]) -> list[RequirementItem]:

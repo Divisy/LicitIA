@@ -19,6 +19,7 @@ from app.services.tender_requirements.document_selection import (
 )
 from app.services.tender_requirements.llm_extraction import enrich_requirements_with_llm
 from app.services.tender_requirements.regex_extraction import EXTRACTORS, SECTION_DEFINITIONS, _merge_items
+from app.services.tender_requirements.text_selection import select_requirement_relevant_text
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
 EXTRACTION_VERSION = "1.5.1"
@@ -36,8 +37,11 @@ def _visible_documents(tender: Tender) -> list[TenderDocument]:
     return deduplicate_visible_documents(documents)
 
 
-def _truncate_text(text: str) -> str:
-    return text[: settings.TENDER_REQUIREMENTS_MAX_CHARS]
+def _prepare_document_text(raw_text: str) -> str:
+    return select_requirement_relevant_text(
+        raw_text,
+        settings.TENDER_REQUIREMENTS_MAX_CHARS,
+    )
 
 
 def _section_status(
@@ -78,7 +82,7 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
     warnings: list[str] = []
 
     if pliego:
-        pliego_text = _truncate_text(extract_pdf_text(pliego, storage))
+        pliego_text = _prepare_document_text(extract_pdf_text(pliego, storage))
         if not pliego_text.strip():
             warnings.append(f"No se pudo extraer texto del pliego ({pliego.file_name})")
     if anexo:
@@ -88,7 +92,7 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
                 f"El anexo ({anexo.file_name}) es DOCX; la experiencia específica se extrae del pliego cuando aplique"
             )
         else:
-            anexo_text = _truncate_text(extract_pdf_text(anexo, storage))
+            anexo_text = _prepare_document_text(extract_pdf_text(anexo, storage))
             if not anexo_text.strip():
                 warnings.append(f"No se pudo extraer texto del anexo ({anexo.file_name})")
 
