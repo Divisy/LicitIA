@@ -124,15 +124,15 @@ def extract_experiencia_general(
         )
 
     section_region_match = re.search(
-        r"3\.8\.1.{0,4000}?(?=3\.8\.2|3\.9|capitulo|capítulo|\Z)",
+        r"contratos?\s+aportados?\s+como\s+experiencia[^.\n]{0,200}presupuesto\s+oficial",
         normalized,
         flags=re.DOTALL,
     )
     section_region = section_region_match.group(0) if section_region_match else normalized
 
     hundred_match = re.search(
-        r"cien\s+por\s+ciento\s*\(\s*100\s*%|100\s*%[^.\n]{0,80}"
-        r"(?:presupuesto\s+oficial|proceso\s+de\s+contratacion)",
+        r"cien\s+por\s+ciento\s*\(\s*100\s*%|"
+        r"contratos?\s+aportados?\s+como\s+experiencia[^.\n]{0,160}100\s*%",
         section_region,
     )
     if hundred_match and not any(item["key"] == "min_percentage_budget" for item in items):
@@ -162,24 +162,30 @@ def extract_experiencia_general(
         regions = [section_region[:8000]]
 
     for region in regions:
-        percent_match = re.search(
-            r"(\d{1,3}(?:[.,]\d+)?)\s*(?:%|por ciento)[^.\n]{0,80}"
-            r"(?:del\s+)?(?:presupuesto|valor|contrato)",
-            region,
-        )
-        if percent_match and not any(item["key"] == "min_percentage_budget" for item in items):
-            pct = float(percent_match.group(1).replace(",", "."))
-            items.append(
-                _item(
-                    key="min_percentage_budget",
-                    label="Porcentaje mínimo del presupuesto",
-                    value=pct,
-                    display_value=f"{pct:g}%",
-                    source_document=source_document,
-                    source_document_id=source_document_id,
-                    evidence=_snippet(region, percent_match.start(), percent_match.end() + 80),
-                )
+        if "experiencia especifica" in region and "experiencia general" not in region[:160]:
+            continue
+
+        if any(item["key"] == "min_percentage_budget" for item in items):
+            pass
+        else:
+            percent_match = re.search(
+                r"(\d{1,3}(?:[.,]\d+)?)\s*(?:%|por ciento)[^.\n]{0,80}"
+                r"(?:del\s+)?(?:presupuesto|valor|contrato)",
+                region,
             )
+            if percent_match:
+                pct = float(percent_match.group(1).replace(",", "."))
+                items.append(
+                    _item(
+                        key="min_percentage_budget",
+                        label="Porcentaje mínimo del presupuesto",
+                        value=pct,
+                        display_value=f"{pct:g}%",
+                        source_document=source_document,
+                        source_document_id=source_document_id,
+                        evidence=_snippet(region, percent_match.start(), percent_match.end() + 80),
+                    )
+                )
 
         years_match = re.search(
             r"(?:ultimos?|últimos?)\s+(\d{1,2})\s+anos?",
