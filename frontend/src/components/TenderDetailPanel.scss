@@ -3,6 +3,11 @@
 
 .tender-detail-modal .cds--modal-container {
   max-width: 48rem;
+  max-height: 90vh;
+}
+
+.tender-detail-modal .cds--modal-content {
+  overflow-y: auto;
 }
 
 .tender-detail-panel {
