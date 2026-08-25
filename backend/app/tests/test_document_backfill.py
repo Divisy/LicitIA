@@ -14,13 +14,20 @@ from app.services.document_backfill import (
 from app.services.document_extraction import resync_documents_for_processed_tenders
 
 
+@patch("app.services.document_extraction.extract_presupuesto_by_content_for_tender")
 @patch("app.services.document_extraction.settings")
 @patch("app.services.document_extraction.fetch_archive_candidates_for_portfolio", return_value=[])
 @patch("app.services.document_extraction.fetch_loose_key_documents_for_portfolio", return_value=[])
 @patch("app.services.document_extraction.fetch_portfolio_id_for_external_id", return_value="portfolio-1")
-def test_extract_marks_attempted_when_secop_has_no_docs(mock_portfolio, mock_fetch, mock_archives, mock_settings):
+def test_extract_marks_attempted_when_secop_has_no_docs(
+    mock_portfolio, mock_fetch, mock_archives, mock_settings, mock_presupuesto_content
+):
+    from app.services.document_content_classification import PresupuestoContentExtractionResult
+
     mock_settings.DOCUMENT_EXTRACTION_ENABLED = True
     mock_settings.ARCHIVE_EXTRACTION_ENABLED = True
+    mock_settings.PRESUPUESTO_CONTENT_CLASSIFICATION_ENABLED = True
+    mock_presupuesto_content.return_value = PresupuestoContentExtractionResult()
 
     tender = Tender(
         id=uuid4(),
@@ -112,6 +119,7 @@ def test_run_document_resync_dry_run(mock_query, mock_resync):
     mock_resync.assert_not_called()
 
 
+@patch("app.services.document_extraction.extract_presupuesto_by_content_for_tender")
 @patch("app.services.document_extraction.settings")
 @patch("app.services.document_extraction.extract_archives_for_tender")
 @patch("app.services.document_extraction.get_document_storage")
@@ -125,14 +133,18 @@ def test_resync_adds_missing_documents(
     mock_storage_factory,
     mock_extract_archives,
     mock_settings,
+    mock_presupuesto_content,
 ):
     from app.services.archive_extraction import ArchiveExtractionResult
+    from app.services.document_content_classification import PresupuestoContentExtractionResult
     from app.services.secop_document_filters import DocumentType
     from app.services.secop_documents import SecopDocumentDTO
 
     mock_settings.DOCUMENT_EXTRACTION_ENABLED = True
     mock_settings.ARCHIVE_EXTRACTION_ENABLED = True
+    mock_settings.PRESUPUESTO_CONTENT_CLASSIFICATION_ENABLED = True
     mock_extract_archives.return_value = ArchiveExtractionResult()
+    mock_presupuesto_content.return_value = PresupuestoContentExtractionResult()
     mock_storage_factory.return_value = MagicMock()
 
     existing_doc = MagicMock()

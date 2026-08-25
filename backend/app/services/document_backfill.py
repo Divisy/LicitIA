@@ -16,6 +16,7 @@ from app.services.document_extraction import (
     deduplicate_visible_documents,
     extract_compressed_documents_for_tender,
     extract_documents_for_pending_tenders,
+    extract_presupuesto_by_content_only_for_tender,
     processed_document_resync_query,
     resync_documents_for_processed_tenders,
 )
@@ -421,6 +422,103 @@ def run_compressed_document_extraction(
             except Exception as exc:
                 logger.error(
                     "Compressed document extraction failed for tender %s: %s",
+                    tender.external_id,
+                    exc,
+                    exc_info=True,
+                )
+                db.rollback()
+                totals["errors"] += 1
+
+        if batches_left is not None:
+            batches_left -= 1
+
+        if offset + effective_batch_size < len(tender_ids) and pause_seconds > 0:
+            time.sleep(pause_seconds)
+
+    totals["tenders_with_documents"] = (
+        db.query(TenderDocument.tender_id).distinct().count()
+    )
+    return totals
+
+
+def processed_tenders_missing_presupuesto_query(db: Session):
+    """Processed tenders that still do not have a presupuesto document archived."""
+    from sqlalchemy import and_, exists, not_
+
+    presupuesto_exists = (
+        exists()
+        .where(
+            and_(
+                TenderDocument.tender_id == Tender.id,
+                TenderDocument.document_type == "presupuesto",
+            )
+        )
+    )
+    return processed_document_resync_query(db).filter(not_(presupuesto_exists))
+
+
+def run_presupuesto_content_extraction(
+    db: Session,
+    *,
+    max_batches: Optional[int] = None,
+    batch_size: Optional[int] = None,
+    pause_seconds: float = 2.0,
+    dry_run: bool = False,
+    external_id: Optional[str] = None,
+    reference: Optional[str] = None,
+) -> dict[str, int]:
+    """Reprocess SECOP OTRO files to recover missing presupuesto documents (US 1.2.5 MVP)."""
+    query = processed_tenders_missing_presupuesto_query(db)
+    if external_id:
+        query = query.filter(Tender.external_id == external_id)
+    if reference:
+        query = query.filter(Tender.reference == reference)
+
+    eligible = query.count()
+    if dry_run:
+        summary = summarize_document_storage(db)
+        return {**summary, "eligible_for_presupuesto_content": eligible, "batches_run": 0}
+
+    tender_ids = [row[0] for row in query.with_entities(Tender.id).all()]
+    totals = {
+        "eligible_for_presupuesto_content": eligible,
+        "batches_run": 0,
+        "tenders_processed": 0,
+        "candidates_inspected": 0,
+        "documents_saved": 0,
+        "documents_added": 0,
+        "skipped_existing_presupuesto": 0,
+        "errors": 0,
+    }
+
+    effective_batch_size = batch_size or settings.DOCUMENT_EXTRACTION_BATCH_SIZE
+    batches_left = max_batches
+
+    for offset in range(0, len(tender_ids), effective_batch_size):
+        if batches_left is not None and batches_left <= 0:
+            break
+
+        chunk_ids = tender_ids[offset : offset + effective_batch_size]
+        tenders = db.query(Tender).filter(Tender.id.in_(chunk_ids)).all()
+        if not tenders:
+            break
+
+        totals["batches_run"] += 1
+        for tender in tenders:
+            try:
+                result = extract_presupuesto_by_content_only_for_tender(db, tender)
+                totals["tenders_processed"] += 1
+                totals["candidates_inspected"] += result.candidates_inspected
+                totals["documents_saved"] += result.documents_saved
+                totals["documents_added"] += result.documents_added
+                if result.skipped_existing_presupuesto:
+                    totals["skipped_existing_presupuesto"] += 1
+                if result.errors:
+                    totals["errors"] += len(result.errors)
+                db.commit()
+            except Exception as exc:
+                logger.error(
+                    "Presupuesto content extraction failed for tender %s: %s",
                     tender.external_id,
                     exc,
                     exc_info=True,

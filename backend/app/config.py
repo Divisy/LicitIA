@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     # Tender summary extraction (US 1.4)
     TENDER_SUMMARY_EXTRACTION_ENABLED: bool = True
 
+    # Presupuesto content classification (US 1.2.5 MVP)
+    PRESUPUESTO_CONTENT_CLASSIFICATION_ENABLED: bool = True
+    PRESUPUESTO_CONTENT_CLASSIFICATION_MAX_PAGES: int = 2
+    PRESUPUESTO_CONTENT_CLASSIFICATION_MAX_CHARS: int = 4000
+
     # Document storage backend: local (Railway Volume) or r2 (Cloudflare R2)
     DOCUMENT_STORAGE_BACKEND: str = "local"
     # When using R2, keep a copy on the local volume (default: false to save disk)

@@ -20,6 +20,10 @@ from app.services.secop_documents import (
     fetch_loose_key_documents_for_portfolio,
 )
 from app.services.archive_extraction import extract_archives_for_tender
+from app.services.document_content_classification import (
+    PresupuestoContentExtractionResult,
+    extract_presupuesto_by_content_for_tender,
+)
 from app.services.document_storage import get_document_storage
 from app.services.secop_client import fetch_portfolio_id_for_external_id
 from app.services.secop_document_filters import normalize_document_filename
@@ -74,6 +78,8 @@ class TenderExtractionResult:
     documents_updated: int = 0
     archives_processed: int = 0
     archive_documents_saved: int = 0
+    presupuesto_content_candidates: int = 0
+    presupuesto_content_saved: int = 0
     outcome: str = "saved"
     download_failures: int = 0
 
@@ -238,11 +244,18 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> TenderExtractio
         if settings.ARCHIVE_EXTRACTION_ENABLED
         else []
     )
+    content_classification_enabled = settings.PRESUPUESTO_CONTENT_CLASSIFICATION_ENABLED
 
-    if not documents and not archive_candidates:
+    if not documents and not archive_candidates and not content_classification_enabled:
         logger.info("No key documents found for tender %s", tender.external_id)
         _mark_extraction_attempted(tender)
         return TenderExtractionResult(outcome="no_secop_docs")
+
+    if not documents and not archive_candidates and content_classification_enabled:
+        logger.info(
+            "No filename-classified documents for tender %s; trying presupuesto content classification",
+            tender.external_id,
+        )
 
     storage = get_document_storage()
     saved_count = 0
@@ -297,6 +310,16 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> TenderExtractio
     saved_count += archive_result.documents_saved
     added_count += archive_result.documents_added
 
+    presupuesto_content_result = extract_presupuesto_by_content_for_tender(
+        db,
+        tender,
+        tender.portfolio_id,
+        storage,
+        _upsert_document_record,
+    )
+    saved_count += presupuesto_content_result.documents_saved
+    added_count += presupuesto_content_result.documents_added
+
     if saved_count:
         logger.info(
             "Saved %s documents for tender %s (%s)",
@@ -318,6 +341,8 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> TenderExtractio
         documents_updated=updated_count,
         archives_processed=archive_result.archives_processed,
         archive_documents_saved=archive_result.documents_saved,
+        presupuesto_content_candidates=presupuesto_content_result.candidates_inspected,
+        presupuesto_content_saved=presupuesto_content_result.documents_saved,
         outcome=outcome,
         download_failures=download_failures,
     )
@@ -398,6 +423,32 @@ def resync_documents_for_processed_tenders(
         stats.documents_added,
     )
     return stats.as_dict()
+
+
+def extract_presupuesto_by_content_only_for_tender(
+    db: Session,
+    tender: Tender,
+) -> PresupuestoContentExtractionResult:
+    """Run presupuesto content classification only for one tender (US 1.2.5 reproceso)."""
+    if not settings.PRESUPUESTO_CONTENT_CLASSIFICATION_ENABLED:
+        return PresupuestoContentExtractionResult()
+
+    if not tender.portfolio_id:
+        portfolio_id = fetch_portfolio_id_for_external_id(tender.external_id)
+        if portfolio_id:
+            tender.portfolio_id = portfolio_id
+            db.flush()
+        else:
+            return PresupuestoContentExtractionResult(errors=["no_portfolio"])
+
+    storage = get_document_storage()
+    return extract_presupuesto_by_content_for_tender(
+        db,
+        tender,
+        tender.portfolio_id,
+        storage,
+        _upsert_document_record,
+    )
 
 
 def extract_compressed_documents_for_tender(db: Session, tender: Tender) -> "ArchiveExtractionResult":

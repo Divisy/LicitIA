@@ -258,6 +258,19 @@ PYTHONPATH=. python scripts/extract_compressed_documents.py --external-id CO1.RE
 
 Variables: `ARCHIVE_EXTRACTION_ENABLED`, `ARCHIVE_MAX_DOWNLOAD_BYTES`, `ARCHIVE_MAX_UNCOMPRESSED_BYTES`, `ARCHIVE_MAX_FILES`.
 
+### US 1.2.5 — Presupuesto por contenido PDF/XLSX ✅ (MVP)
+
+Cuando falta el **presupuesto**, el pipeline revisa archivos SECOP clasificados como `otro` (PDF/XLSX), lee las primeras páginas/celdas y archiva el archivo si el contenido coincide con un presupuesto.
+
+```bash
+cd backend
+PYTHONPATH=. python scripts/reclassify_presupuesto_by_content.py --dry-run
+PYTHONPATH=. python scripts/reclassify_presupuesto_by_content.py --batch-size 10
+PYTHONPATH=. python scripts/reclassify_presupuesto_by_content.py --reference LP-001-2026
+```
+
+Variables: `PRESUPUESTO_CONTENT_CLASSIFICATION_ENABLED`, `PRESUPUESTO_CONTENT_CLASSIFICATION_MAX_PAGES`, `PRESUPUESTO_CONTENT_CLASSIFICATION_MAX_CHARS`.
+
 ### US 1.3 — Documentos en la interfaz ✅
 
 El personal de licitaciones puede ver y descargar documentos desde el dashboard sin SSH ni DBeaver.
@@ -331,8 +344,8 @@ Para el MVP, la autenticación es opcional. Si configuras `API_KEY` en `.env`, p
 
 ## 📚 Próximos Pasos
 
-- [ ] US 1.2.4 — Extracción de documentos dentro de ZIP/RAR 🔄 ([spec](docs/US-1.2.4-extraccion-documentos-zip-rar.md))
-- [ ] US 1.2.5 — Clasificación de documentos por contenido PDF ([spec](docs/US-1.2.5-clasificacion-documentos-por-contenido-pdf.md))
+- [x] US 1.2.4 — Extracción de documentos dentro de ZIP/RAR ✅ ([spec](docs/US-1.2.4-extraccion-documentos-zip-rar.md))
+- [x] US 1.2.5 — Presupuesto por contenido PDF/XLSX (MVP) ✅ ([spec](docs/US-1.2.5-clasificacion-documentos-por-contenido-pdf.md))
 - [ ] Columna referencia en tabla de licitaciones (mejor UX)
 - [ ] Autenticación completa (JWT)
 - [ ] Vista previa embebida de PDF en el navegador
