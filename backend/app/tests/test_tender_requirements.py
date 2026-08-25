@@ -89,12 +89,43 @@ def test_extract_requisitos_legales_license():
     assert any(item["key"] == "specific_license" for item in items)
 
 
+INVIAS_PLIEGO_SAMPLE = """
+3.8.1 EXIGENCIA MINIMA DE LA EXPERIENCIA DEL PROPONENTE
+contratos aportados como experiencia es mayor o igual al cien por ciento (100 %) respecto del valor
+total del Presupuesto Oficial establecido para el Proceso de Contratacion expresado en SMMLV.
+Formato 3 - Experiencia y Matriz 1 - Experiencia.
+
+De conformidad con lo anterior, los requisitos de experiencia son:
+• EXPERIENCIA GENERAL : INTERVENTORIA A LA CONSTRUCCION O RECONSTRUCCION
+O MEJORAMIENTO EN PAVIMENTO ASFALTICO O CONCRETO HIDRAULICO DE VIAS PRIMARIAS
+• EXPERIENCIA ESPECIFICA: Por lo menos uno (1) de los contratos validos aportados como
+experiencia general sea de un valor correspondiente a por lo menos el 70% del valor de
+PRESUPUESTO OFICIAL (PO) del presente proceso de contratacion.
+"""
+
+
+def test_invias_pliego_extracts_general_and_specific_experience():
+    general = extract_experiencia_general(INVIAS_PLIEGO_SAMPLE, "pliego_condiciones", None)
+    specific = extract_experiencia_especifica(INVIAS_PLIEGO_SAMPLE, "pliego_condiciones", None)
+
+    general_keys = {item["key"] for item in general}
+    assert "requirement_description" in general_keys
+    assert "min_percentage_budget" in general_keys
+    assert any(item["value"] == 100 for item in general if item["key"] == "min_percentage_budget")
+
+    specific_keys = {item["key"] for item in specific}
+    assert "specific_scope" in specific_keys
+    assert "specific_min_percentage" in specific_keys
+    assert any(item["value"] == 70 for item in specific if item["key"] == "specific_min_percentage")
+
+
 def test_extract_otros_requisitos_pyme():
-    text = "Se dará prioridad a empresas MiPyme y emprendimiento de mujer."
+    text = "El Proponente podra acreditar la calidad de Mipyme y de emprendimiento y empresa de mujeres."
     items = extract_otros_requisitos(text, "pliego_condiciones", None)
     keys = {item["key"] for item in items}
     assert "pyme" in keys
     assert "mujer" in keys
+    assert "mocho" not in keys
 
 
 def test_build_tender_requirements_without_documents():

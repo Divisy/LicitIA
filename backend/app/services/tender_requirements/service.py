@@ -18,7 +18,7 @@ from app.services.tender_requirements.document_selection import (
     select_pliego_document,
 )
 from app.services.tender_requirements.llm_extraction import enrich_requirements_with_llm
-from app.services.tender_requirements.regex_extraction import EXTRACTORS, SECTION_DEFINITIONS
+from app.services.tender_requirements.regex_extraction import EXTRACTORS, SECTION_DEFINITIONS, _merge_items
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
 EXTRACTION_VERSION = "1.5.1"
@@ -82,9 +82,15 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         if not pliego_text.strip():
             warnings.append(f"No se pudo extraer texto del pliego ({pliego.file_name})")
     if anexo:
-        anexo_text = _truncate_text(extract_pdf_text(anexo, storage))
-        if not anexo_text.strip():
-            warnings.append(f"No se pudo extraer texto del anexo ({anexo.file_name})")
+        extension = (anexo.extension or "").lower()
+        if extension == "docx":
+            warnings.append(
+                f"El anexo ({anexo.file_name}) es DOCX; la experiencia específica se extrae del pliego cuando aplique"
+            )
+        else:
+            anexo_text = _truncate_text(extract_pdf_text(anexo, storage))
+            if not anexo_text.strip():
+                warnings.append(f"No se pudo extraer texto del anexo ({anexo.file_name})")
 
     if not pliego and not anexo:
         warnings.append("Sube el pliego o el anexo técnico para extraer requisitos")
@@ -92,23 +98,39 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
     extracted_by_section: dict[str, list[dict[str, Any]]] = {}
 
     for section_key, _, default_source in SECTION_DEFINITIONS:
-        source_doc_type = _SECTION_SOURCE.get(section_key, default_source)
         if section_key == "experiencia_especifica":
-            document = anexo
-            text = anexo_text
-        elif section_key == "otros":
+            items: list[dict[str, Any]] = []
+            if pliego_text.strip():
+                items = _merge_items(
+                    items,
+                    EXTRACTORS[section_key](
+                        pliego_text,
+                        pliego.document_type if pliego else "pliego_condiciones",
+                        pliego.id if pliego else None,
+                    ),
+                )
+            if anexo_text.strip():
+                items = _merge_items(
+                    items,
+                    EXTRACTORS[section_key](
+                        anexo_text,
+                        anexo.document_type if anexo else "anexo_tecnico",
+                        anexo.id if anexo else None,
+                    ),
+                )
+            extracted_by_section[section_key] = items
+            continue
+
+        if section_key == "otros":
             document = pliego or anexo
             text = pliego_text or anexo_text
-            source_doc_type = (
-                pliego.document_type if pliego else (anexo.document_type if anexo else default_source)
-            )
         else:
             document = pliego
             text = pliego_text
 
         extractor = EXTRACTORS[section_key]
         source_document_id = document.id if document else None
-        effective_source = document.document_type if document else source_doc_type
+        effective_source = document.document_type if document else default_source
         extracted_by_section[section_key] = extractor(
             text,
             effective_source,
@@ -126,14 +148,14 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
     sections: list[dict[str, Any]] = []
     for section_key, title, default_source in SECTION_DEFINITIONS:
         if section_key == "experiencia_especifica":
-            document = anexo
-            text = anexo_text
+            has_source_document = pliego is not None or anexo is not None
+            text_extracted = bool(pliego_text.strip() or anexo_text.strip())
         elif section_key == "otros":
-            document = pliego or anexo
-            text = (pliego_text or anexo_text)
+            has_source_document = pliego is not None or anexo is not None
+            text_extracted = bool((pliego_text or anexo_text).strip())
         else:
-            document = pliego
-            text = pliego_text
+            has_source_document = pliego is not None
+            text_extracted = bool(pliego_text.strip())
 
         items = extracted_by_section.get(section_key, [])
         sections.append(
@@ -143,8 +165,8 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
                 "status": _section_status(
                     section_key,
                     items,
-                    has_source_document=document is not None,
-                    text_extracted=bool(text.strip()),
+                    has_source_document=has_source_document,
+                    text_extracted=text_extracted,
                 ),
                 "items": items,
             }

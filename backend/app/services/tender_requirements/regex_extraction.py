@@ -66,6 +66,33 @@ def _item(
     }
 
 
+def _clean_requirement_text(value: str, max_len: int = 500) -> str:
+    cleaned = re.sub(r"\s+", " ", value).strip(" .;:-")
+    if len(cleaned) > max_len:
+        cleaned = cleaned[: max_len - 3] + "..."
+    return cleaned
+
+
+def _extract_labeled_block(normalized: str, label: str, stop_labels: tuple[str, ...]) -> Optional[str]:
+    stop_pattern = "|".join(re.escape(stop) for stop in stop_labels)
+    pattern = rf"{re.escape(label)}\s*[:\-]\s*(.+?)(?=(?:{stop_pattern})|\s+a\.\s|\s+b\.\s|$)"
+    match = re.search(pattern, normalized, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return None
+    return _clean_requirement_text(match.group(1))
+
+
+def _merge_items(existing: list[RequirementItem], new_items: list[RequirementItem]) -> list[RequirementItem]:
+    merged = list(existing)
+    seen = {item["key"] for item in merged}
+    for item in new_items:
+        if item["key"] in seen:
+            continue
+        merged.append(item)
+        seen.add(item["key"])
+    return merged
+
+
 def extract_experiencia_general(
     text: str,
     source_document: str,
@@ -75,17 +102,64 @@ def extract_experiencia_general(
         return []
 
     items: list[RequirementItem] = []
+    normalized = normalize_text(text)
+
+    general_block = _extract_labeled_block(
+        normalized,
+        "experiencia general",
+        ("experiencia especifica", "experiencia específica", "requisitos de experiencia"),
+    )
+    if general_block:
+        items.append(
+            _item(
+                key="requirement_description",
+                label="Descripción del requisito",
+                value=general_block,
+                display_value=general_block,
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence=general_block[:220],
+                confidence=0.92,
+            )
+        )
+
+    section_region_match = re.search(
+        r"3\.8\.1.{0,4000}?(?=3\.8\.2|3\.9|capitulo|capítulo|\Z)",
+        normalized,
+        flags=re.DOTALL,
+    )
+    section_region = section_region_match.group(0) if section_region_match else normalized
+
+    hundred_match = re.search(
+        r"cien\s+por\s+ciento\s*\(\s*100\s*%|100\s*%[^.\n]{0,80}"
+        r"(?:presupuesto\s+oficial|proceso\s+de\s+contratacion)",
+        section_region,
+    )
+    if hundred_match and not any(item["key"] == "min_percentage_budget" for item in items):
+        items.append(
+            _item(
+                key="min_percentage_budget",
+                label="Porcentaje mínimo del presupuesto",
+                value=100,
+                display_value="100% del Presupuesto Oficial (en SMMLV)",
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence=_snippet(section_region, hundred_match.start(), hundred_match.end() + 120),
+                confidence=0.9,
+            )
+        )
+
     regions = _region_near_marker(
         text,
         (
             "experiencia general",
+            "exigencia minima de la experiencia del proponente",
+            "exigencias minimas de la experiencia",
             "capacidad de experiencia",
-            "experiencia minima",
-            "experiencia mínima",
         ),
     )
     if not regions:
-        regions = [normalize_text(text)[:8000]]
+        regions = [section_region[:8000]]
 
     for region in regions:
         percent_match = re.search(
@@ -125,15 +199,24 @@ def extract_experiencia_general(
                 )
             )
 
-        smmlv_match = re.search(r"(\d+(?:[.,]\d+)?)\s*smmlv", region)
+        smmlv_match = re.search(
+            r"expresado\s+en\s+smmlv|(\d+(?:[.,]\d+)?)\s*smmlv",
+            region,
+        )
         if smmlv_match and not any(item["key"] == "min_amount_smmlv" for item in items):
-            amount = float(smmlv_match.group(1).replace(",", "."))
+            if smmlv_match.lastindex and smmlv_match.group(1):
+                amount = float(smmlv_match.group(1).replace(",", "."))
+                display = f"{amount:g} SMMLV"
+                value: Any = amount
+            else:
+                display = "Expresado en SMMLV"
+                value = "smmlv"
             items.append(
                 _item(
                     key="min_amount_smmlv",
                     label="Monto mínimo en SMMLV",
-                    value=amount,
-                    display_value=f"{amount:g} SMMLV",
+                    value=value,
+                    display_value=display,
                     source_document=source_document,
                     source_document_id=source_document_id,
                     evidence=_snippet(region, smmlv_match.start(), smmlv_match.end() + 40),
@@ -141,8 +224,9 @@ def extract_experiencia_general(
             )
 
     accreditation_match = re.search(
-        r"(matriz\s*(?:no\.?\s*)?1|formulario\s*(?:no\.?\s*)?1|certificad[oa]s?\s+de\s+experiencia)",
-        normalize_text(text),
+        r"(formato\s*3\s*[-–]?\s*experiencia|matriz\s*1\s*[-–]?\s*experiencia|"
+        r"certificad[oa]s?\s+de\s+experiencia)",
+        normalized,
     )
     if accreditation_match:
         items.append(
@@ -154,18 +238,18 @@ def extract_experiencia_general(
                 source_document=source_document,
                 source_document_id=source_document_id,
                 evidence=_snippet(
-                    normalize_text(text),
+                    normalized,
                     accreditation_match.start(),
                     accreditation_match.end() + 60,
                 ),
-                confidence=0.8,
+                confidence=0.88,
             )
         )
 
-    if regions and not items:
+    if not any(item["key"] == "requirement_description" for item in items):
         desc_match = re.search(
             r"experiencia general[^.\n]{0,20}[:\-]?\s*([^.\n]{20,240})",
-            regions[0],
+            normalized,
         )
         if desc_match:
             items.append(
@@ -173,10 +257,10 @@ def extract_experiencia_general(
                     key="requirement_description",
                     label="Descripción del requisito",
                     value=desc_match.group(1).strip(),
-                    display_value=desc_match.group(1).strip().capitalize(),
+                    display_value=_clean_requirement_text(desc_match.group(1)),
                     source_document=source_document,
                     source_document_id=source_document_id,
-                    evidence=_snippet(regions[0], desc_match.start(), desc_match.end()),
+                    evidence=_snippet(normalized, desc_match.start(), desc_match.end()),
                     confidence=0.72,
                 )
             )
@@ -193,22 +277,63 @@ def extract_experiencia_especifica(
         return []
 
     items: list[RequirementItem] = []
+    normalized = normalize_text(text)
+
+    specific_block = _extract_labeled_block(
+        normalized,
+        "experiencia especifica",
+        ("a. la experiencia", "b. el proponente", "requisitos de experiencia"),
+    )
+    if specific_block:
+        items.append(
+            _item(
+                key="specific_scope",
+                label="Alcance exigido",
+                value=specific_block,
+                display_value=specific_block,
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence=specific_block[:220],
+                confidence=0.92,
+            )
+        )
+
+        percent_in_block = re.search(
+            r"(\d{1,3}(?:[.,]\d+)?)\s*(?:%|por ciento)[^.\n]{0,80}"
+            r"(?:presupuesto\s+oficial|valor\s+del\s+presente\s+proceso)",
+            specific_block,
+        )
+        if percent_in_block:
+            pct = float(percent_in_block.group(1).replace(",", "."))
+            items.append(
+                _item(
+                    key="specific_min_percentage",
+                    label="Porcentaje mínimo específico",
+                    value=pct,
+                    display_value=f"{pct:g}% del Presupuesto Oficial",
+                    source_document=source_document,
+                    source_document_id=source_document_id,
+                    evidence=_snippet(specific_block, percent_in_block.start(), percent_in_block.end() + 40),
+                    confidence=0.9,
+                )
+            )
+
     regions = _region_near_marker(
         text,
         (
             "experiencia especifica",
             "experiencia específica",
             "experiencia relacionada",
-            "experiencia en",
-            "contratos similares",
+            "requisitos de experiencia son",
         ),
     )
     if not regions:
-        regions = [normalize_text(text)[:8000]]
+        regions = [normalized[:8000]]
 
     for region in regions:
         percent_match = re.search(
-            r"(\d{1,3}(?:[.,]\d+)?)\s*(?:%|por ciento)",
+            r"(\d{1,3}(?:[.,]\d+)?)\s*(?:%|por ciento)[^.\n]{0,120}"
+            r"(?:presupuesto\s+oficial|valor\s+del\s+presente\s+proceso|valor\s+de\s+presupuesto)",
             region,
         )
         if percent_match and not any(item["key"] == "specific_min_percentage" for item in items):
@@ -218,41 +343,42 @@ def extract_experiencia_especifica(
                     key="specific_min_percentage",
                     label="Porcentaje mínimo específico",
                     value=pct,
-                    display_value=f"{pct:g}%",
+                    display_value=f"{pct:g}% del Presupuesto Oficial",
                     source_document=source_document,
                     source_document_id=source_document_id,
                     evidence=_snippet(region, percent_match.start(), percent_match.end() + 60),
+                    confidence=0.85,
                 )
             )
 
-        scope_match = re.search(
-            r"(?:experiencia especifica|experiencia específica|experiencia relacionada)"
-            r"[^.\n]{0,30}[:\-]?\s*([^.\n]{20,280})",
-            region,
-        )
-        if scope_match and not any(item["key"] == "specific_scope" for item in items):
-            scope = scope_match.group(1).strip()
-            items.append(
-                _item(
-                    key="specific_scope",
-                    label="Alcance exigido",
-                    value=scope,
-                    display_value=scope.capitalize(),
-                    source_document=source_document,
-                    source_document_id=source_document_id,
-                    evidence=_snippet(region, scope_match.start(), scope_match.end()),
-                    confidence=0.78,
-                )
+        if not any(item["key"] == "specific_scope" for item in items):
+            scope_match = re.search(
+                r"(?:experiencia especifica|experiencia específica|experiencia relacionada)"
+                r"[^.\n]{0,30}[:\-]?\s*([^.\n]{20,400})",
+                region,
             )
+            if scope_match:
+                scope = _clean_requirement_text(scope_match.group(1))
+                items.append(
+                    _item(
+                        key="specific_scope",
+                        label="Alcance exigido",
+                        value=scope,
+                        display_value=scope,
+                        source_document=source_document,
+                        source_document_id=source_document_id,
+                        evidence=_snippet(region, scope_match.start(), scope_match.end()),
+                        confidence=0.78,
+                    )
+                )
 
-    code_region = normalize_text(text)
     code_matches = re.findall(
-        r"(?:codigo(?:s)?|c[oó]digo(?:s)?|actividad(?:es)?|unspsc)"
-        r"[^.\n]{0,40}?(\d{4,8}(?:\s*[,/]\s*\d{4,8})*)",
-        code_region,
+        r"(?:codigo(?:s)?|c[oó]digo(?:s)?\s+unspsc|unspsc)"
+        r"[^.\n]{0,40}?(\d{6,8}(?:\s*[,/]\s*\d{6,8})*)",
+        normalized,
     )
     if code_matches:
-        raw_codes = re.findall(r"\d{4,8}", code_matches[0])
+        raw_codes = [code for code in re.findall(r"\d{6,8}", code_matches[0]) if not code.startswith(("19", "20"))]
         if raw_codes:
             items.append(
                 _item(
@@ -429,10 +555,22 @@ def extract_otros_requisitos(
     items: list[RequirementItem] = []
     normalized = normalize_text(text)
     special_patterns: tuple[tuple[str, str, str], ...] = (
-        (r"\bmipyme\b|\bpyme\b|micro(?:,?\s*pequena|pequeña)\s+y\s+mediana", "pyme", "Condición PYME / MiPyme"),
-        (r"\bmujer\b|genero\s+femenino|género\s+femenino", "mujer", "Requisito relacionado con mujer / género"),
-        (r"\bmocho\b|minusvalia|discapacidad", "mocho", "Requisito especial (mocho / discapacidad)"),
-        (r"emprendimiento|empresa\s+emergente", "emprendimiento", "Emprendimiento / empresa emergente"),
+        (
+            r"calidad\s+de\s+mipyme|certificado.{0,40}mipyme|micro,?\s*pequena\s+y\s+mediana\s+empresa",
+            "pyme",
+            "Beneficio / condición MiPyme",
+        ),
+        (
+            r"empresa\s+de\s+mujeres|empresas\s+de\s+mujeres|formato\s*13",
+            "mujer",
+            "Emprendimiento / empresa de mujeres",
+        ),
+        (r"\bmocho\b", "mocho", "Requisito especial (mocho)"),
+        (
+            r"emprendimiento\s+y\s+empresa\s+de\s+mujeres|empresa\s+emergente",
+            "emprendimiento",
+            "Emprendimiento / empresa emergente",
+        ),
     )
 
     for pattern, key, label in special_patterns:
