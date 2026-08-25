@@ -238,6 +238,32 @@ export function getTenderDocumentDownloadUrl(
   return `${API_BASE_URL}/tenders/${tenderId}/documents/${documentId}/download`;
 }
 
+export type TenderDocumentType =
+  | 'pliego_condiciones'
+  | 'anexo_tecnico'
+  | 'presupuesto'
+
+export async function uploadTenderDocument(
+  tenderId: string,
+  documentType: TenderDocumentType,
+  file: File
+): Promise<TenderDocument> {
+  const formData = new FormData()
+  formData.append('document_type', documentType)
+  formData.append('file', file)
+
+  const response = await client.post<TenderDocument>(
+    `/tenders/${tenderId}/documents/upload`,
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }
+  )
+  return response.data
+}
+
 export interface TenderSummaryField {
   key: string;
   label: string;

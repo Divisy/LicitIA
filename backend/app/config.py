@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     PRESUPUESTO_CONTENT_CLASSIFICATION_MAX_PAGES: int = 2
     PRESUPUESTO_CONTENT_CLASSIFICATION_MAX_CHARS: int = 4000
 
+    # Manual key document upload (US 1.2.6 MVP)
+    MANUAL_DOCUMENT_UPLOAD_ENABLED: bool = True
+    MANUAL_DOCUMENT_UPLOAD_MAX_BYTES: int = 52_428_800  # 50 MB
+
     # Document storage backend: local (Railway Volume) or r2 (Cloudflare R2)
     DOCUMENT_STORAGE_BACKEND: str = "local"
     # When using R2, keep a copy on the local volume (default: false to save disk)

@@ -89,7 +89,34 @@
 
 .tender-detail-panel__documents-title {
   @include type-style('heading-02');
+  margin: 0 0 $spacing-03;
+}
+
+.tender-detail-panel__documents-hint {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-secondary);
   margin: 0 0 $spacing-04;
+}
+
+.tender-detail-panel__file-input {
+  display: none;
+}
+
+.tender-detail-panel__missing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-04;
+  padding: $spacing-04;
+  border: 1px dashed var(--cds-border-subtle);
+  border-radius: $spacing-02;
+  background: var(--cds-layer-accent);
+}
+
+.tender-detail-panel__missing-text {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  margin: 0;
 }
 
 .tender-detail-panel__loading {

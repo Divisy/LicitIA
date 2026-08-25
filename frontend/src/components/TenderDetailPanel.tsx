@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ComposedModal,
   ModalHeader,
@@ -7,16 +7,20 @@ import {
   Link,
   Tag,
   Tile,
+  Button,
+  InlineNotification,
 } from '@carbon/react'
-import { Download, Launch, Document } from '@carbon/icons-react'
+import { Download, Launch, Document, Upload } from '@carbon/icons-react'
 import {
   Tender,
   TenderDocument,
   TenderSummary,
   TenderSummaryField,
+  TenderDocumentType,
   getTenderDocuments,
   getTenderDocumentDownloadUrl,
   getTenderSummary,
+  uploadTenderDocument,
 } from '../api/client'
 import './TenderDetailPanel.scss'
 
@@ -37,6 +41,8 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   anexo_tecnico: 'Anexo técnico',
   presupuesto: 'Presupuesto',
 }
+
+const ACCEPTED_DOCUMENT_EXTENSIONS = '.pdf,.xlsx,.xls,.xlsm'
 
 const SUMMARY_FIELD_KEYS_BY_KIND: Record<string, readonly string[]> = {
   ejecucion_obra: [
@@ -150,6 +156,45 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [uploadingType, setUploadingType] = useState<TenderDocumentType | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const pendingUploadTypeRef = useRef<TenderDocumentType | null>(null)
+
+  const reloadSummary = async (tenderId: string) => {
+    setSummaryLoading(true)
+    setSummaryError(null)
+    try {
+      const response = await getTenderSummary(tenderId, true)
+      setSummary(response)
+    } catch (err: any) {
+      setSummaryError(
+        err?.response?.data?.detail ||
+          err?.message ||
+          'No se pudo cargar la información general'
+      )
+    } finally {
+      setSummaryLoading(false)
+    }
+  }
+
+  const reloadDocuments = async (tenderId: string) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await getTenderDocuments(tenderId)
+      setDocuments(response.items)
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.detail ||
+          err?.message ||
+          'No se pudieron cargar los documentos'
+      )
+      setDocuments([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!open || !tender) {
@@ -157,56 +202,18 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
       setSummary(null)
       setError(null)
       setSummaryError(null)
+      setUploadError(null)
+      setUploadingType(null)
       return
     }
 
     let cancelled = false
     const loadDocuments = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const response = await getTenderDocuments(tender.id)
-        if (!cancelled) {
-          setDocuments(response.items)
-        }
-      } catch (err: any) {
-        if (!cancelled) {
-          setError(
-            err?.response?.data?.detail ||
-              err?.message ||
-              'No se pudieron cargar los documentos'
-          )
-          setDocuments([])
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
+      await reloadDocuments(tender.id)
     }
 
     const loadSummary = async () => {
-      setSummaryLoading(true)
-      setSummaryError(null)
-      try {
-        const response = await getTenderSummary(tender.id, true)
-        if (!cancelled) {
-          setSummary(response)
-        }
-      } catch (err: any) {
-        if (!cancelled) {
-          setSummaryError(
-            err?.response?.data?.detail ||
-              err?.message ||
-              'No se pudo cargar la información general'
-          )
-          setSummary(null)
-        }
-      } finally {
-        if (!cancelled) {
-          setSummaryLoading(false)
-        }
-      }
+      await reloadSummary(tender.id)
     }
 
     loadDocuments()
@@ -269,6 +276,42 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
       return field
     })
   }, [summary, tender?.amount])
+
+  const isManualDocument = (doc: TenderDocument) =>
+    doc.external_document_id.startsWith('manual-') ||
+    (doc.description || '').toLowerCase().includes('manual')
+
+  const handleUploadClick = (documentType: TenderDocumentType) => {
+    pendingUploadTypeRef.current = documentType
+    setUploadError(null)
+    fileInputRef.current?.click()
+  }
+
+  const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    const documentType = pendingUploadTypeRef.current
+    event.target.value = ''
+
+    if (!file || !documentType || !tender) {
+      return
+    }
+
+    setUploadingType(documentType)
+    setUploadError(null)
+    try {
+      await uploadTenderDocument(tender.id, documentType, file)
+      await Promise.all([reloadDocuments(tender.id), reloadSummary(tender.id)])
+    } catch (err: any) {
+      setUploadError(
+        err?.response?.data?.detail ||
+          err?.message ||
+          'No se pudo subir el documento'
+      )
+    } finally {
+      setUploadingType(null)
+      pendingUploadTypeRef.current = null
+    }
+  }
 
   const renderSummaryValue = (field: TenderSummaryField) => {
     if (field.status === 'not_applicable') {
@@ -406,8 +449,30 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
 
           <section className="tender-detail-panel__documents">
             <h4 className="tender-detail-panel__documents-title">Documentos clave</h4>
+            <p className="tender-detail-panel__documents-hint">
+              Si SECOP no trajo un documento automáticamente, puedes subir el archivo
+              descargado del portal de la entidad.
+            </p>
 
-            {loading && (
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPTED_DOCUMENT_EXTENSIONS}
+              className="tender-detail-panel__file-input"
+              onChange={handleFileSelected}
+            />
+
+            {uploadError && (
+              <InlineNotification
+                kind="error"
+                title="Error al subir"
+                subtitle={uploadError}
+                lowContrast
+                onCloseButtonClick={() => setUploadError(null)}
+              />
+            )}
+
+            {loading && documents.length === 0 && (
               <div className="tender-detail-panel__loading">
                 <Loading description="Cargando documentos..." withOverlay={false} small />
               </div>
@@ -419,67 +484,64 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
               </Tile>
             )}
 
-            {!loading && !error && documents.length === 0 && (
-              <Tile className="tender-detail-panel__empty">
-                {tender.documents_extraction_attempted_at ? (
-                  <>
-                    <p>No se encontraron documentos clave en SECOP para esta licitación.</p>
-                    <p className="tender-detail-panel__empty-hint">
-                      La extracción ya se ejecutó; es posible que la entidad no haya publicado
-                      pliego, anexo o presupuesto en datos abiertos, o que estén dentro de
-                      archivos comprimidos.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p>Extracción de documentos pendiente.</p>
-                    <p className="tender-detail-panel__empty-hint">
-                      Los documentos clave se descargarán automáticamente en el próximo ciclo
-                      de extracción.
-                    </p>
-                  </>
-                )}
-              </Tile>
-            )}
-
-            {!loading && !error && documents.length > 0 && (
+            {!error && (
               <div className="tender-detail-panel__groups">
-                {DOCUMENT_TYPE_ORDER.filter(
-                  (type) => (groupedDocuments[type] || []).length > 0
-                ).map((type) => (
-                  <div key={type} className="tender-detail-panel__group">
-                    <h5 className="tender-detail-panel__group-title">
-                      {DOCUMENT_TYPE_LABELS[type] || type}
-                    </h5>
-                    <ul className="tender-detail-panel__file-list">
-                      {(groupedDocuments[type] || []).map((doc) => (
-                        <li key={doc.id} className="tender-detail-panel__file-item">
-                          <div className="tender-detail-panel__file-info">
-                            <Document size={16} />
-                            <div>
-                              <span className="tender-detail-panel__file-name">
-                                {doc.file_name}
-                              </span>
-                              <span className="tender-detail-panel__file-meta">
-                                {formatFileSize(doc.file_size)}
-                                {doc.file_size ? ' · ' : ''}
-                                {formatDate(doc.downloaded_at)}
-                              </span>
-                            </div>
-                          </div>
-                          <Link
-                            href={getTenderDocumentDownloadUrl(tender.id, doc.id)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            renderIcon={Download}
+                {DOCUMENT_TYPE_ORDER.map((type) => {
+                  const docs = groupedDocuments[type] || []
+                  const isUploading = uploadingType === type
+
+                  return (
+                    <div key={type} className="tender-detail-panel__group">
+                      <h5 className="tender-detail-panel__group-title">
+                        {DOCUMENT_TYPE_LABELS[type] || type}
+                      </h5>
+
+                      {docs.length === 0 ? (
+                        <div className="tender-detail-panel__missing">
+                          <p className="tender-detail-panel__missing-text">No disponible</p>
+                          <Button
+                            kind="tertiary"
+                            size="sm"
+                            renderIcon={Upload}
+                            disabled={isUploading || !!uploadingType}
+                            onClick={() => handleUploadClick(type)}
                           >
-                            Descargar
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+                            {isUploading ? 'Subiendo...' : 'Subir archivo'}
+                          </Button>
+                        </div>
+                      ) : (
+                        <ul className="tender-detail-panel__file-list">
+                          {docs.map((doc) => (
+                            <li key={doc.id} className="tender-detail-panel__file-item">
+                              <div className="tender-detail-panel__file-info">
+                                <Document size={16} />
+                                <div>
+                                  <span className="tender-detail-panel__file-name">
+                                    {doc.file_name}
+                                  </span>
+                                  <span className="tender-detail-panel__file-meta">
+                                    {isManualDocument(doc) ? 'Cargado manualmente · ' : ''}
+                                    {formatFileSize(doc.file_size)}
+                                    {doc.file_size ? ' · ' : ''}
+                                    {formatDate(doc.downloaded_at)}
+                                  </span>
+                                </div>
+                              </div>
+                              <Link
+                                href={getTenderDocumentDownloadUrl(tender.id, doc.id)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                renderIcon={Download}
+                              >
+                                Descargar
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </section>

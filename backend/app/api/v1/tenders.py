@@ -1,5 +1,5 @@
 """Tender API endpoints."""
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import date, datetime
@@ -25,6 +25,7 @@ from app.schemas.tender_summary import TenderSummaryResponse, TenderSummaryField
 from app.services.experience_matching import match_tender_against_experiences, MIN_MATCH_THRESHOLD
 from app.services.tender_summary.contract_kind import apply_contract_kind_filter, parse_contract_kind
 from app.services.tender_summary.service import build_tender_summary, persist_tender_summary
+from app.services.manual_document_upload import save_manual_tender_document, validate_document_type
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -274,6 +275,59 @@ async def download_tender_document(
         raise HTTPException(status_code=400, detail="Invalid document path")
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Document file not found on server")
+
+
+@router.post(
+    "/tenders/{tender_id}/documents/upload",
+    response_model=TenderDocumentResponse,
+    status_code=201,
+)
+async def upload_tender_document(
+    tender_id: UUID,
+    document_type: str = Form(..., description="pliego_condiciones | anexo_tecnico | presupuesto"),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Upload a missing key document manually (PDF/XLSX)."""
+    if not settings.MANUAL_DOCUMENT_UPLOAD_ENABLED:
+        raise HTTPException(status_code=503, detail="Manual document upload is disabled")
+
+    tender = db.query(Tender).filter(Tender.id == tender_id).first()
+    if not tender:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
+    try:
+        doc_type = validate_document_type(document_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    storage = get_document_storage()
+    try:
+        record = await save_manual_tender_document(db, tender, doc_type, file, storage)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "Manual document upload failed for tender %s: %s",
+            tender.external_id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to store uploaded document") from exc
+
+    if settings.TENDER_SUMMARY_EXTRACTION_ENABLED:
+        try:
+            db.expire(tender)
+            payload = build_tender_summary(tender)
+            persist_tender_summary(db, tender, payload)
+        except Exception as exc:
+            logger.warning(
+                "Summary refresh after manual upload failed for %s: %s",
+                tender.external_id,
+                exc,
+            )
+
+    return TenderDocumentResponse.model_validate(record)
 
 
 @router.get("/tenders/{tender_id}/summary", response_model=TenderSummaryResponse)
