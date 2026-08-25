@@ -30,42 +30,59 @@ logger = get_logger(__name__)
 
 SUPPORTED_EXTENSIONS: frozenset[str] = frozenset({".pdf", ".xlsx", ".xls", ".xlsm"})
 
-PRESUPUESTO_ANCHOR_PHRASES: tuple[str, ...] = (
+# Strong phrases that must appear in document body (not filename alone).
+PRESUPUESTO_CONTENT_ANCHORS: tuple[str, ...] = (
     "presupuesto oficial",
     "formulario 1",
     "formulario no. 1",
     "formulario no 1",
     "formul1 presupuesto",
+    "formul1",
     "analisis de precios unitarios",
     "análisis de precios unitarios",
-    "propuesta economica",
-    "propuesta económica",
-    "oferta economica",
-    "oferta económica",
-    "formato de oferta economica",
-    "formato de oferta económica",
-    "presupuesto de obra",
-    "valor total del presupuesto",
-    "costo directo",
-    "costos indirectos",
+    "analisis de precios",
+    "análisis de precios",
 )
 
-PRESUPUESTO_KEYWORDS: tuple[str, ...] = (
-    "presupuesto",
-    "precios unitarios",
-    "apu",
-    "aiu",
-    "subtotal",
-    "valor total",
-    "costo total",
-    "formulario economico",
-    "formulario económico",
+FILENAME_EXCLUSION_KEYWORDS: tuple[str, ...] = (
+    "matriz",
+    "certificado",
+    "autorizacion",
+    "autorización",
+    "experiencia",
+    "indicadores",
+    "vigencias futuras",
+    "vigencia futura",
+    "pda",
+    "acreditacion",
+    "acreditación",
+    "conformacion",
+    "conformación",
+    "capacidad financiera",
+    "convocatoria",
+    "resolucion",
+    "resolución",
+    "acta",
+    "aviso",
+    "estudio previo",
+    "viabilidad",
+    "puntaje",
+    "veedores",
+    "cdp",
+    "memoria justificativa",
+    "carta de",
+    "informe de evaluacion",
+    "informe de evaluación",
 )
 
-EXCLUSION_PHRASES: tuple[str, ...] = (
+CONTENT_EXCLUSION_PHRASES: tuple[str, ...] = (
     "certificado de disponibilidad presupuestal",
     "certificado de disponibilidad",
-    "cdp",
+    "autorizacion de vigencias futuras",
+    "autorización de vigencias futuras",
+    "matriz de experiencia",
+    "indicadores financieros",
+    "capacidad financiera y organizacional",
     "aviso de convocatoria",
     "convocatoria publica",
     "convocatoria pública",
@@ -75,12 +92,12 @@ EXCLUSION_PHRASES: tuple[str, ...] = (
     "anexo tecnico",
     "anexo técnico",
     "acta de apertura",
-    "informe de evaluacion",
-    "informe de evaluación",
-    "carta de aceptacion",
-    "carta de aceptación",
     "memoria justificativa",
+    "acreditacion de emprendimiento",
+    "acreditación de emprendimiento",
 )
+
+MIN_PRESUPUESTO_AMOUNT = 100_000
 
 
 def normalize_text(value: str) -> str:
@@ -91,6 +108,107 @@ def normalize_text(value: str) -> str:
     return text.strip()
 
 
+def _parse_number(value) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    cleaned = text.replace("$", "").replace(" ", "")
+    if "," in cleaned and "." in cleaned:
+        cleaned = cleaned.replace(".", "").replace(",", ".")
+    else:
+        cleaned = cleaned.replace(",", ".")
+    cleaned = re.sub(r"[^\d.-]", "", cleaned)
+    if not cleaned:
+        return None
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def is_excluded_presupuesto_filename(file_name: str) -> bool:
+    haystack = normalize_text(file_name)
+    if any(keyword in haystack for keyword in FILENAME_EXCLUSION_KEYWORDS):
+        return True
+    if re.search(r"\bformato\s+[2-9]\b", haystack):
+        return True
+    if re.search(r"\bformato\s+1[0-9]\b", haystack):
+        return True
+    return False
+
+
+def is_excluded_presupuesto_content(text: str) -> bool:
+    normalized = normalize_text(text)[: settings.PRESUPUESTO_CONTENT_CLASSIFICATION_MAX_CHARS]
+    return any(phrase in normalized for phrase in CONTENT_EXCLUSION_PHRASES)
+
+
+def content_has_presupuesto_anchor(text: str) -> bool:
+    normalized = normalize_text(text)[: settings.PRESUPUESTO_CONTENT_CLASSIFICATION_MAX_CHARS]
+    if not normalized:
+        return False
+    return any(phrase in normalized for phrase in PRESUPUESTO_CONTENT_ANCHORS)
+
+
+def looks_like_presupuesto_workbook(path: Path) -> bool:
+    """Require Formulario 1 / presupuesto oficial labels plus a large monetary total."""
+    from openpyxl import load_workbook
+
+    found_anchor = False
+    found_amount = False
+
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    try:
+        for sheet in workbook.worksheets[:5]:
+            for row_index, row in enumerate(sheet.iter_rows(values_only=True)):
+                if row_index >= 120:
+                    break
+                cells = [cell for cell in row if cell is not None]
+                if not cells:
+                    continue
+                joined = normalize_text(" ".join(str(cell) for cell in cells[:8]))
+                if any(anchor in joined for anchor in PRESUPUESTO_CONTENT_ANCHORS):
+                    found_anchor = True
+                for cell in cells:
+                    number = _parse_number(cell)
+                    if number is not None and number >= MIN_PRESUPUESTO_AMOUNT:
+                        found_amount = True
+                        break
+    finally:
+        workbook.close()
+
+    return found_anchor and found_amount
+
+
+def classify_presupuesto_candidate(
+    file_name: str,
+    content_text: str,
+    local_path: Optional[Path] = None,
+    extension: str = "",
+) -> bool:
+    """Return True only for high-confidence presupuesto documents."""
+    if is_excluded_presupuesto_filename(file_name):
+        return False
+    if is_excluded_presupuesto_content(content_text):
+        return False
+    if not content_has_presupuesto_anchor(content_text):
+        return False
+
+    ext = extension.lower()
+    if ext in {".xlsx", ".xls", ".xlsm"}:
+        if local_path is None or not local_path.is_file():
+            return False
+        return looks_like_presupuesto_workbook(local_path)
+
+    if ext == ".pdf":
+        return True
+
+    return False
+
+
 def candidate_extension(document: SecopDocumentDTO) -> str:
     extension = (document.extension or "").strip().lower()
     if extension and not extension.startswith("."):
@@ -98,24 +216,6 @@ def candidate_extension(document: SecopDocumentDTO) -> str:
     if extension:
         return extension
     return Path(document.file_name).suffix.lower()
-
-
-def is_excluded_presupuesto_candidate(file_name: str, content_text: str = "") -> bool:
-    haystack = normalize_text(f"{file_name} {content_text[:2000]}")
-    return any(phrase in haystack for phrase in EXCLUSION_PHRASES)
-
-
-def classify_presupuesto_by_content(text: str) -> bool:
-    """Return True when extracted content looks like a presupuesto document."""
-    normalized = normalize_text(text)[: settings.PRESUPUESTO_CONTENT_CLASSIFICATION_MAX_CHARS]
-    if not normalized:
-        return False
-    if any(phrase in normalized for phrase in EXCLUSION_PHRASES):
-        return False
-    if any(phrase in normalized for phrase in PRESUPUESTO_ANCHOR_PHRASES):
-        return True
-    matches = sum(1 for keyword in PRESUPUESTO_KEYWORDS if keyword in normalized)
-    return matches >= 2
 
 
 def extract_text_from_local_pdf(path: Path, max_pages: int) -> str:
@@ -173,7 +273,7 @@ def fetch_otro_presupuesto_candidates(portfolio_id: str) -> list[SecopDocumentDT
         extension = candidate_extension(document)
         if extension not in SUPPORTED_EXTENSIONS:
             continue
-        if is_excluded_presupuesto_candidate(document.file_name):
+        if is_excluded_presupuesto_filename(document.file_name):
             continue
         candidates.append(document)
 
@@ -241,7 +341,12 @@ def extract_presupuesto_by_content_for_tender(
                     continue
 
                 content_text = extract_candidate_text(staging_path, extension)
-                if not classify_presupuesto_by_content(content_text):
+                if not classify_presupuesto_candidate(
+                    candidate.file_name,
+                    content_text,
+                    staging_path,
+                    extension,
+                ):
                     continue
 
                 presupuesto_document = candidate.model_copy(
