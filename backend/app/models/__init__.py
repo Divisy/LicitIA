@@ -7,11 +7,13 @@ from app.models.support_ticket import SupportTicket
 from app.models.feedback import Feedback
 from app.models.tender_document import TenderDocument
 from app.models.tender_summary import TenderSummary
+from app.models.tender_requirements import TenderRequirements
 
 __all__ = [
     "Tender",
     "TenderDocument",
     "TenderSummary",
+    "TenderRequirements",
     "Subscription",
     "CompanyExperience",
     "Lead",

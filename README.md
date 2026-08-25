@@ -258,7 +258,7 @@ PYTHONPATH=. python scripts/extract_compressed_documents.py --external-id CO1.RE
 
 Variables: `ARCHIVE_EXTRACTION_ENABLED`, `ARCHIVE_MAX_DOWNLOAD_BYTES`, `ARCHIVE_MAX_UNCOMPRESSED_BYTES`, `ARCHIVE_MAX_FILES`.
 
-### US 1.2.5 — Presupuesto por contenido PDF/XLSX ✅ (MVP)
+### US 1.2.5 — Presupuesto por contenido PDF/XLSX ✅ (MVP — deuda técnica; carga manual US 1.2.6)
 
 Cuando falta el **presupuesto**, el pipeline revisa archivos SECOP clasificados como `otro` (PDF/XLSX), lee las primeras páginas/celdas y archiva el archivo si el contenido coincide con un presupuesto.
 
@@ -270,6 +270,21 @@ PYTHONPATH=. python scripts/reclassify_presupuesto_by_content.py --reference LP-
 ```
 
 Variables: `PRESUPUESTO_CONTENT_CLASSIFICATION_ENABLED`, `PRESUPUESTO_CONTENT_CLASSIFICATION_MAX_PAGES`, `PRESUPUESTO_CONTENT_CLASSIFICATION_MAX_CHARS`.
+
+### US 1.5 — Requisitos de participación ✅ (MVP 1.5.1)
+
+Extrae y muestra experiencia general, experiencia específica, indicadores financieros y requisitos legales desde el **pliego** y el **anexo técnico** archivados.
+
+```bash
+cd backend
+PYTHONPATH=. python scripts/extract_tender_requirements.py --dry-run
+PYTHONPATH=. python scripts/extract_tender_requirements.py --batch-size 25
+PYTHONPATH=. python scripts/extract_tender_requirements.py --reference LP-013-2026
+```
+
+API: `GET /api/v1/tenders/{id}/requirements?refresh=true`
+
+Variables: `TENDER_REQUIREMENTS_EXTRACTION_ENABLED`, `TENDER_REQUIREMENTS_USE_LLM`, `TENDER_REQUIREMENTS_MAX_CHARS`.
 
 ### US 1.3 — Documentos en la interfaz ✅
 
@@ -345,7 +360,8 @@ Para el MVP, la autenticación es opcional. Si configuras `API_KEY` en `.env`, p
 ## 📚 Próximos Pasos
 
 - [x] US 1.2.4 — Extracción de documentos dentro de ZIP/RAR ✅ ([spec](docs/US-1.2.4-extraccion-documentos-zip-rar.md))
-- [x] US 1.2.5 — Presupuesto por contenido PDF/XLSX (MVP) ✅ ([spec](docs/US-1.2.5-clasificacion-documentos-por-contenido-pdf.md))
+- [x] US 1.2.5 — Presupuesto por contenido PDF/XLSX (MVP — deuda técnica; carga manual US 1.2.6) ✅ ([spec](docs/US-1.2.5-clasificacion-documentos-por-contenido-pdf.md))
+- [ ] US 1.5 — Requisitos de participación: experiencia, indicadores y habilitación (MVP 1.5.1 en desarrollo) ([spec](docs/US-1.5-analizador-requisitos-experiencia-indicadores.md))
 - [ ] Columna referencia en tabla de licitaciones (mejor UX)
 - [ ] Autenticación completa (JWT)
 - [ ] Vista previa embebida de PDF en el navegador

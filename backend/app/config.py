@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     # Tender summary extraction (US 1.4)
     TENDER_SUMMARY_EXTRACTION_ENABLED: bool = True
 
+    # Tender requirements extraction (US 1.5)
+    TENDER_REQUIREMENTS_EXTRACTION_ENABLED: bool = True
+    TENDER_REQUIREMENTS_USE_LLM: bool = False
+    TENDER_REQUIREMENTS_LLM_MIN_CONFIDENCE: float = 0.70
+    TENDER_REQUIREMENTS_MAX_CHARS: int = 80000
+
     # Presupuesto content classification (US 1.2.5 MVP)
     PRESUPUESTO_CONTENT_CLASSIFICATION_ENABLED: bool = True
     PRESUPUESTO_CONTENT_CLASSIFICATION_MAX_PAGES: int = 2

@@ -115,6 +115,19 @@ with engine.begin() as conn:
         "ON tender_summaries (contract_kind)"
     ))
 
+    conn.execute(text(
+        """
+        CREATE TABLE IF NOT EXISTS tender_requirements (
+            tender_id UUID PRIMARY KEY REFERENCES tenders(id) ON DELETE CASCADE,
+            extraction_version VARCHAR(20) NOT NULL DEFAULT '1.5.1',
+            requirements_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            extracted_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+        """
+    ))
+
 EOF
 
 echo "Migrations completed successfully"

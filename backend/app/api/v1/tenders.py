@@ -22,6 +22,16 @@ from app.schemas.tender import (
 from app.config import settings
 from app.models.tender_summary import TenderSummary
 from app.schemas.tender_summary import TenderSummaryResponse, TenderSummaryFieldResponse
+from app.models.tender_requirements import TenderRequirements
+from app.schemas.tender_requirements import (
+    TenderRequirementsResponse,
+    TenderRequirementSectionResponse,
+    TenderRequirementItemResponse,
+)
+from app.services.tender_requirements.service import (
+    build_tender_requirements,
+    persist_tender_requirements,
+)
 from app.services.experience_matching import match_tender_against_experiences, MIN_MATCH_THRESHOLD
 from app.services.tender_summary.contract_kind import apply_contract_kind_filter, parse_contract_kind
 from app.services.tender_summary.service import build_tender_summary, persist_tender_summary
@@ -327,6 +337,18 @@ async def upload_tender_document(
                 exc,
             )
 
+    if settings.TENDER_REQUIREMENTS_EXTRACTION_ENABLED:
+        try:
+            db.expire(tender)
+            requirements_payload = build_tender_requirements(tender)
+            persist_tender_requirements(db, tender, requirements_payload)
+        except Exception as exc:
+            logger.warning(
+                "Requirements refresh after manual upload failed for %s: %s",
+                tender.external_id,
+                exc,
+            )
+
     return TenderDocumentResponse.model_validate(record)
 
 
@@ -364,6 +386,70 @@ async def get_tender_summary(
         contract_kind_label=payload["contract_kind_label"],
         extracted_at=record.extracted_at,
         fields=[TenderSummaryFieldResponse(**field) for field in payload["fields"]],
+        cached=False,
+    )
+
+
+def _requirements_response_from_payload(
+    tender: Tender,
+    payload: dict,
+    *,
+    extracted_at: datetime,
+    cached: bool,
+) -> TenderRequirementsResponse:
+    return TenderRequirementsResponse(
+        tender_id=tender.id,
+        tender_external_id=tender.external_id,
+        extraction_version=payload.get("extraction_version", "1.5.1"),
+        extracted_at=extracted_at,
+        sections=[
+            TenderRequirementSectionResponse(
+                key=section["key"],
+                title=section["title"],
+                status=section["status"],
+                items=[TenderRequirementItemResponse(**item) for item in section.get("items", [])],
+            )
+            for section in payload.get("sections", [])
+        ],
+        warnings=payload.get("warnings", []),
+        cached=cached,
+    )
+
+
+@router.get("/tenders/{tender_id}/requirements", response_model=TenderRequirementsResponse)
+async def get_tender_requirements(
+    tender_id: UUID,
+    refresh: bool = Query(False, description="Recompute requirements from stored documents"),
+    db: Session = Depends(get_db),
+):
+    """Return extracted participation requirements (US 1.5)."""
+    if not settings.TENDER_REQUIREMENTS_EXTRACTION_ENABLED:
+        raise HTTPException(status_code=503, detail="Tender requirements extraction is disabled")
+
+    tender = db.query(Tender).filter(Tender.id == tender_id).first()
+    if not tender:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
+    cached = (
+        None
+        if refresh
+        else db.query(TenderRequirements).filter(TenderRequirements.tender_id == tender_id).first()
+    )
+    if cached and cached.requirements_json:
+        payload = cached.requirements_json
+        return _requirements_response_from_payload(
+            tender,
+            payload,
+            extracted_at=cached.extracted_at,
+            cached=True,
+        )
+
+    payload = build_tender_requirements(tender)
+    record = persist_tender_requirements(db, tender, payload)
+    return _requirements_response_from_payload(
+        tender,
+        payload,
+        extracted_at=record.extracted_at,
         cached=False,
     )
 

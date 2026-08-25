@@ -57,6 +57,12 @@ class Tender(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    requirements = relationship(
+        "TenderRequirements",
+        back_populates="tender",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     @property
     def location(self) -> Optional[str]:

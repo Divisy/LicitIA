@@ -295,6 +295,50 @@ export async function getTenderSummary(
   return response.data;
 }
 
+export interface TenderRequirementItem {
+  key: string;
+  label: string;
+  value: unknown;
+  display_value: string | null;
+  confidence: number;
+  source_document: string;
+  source_document_id: string | null;
+  evidence: string | null;
+}
+
+export interface TenderRequirementSection {
+  key: string;
+  title: string;
+  status:
+    | 'extraido'
+    | 'no_encontrado'
+    | 'revisar'
+    | 'documento_no_disponible'
+    | 'no_extraible';
+  items: TenderRequirementItem[];
+}
+
+export interface TenderRequirements {
+  tender_id: string;
+  tender_external_id: string;
+  extraction_version: string;
+  extracted_at: string;
+  sections: TenderRequirementSection[];
+  warnings: string[];
+  cached: boolean;
+}
+
+export async function getTenderRequirements(
+  tenderId: string,
+  refresh = false
+): Promise<TenderRequirements> {
+  const response = await client.get<TenderRequirements>(
+    `/tenders/${tenderId}/requirements`,
+    { params: refresh ? { refresh: true } : undefined }
+  );
+  return response.data;
+}
+
 export interface ExcelImportResponse {
   imported: number;
   errors: string[];
