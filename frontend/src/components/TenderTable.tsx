@@ -74,7 +74,7 @@ const TenderTable: React.FC<TenderTableProps> = ({
       { key: 'link', header: 'Enlace' },
     ]
     if (showFavoriteColumn) {
-      return [{ key: 'favorite', header: '' }, ...base]
+      return [{ key: 'favorite', header: 'Favorita' }, ...base]
     }
     return base
   }, [showFavoriteColumn])
@@ -90,13 +90,16 @@ const TenderTable: React.FC<TenderTableProps> = ({
               <IconButton
                 kind="ghost"
                 size="sm"
-                label={favoriteActive ? 'Quitar de favoritas' : 'Agregar a favoritas'}
+                label={favoriteActive ? 'Quitar de favoritas' : 'Guardar en favoritas'}
+                className={`tender-table-favorite-btn${
+                  favoriteActive ? ' tender-table-favorite-btn--active' : ''
+                }`}
                 onClick={(event) => {
                   event.stopPropagation()
                   onToggleFavorite?.(tender)
                 }}
               >
-                {favoriteActive ? <StarFilled /> : <Star />}
+                {favoriteActive ? <StarFilled size={18} /> : <Star size={18} />}
               </IconButton>
             ),
           }

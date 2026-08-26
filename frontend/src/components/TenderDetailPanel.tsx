@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   ComposedModal,
   ModalHeader,
@@ -9,6 +10,7 @@ import {
   Tile,
   InlineNotification,
   Button,
+  IconButton,
 } from '@carbon/react'
 import { Download, Launch, Document, Upload, Star, StarFilled } from '@carbon/icons-react'
 import {
@@ -184,6 +186,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
   const [favoriteNotice, setFavoriteNotice] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pendingUploadTypeRef = useRef<TenderDocumentType | null>(null)
+  const navigate = useNavigate()
   const { isFavorite, toggleFavorite } = useFavoriteTenders()
 
   const reloadSummary = async (tenderId: string) => {
@@ -248,6 +251,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
       setRequirementsError(null)
       setUploadError(null)
       setUploadingType(null)
+      setFavoriteNotice(null)
       return
     }
 
@@ -570,14 +574,95 @@ const sortRequirementItems = (
       <ModalHeader title={title} label="Detalle de licitación" closeModal={onClose} />
       <ModalBody>
         <div className="tender-detail-panel">
+          <section
+            className={`tender-detail-panel__favorite-bar${
+              favoriteActive ? ' tender-detail-panel__favorite-bar--active' : ''
+            }`}
+            aria-live="polite"
+          >
+            <div className="tender-detail-panel__favorite-bar-main">
+              <div
+                className={`tender-detail-panel__favorite-icon${
+                  favoriteActive ? ' tender-detail-panel__favorite-icon--active' : ''
+                }`}
+                aria-hidden="true"
+              >
+                {favoriteActive ? <StarFilled size={22} /> : <Star size={22} />}
+              </div>
+              <div className="tender-detail-panel__favorite-copy">
+                <p className="tender-detail-panel__favorite-title">
+                  {favoriteActive ? 'Guardada en favoritas' : '¿Te interesa esta licitación?'}
+                </p>
+                <p className="tender-detail-panel__favorite-subtitle">
+                  {favoriteActive
+                    ? 'Revísala cuando quieras desde tu lista de oportunidades para licitar.'
+                    : 'Guárdala para estudiar el pliego y decidir con calma antes de ofertar.'}
+                </p>
+              </div>
+            </div>
+            <div className="tender-detail-panel__favorite-actions">
+              {favoriteActive ? (
+                <>
+                  <Button
+                    kind="ghost"
+                    size="sm"
+                    onClick={() => {
+                      onClose()
+                      navigate('/favorites')
+                    }}
+                  >
+                    Ver mis favoritas
+                  </Button>
+                  <Button
+                    kind="secondary"
+                    size="sm"
+                    renderIcon={StarFilled}
+                    onClick={handleToggleFavorite}
+                  >
+                    Quitar
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  kind="primary"
+                  size="md"
+                  renderIcon={Star}
+                  onClick={handleToggleFavorite}
+                >
+                  Guardar en favoritas
+                </Button>
+              )}
+            </div>
+            {favoriteNotice && (
+              <p className="tender-detail-panel__favorite-toast" role="status">
+                {favoriteNotice}
+              </p>
+            )}
+          </section>
+
           <section className="tender-detail-panel__summary">
             <div className="tender-detail-panel__summary-header">
               <h3 className="tender-detail-panel__entity">{tender.entity_name}</h3>
-              {tender.state && (
-                <Tag type="blue" size="sm">
-                  {tender.state}
-                </Tag>
-              )}
+              <div className="tender-detail-panel__summary-badges">
+                {tender.state && (
+                  <Tag type="blue" size="sm">
+                    {tender.state}
+                  </Tag>
+                )}
+                <IconButton
+                  kind="ghost"
+                  size="md"
+                  label={
+                    favoriteActive ? 'Quitar de favoritas' : 'Agregar a favoritas'
+                  }
+                  className={`tender-detail-panel__favorite-toggle${
+                    favoriteActive ? ' tender-detail-panel__favorite-toggle--active' : ''
+                  }`}
+                  onClick={handleToggleFavorite}
+                >
+                  {favoriteActive ? <StarFilled size={20} /> : <Star size={20} />}
+                </IconButton>
+              </div>
             </div>
             <p className="tender-detail-panel__object">{tender.object_text}</p>
             <div className="tender-detail-panel__meta">
@@ -601,34 +686,15 @@ const sortRequirementItems = (
                 </span>
               </div>
             </div>
-            <div className="tender-detail-panel__actions">
-              <Button
-                kind={favoriteActive ? 'primary' : 'tertiary'}
-                size="sm"
-                renderIcon={favoriteActive ? StarFilled : Star}
-                onClick={handleToggleFavorite}
-              >
-                {favoriteActive ? 'Quitar de favoritas' : 'Agregar a favoritas'}
-              </Button>
-              <Link
-                href={tender.process_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                renderIcon={Launch}
-                className="tender-detail-panel__secop-link"
-              >
-                Ver proceso en SECOP
-              </Link>
-            </div>
-            {favoriteNotice && (
-              <InlineNotification
-                kind="success"
-                title="Favoritas"
-                subtitle={favoriteNotice}
-                lowContrast
-                hideCloseButton
-              />
-            )}
+            <Link
+              href={tender.process_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              renderIcon={Launch}
+              className="tender-detail-panel__secop-link"
+            >
+              Ver proceso en SECOP
+            </Link>
           </section>
 
           <section className="tender-detail-panel__summary-info">
