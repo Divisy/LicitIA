@@ -148,13 +148,19 @@ async def trigger_secop_sync(
     return {"status": "started", "lookback_days": lookback_days}
 
 
-def _run_document_backfill(batch_size: int) -> None:
+def _run_document_backfill(batch_size: int, max_batches: int) -> None:
     from app.core.db import SessionLocal
     from app.services.document_backfill import run_backfill
 
     db = SessionLocal()
     try:
-        stats = run_backfill(db, batch_size=batch_size, pause_seconds=1.0)
+        stats = run_backfill(
+            db,
+            batch_size=batch_size,
+            max_batches=max_batches,
+            pause_seconds=0,
+            reconcile_first=False,
+        )
         logger.info("Document backfill complete: %s", stats)
     except Exception as exc:
         logger.error("Document backfill failed: %s", exc, exc_info=True)
@@ -165,14 +171,19 @@ def _run_document_backfill(batch_size: int) -> None:
 @app.post("/api/v1/internal/backfill-documents", include_in_schema=False)
 async def trigger_document_backfill(
     background_tasks: BackgroundTasks,
-    batch_size: int = Query(25, ge=1, le=100),
+    batch_size: int = Query(10, ge=1, le=25),
+    max_batches: int = Query(1, ge=1, le=5),
     x_sync_token: str = Header(default="", alias="X-Sync-Token"),
 ):
-    """Drain the pending SECOP document extraction queue (protected by SYNC_ADMIN_TOKEN)."""
+    """Process a bounded number of SECOP document extraction batches (protected by SYNC_ADMIN_TOKEN)."""
     if not settings.SYNC_ADMIN_TOKEN or x_sync_token != settings.SYNC_ADMIN_TOKEN:
         raise HTTPException(status_code=403, detail="Forbidden")
-    background_tasks.add_task(_run_document_backfill, batch_size)
-    return {"status": "started", "batch_size": batch_size}
+    background_tasks.add_task(_run_document_backfill, batch_size, max_batches)
+    return {
+        "status": "started",
+        "batch_size": batch_size,
+        "max_batches": max_batches,
+    }
 
 
 @app.on_event("startup")
