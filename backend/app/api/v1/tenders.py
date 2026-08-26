@@ -36,7 +36,11 @@ from app.services.tender_requirements.service import (
 from app.services.experience_matching import match_tender_against_experiences, MIN_MATCH_THRESHOLD
 from app.services.tender_lifecycle import filter_active_dashboard_tenders
 from app.services.tender_summary.contract_kind import apply_contract_kind_filter, parse_contract_kind
-from app.services.tender_summary.service import build_tender_summary, persist_tender_summary
+from app.services.tender_summary.service import (
+    SUMMARY_EXTRACTION_VERSION,
+    build_tender_summary,
+    persist_tender_summary,
+)
 from app.services.manual_document_upload import save_manual_tender_document, validate_document_type
 
 router = APIRouter()
@@ -384,15 +388,17 @@ async def get_tender_summary(
 
     cached = None if refresh else db.query(TenderSummary).filter(TenderSummary.tender_id == tender_id).first()
     if cached and cached.summary_json:
-        payload = cached.summary_json
-        return TenderSummaryResponse(
-            tender_id=tender.id,
-            contract_kind=payload["contract_kind"],
-            contract_kind_label=payload["contract_kind_label"],
-            extracted_at=cached.extracted_at,
-            fields=[TenderSummaryFieldResponse(**field) for field in payload["fields"]],
-            cached=True,
-        )
+        cached_version = cached.summary_json.get("extraction_version")
+        if cached_version == SUMMARY_EXTRACTION_VERSION:
+            payload = cached.summary_json
+            return TenderSummaryResponse(
+                tender_id=tender.id,
+                contract_kind=payload["contract_kind"],
+                contract_kind_label=payload["contract_kind_label"],
+                extracted_at=cached.extracted_at,
+                fields=[TenderSummaryFieldResponse(**field) for field in payload["fields"]],
+                cached=True,
+            )
 
     payload = build_tender_summary(tender)
     record = persist_tender_summary(db, tender, payload)

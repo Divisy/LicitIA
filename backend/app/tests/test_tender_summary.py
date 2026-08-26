@@ -3,6 +3,10 @@ from datetime import datetime
 from uuid import uuid4
 
 from app.models.tender import Tender, TenderSource
+from app.services.secop_filters import (
+    MODALITY_CONCURSO_MERITOS_ABIERTO,
+    MODALITY_LICITACION_OBRA_PUBLICA,
+)
 from app.services.tender_summary.contract_kind import ContractKind, detect_contract_kind
 from app.services.tender_summary.pliego_extraction import extract_from_pliego_text
 from app.services.tender_summary.service import _parse_duration_months, build_tender_summary
@@ -31,35 +35,56 @@ def _tender(**kwargs) -> Tender:
 
 
 def test_detect_contract_kind_interventoria():
-    tender = _tender(object_text="Contrato de interventoria de obra vial")
+    tender = _tender(
+        object_text="Contrato de interventoria de obra vial",
+        contract_modality=MODALITY_CONCURSO_MERITOS_ABIERTO,
+    )
     assert detect_contract_kind(tender) == ContractKind.INTERVENTORIA
 
 
 def test_detect_contract_kind_interventoria_obra():
-    tender = _tender(object_text="Interventoria tecnica de la ejecucion de obra vial")
+    tender = _tender(
+        object_text="Interventoria tecnica de la ejecucion de obra vial",
+        contract_modality=MODALITY_CONCURSO_MERITOS_ABIERTO,
+    )
     assert detect_contract_kind(tender) == ContractKind.INTERVENTORIA
 
 
-def test_detect_contract_kind_ejecucion_obra():
+def test_detect_contract_kind_ejecucion_obra_requires_licitacion_obra_publica():
     tender = _tender(
         object_text="Construccion y mejoramiento de vias urbanas",
         contract_type="Obra",
+        contract_modality=MODALITY_LICITACION_OBRA_PUBLICA,
     )
     assert detect_contract_kind(tender) == ContractKind.EJECUCION_OBRA
 
 
-def test_detect_contract_kind_ejecucion_obra_with_estudios():
+def test_detect_contract_kind_obra_keywords_without_licitacion_modality_are_not_obra():
     tender = _tender(
-        object_text="Estudios y diseños y construccion de puente vehicular",
+        object_text="Construccion y mejoramiento de vias urbanas",
         contract_type="Obra",
+        contract_modality=MODALITY_CONCURSO_MERITOS_ABIERTO,
     )
-    assert detect_contract_kind(tender) == ContractKind.EJECUCION_OBRA
+    assert detect_contract_kind(tender) != ContractKind.EJECUCION_OBRA
+
+
+def test_detect_contract_kind_estudios_with_mejoramiento_in_object():
+    tender = _tender(
+        object_text=(
+            "REALIZAR LOS ESTUDIOS Y DISEÑOS PARA EL MEJORAMIENTO DE LAS VIAS "
+            "MEDIANTE LA CONSTRUCCION DE PLACA HUELLA"
+        ),
+        contract_type="Consultoría",
+        contract_modality=MODALITY_CONCURSO_MERITOS_ABIERTO,
+    )
+    assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS
 
 
 def test_detect_contract_kind_estudios_disenos():
     tender = _tender(
         object_text="Consultoria para estudios de prefactibilidad vial",
         contract_type="Prestacion de servicios",
+        contract_modality=MODALITY_CONCURSO_MERITOS_ABIERTO,
     )
     assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS
 

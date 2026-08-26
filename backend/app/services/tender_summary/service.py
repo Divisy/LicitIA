@@ -29,6 +29,8 @@ from app.services.tender_summary.pdf_text import extract_pdf_text
 from app.services.tender_summary.pliego_extraction import extract_from_pliego_text
 from app.services.tender_summary.presupuesto_extraction import extract_from_presupuesto_xlsx
 
+SUMMARY_EXTRACTION_VERSION = "1.4.1"
+
 FieldStatus = str  # available | not_applicable | unavailable
 
 
@@ -353,6 +355,7 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
 
     return {
         "tender_id": str(tender.id),
+        "extraction_version": SUMMARY_EXTRACTION_VERSION,
         "contract_kind": contract_kind.value,
         "contract_kind_label": contract_kind_label(contract_kind),
         "extracted_at": datetime.utcnow().isoformat(),

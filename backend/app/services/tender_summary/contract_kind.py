@@ -9,6 +9,10 @@ from typing import TYPE_CHECKING
 from sqlalchemy import and_, func, not_, or_
 
 from app.models.tender import Tender
+from app.services.secop_filters import (
+    MODALITY_CONCURSO_MERITOS_ABIERTO,
+    MODALITY_LICITACION_OBRA_PUBLICA,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Query
@@ -42,24 +46,6 @@ _ESTUDIOS = (
     "ingeniería de detalle",
     "prefactibilidad",
     "factibilidad",
-    "concurso de meritos",
-    "concurso de méritos",
-)
-_OBRA = (
-    "ejecucion de obra",
-    "ejecución de obra",
-    "licitacion de obra",
-    "licitación de obra",
-    "obra publica",
-    "obra pública",
-    "construccion",
-    "construcción",
-    "mejoramiento",
-    "paviment",
-    " adoquin",
-    " adoquín",
-    "boxculvert",
-    "box culvert",
 )
 
 
@@ -85,19 +71,40 @@ def _contains_any(haystack: str, tokens: tuple[str, ...]) -> bool:
     return any(token in haystack for token in tokens)
 
 
-def detect_contract_kind(tender: Tender) -> ContractKind:
-    """Classify tender by business category (filter groups)."""
-    haystack = _tender_haystack(tender)
-    has_interventoria = _contains_any(haystack, _INTERVENTORIA)
-    has_obra = _contains_any(haystack, _OBRA)
-    has_estudios = _contains_any(haystack, _ESTUDIOS)
+def is_licitacion_obra_publica(modality: str | None) -> bool:
+    """True for SECOP modalidad 'Licitación pública Obra Publica' (tipo de proceso obra)."""
+    norm = _normalize(modality or "")
+    return "licitacion publica" in norm and "obra publica" in norm
 
-    if has_interventoria:
-        return ContractKind.INTERVENTORIA
-    if has_obra:
+
+def is_concurso_meritos(modality: str | None) -> bool:
+    norm = _normalize(modality or "")
+    return "concurso de meritos" in norm
+
+
+def is_consultoria_contract_type(contract_type: str | None) -> bool:
+    norm = _normalize(contract_type or "")
+    return "consultoria" in norm
+
+
+def detect_contract_kind(tender: Tender) -> ContractKind:
+    """Classify tender by SECOP process type and object (filter groups)."""
+    modality = tender.contract_modality
+    haystack = _tender_haystack(tender)
+
+    if is_licitacion_obra_publica(modality):
         return ContractKind.EJECUCION_OBRA
-    if has_estudios:
+
+    if _contains_any(haystack, _INTERVENTORIA):
+        return ContractKind.INTERVENTORIA
+
+    if (
+        is_concurso_meritos(modality)
+        or is_consultoria_contract_type(tender.contract_type)
+        or _contains_any(haystack, _ESTUDIOS)
+    ):
         return ContractKind.ESTUDIOS_DISENOS
+
     return ContractKind.DESCONOCIDO
 
 
@@ -133,19 +140,51 @@ def _sql_contains_any(haystack, keywords: tuple[str, ...]):
     return or_(*[haystack.contains(keyword) for keyword in keywords])
 
 
+def _sql_licitacion_obra_publica():
+    modality = func.lower(func.coalesce(Tender.contract_modality, ""))
+    return or_(
+        Tender.contract_modality == MODALITY_LICITACION_OBRA_PUBLICA,
+        and_(
+            modality.contains("licitacion publica"),
+            modality.contains("obra publica"),
+        ),
+    )
+
+
+def _sql_concurso_meritos():
+    modality = func.lower(func.coalesce(Tender.contract_modality, ""))
+    return or_(
+        Tender.contract_modality == MODALITY_CONCURSO_MERITOS_ABIERTO,
+        modality.contains("concurso de meritos"),
+    )
+
+
+def _sql_consultoria_type():
+    contract_type = func.lower(func.coalesce(Tender.contract_type, ""))
+    return contract_type.contains("consultoria")
+
+
 def apply_contract_kind_filter(query: "Query", kind: ContractKind) -> "Query":
     """Filter tenders using the same category rules as detect_contract_kind."""
     haystack = _sql_haystack()
+    obra_modality = _sql_licitacion_obra_publica()
     interventoria = _sql_contains_any(haystack, _INTERVENTORIA)
-    obra = _sql_contains_any(haystack, _OBRA)
-    estudios = _sql_contains_any(haystack, _ESTUDIOS)
+    estudios_kw = _sql_contains_any(haystack, _ESTUDIOS)
+    concurso = _sql_concurso_meritos()
+    consultoria = _sql_consultoria_type()
 
-    if kind == ContractKind.INTERVENTORIA:
-        return query.filter(interventoria)
     if kind == ContractKind.EJECUCION_OBRA:
-        return query.filter(and_(obra, not_(interventoria)))
+        return query.filter(obra_modality)
+    if kind == ContractKind.INTERVENTORIA:
+        return query.filter(and_(not_(obra_modality), interventoria))
     if kind == ContractKind.ESTUDIOS_DISENOS:
-        return query.filter(and_(estudios, not_(interventoria), not_(obra)))
+        return query.filter(
+            and_(
+                not_(obra_modality),
+                not_(interventoria),
+                or_(concurso, consultoria, estudios_kw),
+            )
+        )
     return query
 
 
