@@ -1,6 +1,6 @@
 """FastAPI application entry point."""
 import os
-from fastapi import FastAPI
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.scheduler import start_scheduler, shutdown_scheduler
 from app.core.logging import setup_logging, get_logger
@@ -133,6 +133,19 @@ app.include_router(experiences.router, prefix="/api/v1", tags=["experiences"])
 app.include_router(leads.router, prefix="/api/v1", tags=["leads"])
 app.include_router(support.router, prefix="/api/v1", tags=["support"])
 app.include_router(feedback.router, prefix="/api/v1", tags=["feedback"])
+
+
+@app.post("/api/v1/internal/sync-secop", include_in_schema=False)
+async def trigger_secop_sync(
+    background_tasks: BackgroundTasks,
+    lookback_days: int = Query(30, ge=1, le=90),
+    x_sync_token: str = Header(default="", alias="X-Sync-Token"),
+):
+    """Run SECOP ingestion on the server (protected by SYNC_ADMIN_TOKEN)."""
+    if not settings.SYNC_ADMIN_TOKEN or x_sync_token != settings.SYNC_ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    background_tasks.add_task(fetch_and_store_new_tenders, lookback_days)
+    return {"status": "started", "lookback_days": lookback_days}
 
 
 @app.on_event("startup")

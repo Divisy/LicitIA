@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     
     # API Security (optional for MVP)
     API_KEY: Optional[str] = None
+    SYNC_ADMIN_TOKEN: Optional[str] = None
     
     # Scheduler
     FETCH_INTERVAL_HOURS: int = 2
