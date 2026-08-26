@@ -37,8 +37,10 @@ class Settings(BaseSettings):
     # Scheduler
     FETCH_INTERVAL_HOURS: int = 2
 
-    # SECOP ingestion window (days) for MVP daily sync
-    SECOP_FETCH_LOOKBACK_DAYS: int = 1
+    # SECOP ingestion window (days). Overlap avoids missing tenders if a job is skipped.
+    SECOP_FETCH_LOOKBACK_DAYS: int = 7
+    SECOP_STATE_REFRESH_ENABLED: bool = True
+    SECOP_STATE_REFRESH_BATCH_SIZE: int = 50
 
     # SECOP documents dataset (Archivos Descarga desde 2025)
     SECOP_DOCUMENTS_DATASET_ID: str = "dmgg-8hin"
@@ -58,8 +60,9 @@ class Settings(BaseSettings):
 
     # Tender requirements extraction (US 1.5)
     TENDER_REQUIREMENTS_EXTRACTION_ENABLED: bool = True
-    TENDER_REQUIREMENTS_USE_LLM: bool = False
+    TENDER_REQUIREMENTS_USE_LLM: bool = True
     TENDER_REQUIREMENTS_LLM_MIN_CONFIDENCE: float = 0.70
+    TENDER_REQUIREMENTS_LLM_MAX_CHARS: int = 8_000
     TENDER_REQUIREMENTS_MAX_CHARS: int = 250_000
 
     # Presupuesto content classification (US 1.2.5 MVP)

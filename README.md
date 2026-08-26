@@ -284,7 +284,7 @@ PYTHONPATH=. python scripts/extract_tender_requirements.py --reference LP-013-20
 
 API: `GET /api/v1/tenders/{id}/requirements?refresh=true`
 
-Variables: `TENDER_REQUIREMENTS_EXTRACTION_ENABLED`, `TENDER_REQUIREMENTS_USE_LLM`, `TENDER_REQUIREMENTS_MAX_CHARS`.
+Variables: `TENDER_REQUIREMENTS_EXTRACTION_ENABLED`, `TENDER_REQUIREMENTS_USE_LLM` (default `true`), `TENDER_REQUIREMENTS_LLM_MAX_CHARS`, `TENDER_REQUIREMENTS_MAX_CHARS`.
 
 ### US 1.3 — Documentos en la interfaz ✅
 
@@ -303,10 +303,13 @@ El personal de licitaciones puede ver y descargar documentos desde el dashboard 
 
 ## 🔄 Flujo de Trabajo
 
-1. **Job periódico** (cada 24 h en producción, `FETCH_INTERVAL_HOURS`):
-   - `fetch_and_store_new_tenders()` obtiene licitaciones del SECOP
+1. **Job periódico** (cada `FETCH_INTERVAL_HOURS`, default 2 h en producción):
+   - `fetch_and_store_new_tenders()` obtiene licitaciones **Publicadas** del SECOP (ventana `SECOP_FETCH_LOOKBACK_DAYS`, default 7 días)
+   - `refresh_stale_tender_states()` actualiza estado/apertura de licitaciones ya guardadas (lote de 50 por ejecución)
    - `extract_documents_for_pending_tenders()` descarga documentos clave (lote de 25)
    - Envía notificaciones a suscripciones activas (si están configuradas)
+
+   Catch-up manual: `PYTHONPATH=. python scripts/sync_secop_ingestion.py --lookback-days 30`
 
 2. **API REST**:
    - `GET /api/v1/tenders`: Listar licitaciones con filtros y matching de experiencia

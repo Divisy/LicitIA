@@ -37,6 +37,175 @@ class SecopTenderDTO(BaseModel):
     source: str
 
 
+def _map_secop_row_to_dto(item: dict) -> Optional[SecopTenderDTO]:
+    """Map a raw SECOP II API row to SecopTenderDTO."""
+    try:
+        pub_date = None
+        if "fecha_de_publicacion_del" in item and item["fecha_de_publicacion_del"]:
+            try:
+                date_str = str(item["fecha_de_publicacion_del"])
+                if "T" in date_str:
+                    pub_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                else:
+                    pub_date = datetime.fromisoformat(date_str)
+            except Exception as exc:
+                logger.debug("Error parsing publication date: %s", exc)
+
+        closing_date = None
+        if "fecha_de_recepcion_de" in item and item["fecha_de_recepcion_de"]:
+            try:
+                date_str = str(item["fecha_de_recepcion_de"])
+                if "T" in date_str:
+                    closing_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                else:
+                    closing_date = datetime.fromisoformat(date_str)
+            except Exception as exc:
+                logger.debug("Error parsing fecha_de_recepcion_de: %s", exc)
+
+        if not closing_date and "fecha_de_apertura_de_respuesta" in item and item["fecha_de_apertura_de_respuesta"]:
+            try:
+                date_str = str(item["fecha_de_apertura_de_respuesta"])
+                if "T" in date_str:
+                    closing_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                else:
+                    closing_date = datetime.fromisoformat(date_str)
+            except Exception as exc:
+                logger.debug("Error parsing fecha_de_apertura_de_respuesta: %s", exc)
+
+        if not closing_date and "fecha_de_ultima_publicaci" in item and item["fecha_de_ultima_publicaci"]:
+            try:
+                date_str = str(item["fecha_de_ultima_publicaci"])
+                if "T" in date_str:
+                    ultima_publicacion = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                    if pub_date and ultima_publicacion.date() != pub_date.date():
+                        closing_date = ultima_publicacion
+            except Exception as exc:
+                logger.debug("Error parsing fecha_de_ultima_publicaci: %s", exc)
+
+        if not closing_date and pub_date and "duracion" in item and item["duracion"]:
+            try:
+                duracion = int(item["duracion"])
+                unidad_duracion = item.get("unidad_de_duracion", "").lower()
+                if ("día" in unidad_duracion or "dia" in unidad_duracion) and duracion <= 90:
+                    closing_date = pub_date + timedelta(days=duracion)
+            except (ValueError, TypeError):
+                pass
+
+        amount = None
+        if "precio_base" in item and item.get("precio_base"):
+            try:
+                amount = float(item["precio_base"])
+            except (TypeError, ValueError):
+                pass
+
+        if (not amount or amount == 0) and "valor_total_adjudicacion" in item:
+            try:
+                adj_value = float(item["valor_total_adjudicacion"])
+                if adj_value > 0:
+                    amount = adj_value
+            except (TypeError, ValueError):
+                pass
+
+        process_url = ""
+        if "urlproceso" in item:
+            url_data = item["urlproceso"]
+            if isinstance(url_data, dict) and "url" in url_data:
+                process_url = url_data["url"]
+            elif isinstance(url_data, str):
+                process_url = url_data
+
+        object_text = ""
+        if "descripci_n_del_procedimiento" in item and item["descripci_n_del_procedimiento"]:
+            object_text = str(item["descripci_n_del_procedimiento"])
+        elif "nombre_del_procedimiento" in item and item["nombre_del_procedimiento"]:
+            object_text = str(item["nombre_del_procedimiento"])
+
+        state = "Unknown"
+        if "estado_del_procedimiento" in item and item["estado_del_procedimiento"]:
+            state = str(item["estado_del_procedimiento"])
+        elif "estado_resumen" in item and item["estado_resumen"]:
+            state = str(item["estado_resumen"])
+
+        apertura_estado = None
+        if "estado_de_apertura_del_proceso" in item and item["estado_de_apertura_del_proceso"]:
+            apertura_estado = str(item["estado_de_apertura_del_proceso"])
+
+        contract_type = item.get("tipo_de_contrato")
+        contract_modality = item.get("modalidad_de_contratacion")
+
+        cat_code = str(item.get("codigo_principal_de_categoria", "")).strip()
+        unspsc_numeric = None
+        if cat_code:
+            unspsc_numeric = cat_code.split(".")[-1] if "." in cat_code else cat_code
+
+        tender_dto = SecopTenderDTO(
+            external_id=str(item.get("id_del_proceso", "")),
+            reference=item.get("referencia_del_proceso"),
+            portfolio_id=item.get("id_del_portafolio"),
+            entity_name=str(item.get("entidad", "Unknown")),
+            object_text=object_text,
+            current_phase=item.get("fase"),
+            department=item.get("departamento_entidad"),
+            municipality=item.get("ciudad_entidad"),
+            amount=amount,
+            publication_date=pub_date,
+            closing_date=closing_date,
+            state=state,
+            apertura_estado=apertura_estado,
+            process_url=process_url,
+            contract_type=str(contract_type) if contract_type else None,
+            contract_modality=str(contract_modality) if contract_modality else None,
+            unspsc_code=unspsc_numeric,
+            source="SECOP_II",
+        )
+
+        if tender_dto.external_id and tender_dto.entity_name:
+            return tender_dto
+    except Exception as exc:
+        logger.warning("Error parsing tender item: %s", exc)
+    return None
+
+
+def fetch_tenders_by_external_ids(external_ids: List[str]) -> List[SecopTenderDTO]:
+    """
+    Fetch current SECOP rows for known process IDs (any estado).
+
+    Used to refresh estado, apertura and dates for tenders already stored locally.
+    """
+    if not settings.SECOP_DATASET_ID or not external_ids:
+        return []
+
+    base_url = f"{settings.SECOP_BASE_URL}/{settings.SECOP_DATASET_ID}.json"
+    headers = {}
+    if settings.SECOP_APP_TOKEN:
+        headers["X-App-Token"] = settings.SECOP_APP_TOKEN
+
+    tenders: List[SecopTenderDTO] = []
+    chunk_size = 40
+
+    for offset in range(0, len(external_ids), chunk_size):
+        chunk = external_ids[offset : offset + chunk_size]
+        quoted_ids = ",".join(
+            "'" + external_id.replace("'", "''") + "'" for external_id in chunk
+        )
+        params = {
+            "$limit": len(chunk),
+            "$where": f"id_del_proceso in ({quoted_ids})",
+        }
+        try:
+            response = requests.get(base_url, params=params, headers=headers, timeout=45)
+            response.raise_for_status()
+            for item in response.json():
+                dto = _map_secop_row_to_dto(item)
+                if dto:
+                    tenders.append(dto)
+        except requests.RequestException as exc:
+            logger.warning("SECOP refresh batch failed for %s ids: %s", len(chunk), exc)
+
+    logger.info("Refreshed %s/%s tenders from SECOP by external_id", len(tenders), len(external_ids))
+    return tenders
+
+
 def fetch_portfolio_id_for_external_id(external_id: str) -> Optional[str]:
     """Look up id_del_portafolio for a tender external id."""
     if not settings.SECOP_DATASET_ID or not external_id:
@@ -351,158 +520,9 @@ def fetch_recent_tenders(
             # Map SECOP II fields to our DTO (even if empty, to continue pagination if needed)
             # Field mappings based on actual SECOP II dataset structure
             for item in data:
-                try:
-                    # Extract publication date (SECOP II: fecha_de_publicacion_del)
-                    pub_date = None
-                    if "fecha_de_publicacion_del" in item and item["fecha_de_publicacion_del"]:
-                        try:
-                            # SECOP II format: 2018-01-22T00:00:00.000
-                            date_str = str(item["fecha_de_publicacion_del"])
-                            if "T" in date_str:
-                                pub_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                            else:
-                                pub_date = datetime.fromisoformat(date_str)
-                        except Exception as e:
-                            logger.debug(f"Error parsing publication date: {e}")
-                            pass
-                    
-                    # Extract closing date (fecha de presentación de ofertas)
-                    # SECOP II has fecha_de_recepcion_de which is the deadline for submitting offers
-                    closing_date = None
-                    
-                    # First priority: Use fecha_de_recepcion_de (reception date = deadline for offers)
-                    if "fecha_de_recepcion_de" in item and item["fecha_de_recepcion_de"]:
-                        try:
-                            date_str = str(item["fecha_de_recepcion_de"])
-                            if "T" in date_str:
-                                closing_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                            else:
-                                closing_date = datetime.fromisoformat(date_str)
-                        except Exception as e:
-                            logger.debug(f"Error parsing fecha_de_recepcion_de: {e}")
-                            pass
-                    
-                    # Second priority: Use fecha_de_apertura_de_respuesta (opening date, usually close to closing)
-                    if not closing_date and "fecha_de_apertura_de_respuesta" in item and item["fecha_de_apertura_de_respuesta"]:
-                        try:
-                            date_str = str(item["fecha_de_apertura_de_respuesta"])
-                            if "T" in date_str:
-                                closing_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                            else:
-                                closing_date = datetime.fromisoformat(date_str)
-                        except Exception as e:
-                            logger.debug(f"Error parsing fecha_de_apertura_de_respuesta: {e}")
-                            pass
-                    
-                    # Third priority: Use fecha_de_ultima_publicaci if it's different from publication date
-                    if not closing_date and "fecha_de_ultima_publicaci" in item and item["fecha_de_ultima_publicaci"]:
-                        try:
-                            date_str = str(item["fecha_de_ultima_publicaci"])
-                            if "T" in date_str:
-                                ultima_publicacion = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                                # Only use it if it's different from publication date
-                                if pub_date and ultima_publicacion.date() != pub_date.date():
-                                    closing_date = ultima_publicacion
-                        except Exception as e:
-                            logger.debug(f"Error parsing fecha_de_ultima_publicaci: {e}")
-                            pass
-                    
-                    # Last resort: Calculate from duracion (but this is less accurate)
-                    # Note: duracion usually refers to contract duration, not deadline for offers
-                    if not closing_date and pub_date and "duracion" in item and item["duracion"]:
-                        try:
-                            duracion = int(item["duracion"])
-                            unidad_duracion = item.get("unidad_de_duracion", "").lower()
-                            
-                            # Only use duration if it's in days and seems reasonable (less than 90 days)
-                            # This is a fallback, as duration usually refers to contract duration
-                            if ("día" in unidad_duracion or "dia" in unidad_duracion) and duracion <= 90:
-                                closing_date = pub_date + timedelta(days=duracion)
-                        except (ValueError, TypeError):
-                            pass
-                    
-                    # Extract amount (SECOP II: precio_base or valor_total_adjudicacion)
-                    amount = None
-                    if "precio_base" in item and item.get("precio_base"):
-                        try:
-                            amount = float(item["precio_base"])
-                        except:
-                            pass
-                    
-                    # If precio_base is 0 or missing, try valor_total_adjudicacion
-                    if (not amount or amount == 0) and "valor_total_adjudicacion" in item:
-                        try:
-                            adj_value = float(item["valor_total_adjudicacion"])
-                            if adj_value > 0:
-                                amount = adj_value
-                        except:
-                            pass
-                    
-                    # Extract process URL (SECOP II: urlproceso is a dict with 'url' key)
-                    process_url = ""
-                    if "urlproceso" in item:
-                        url_data = item["urlproceso"]
-                        if isinstance(url_data, dict) and "url" in url_data:
-                            process_url = url_data["url"]
-                        elif isinstance(url_data, str):
-                            process_url = url_data
-                    
-                    # Build object text from procedure description
-                    object_text = ""
-                    if "descripci_n_del_procedimiento" in item and item["descripci_n_del_procedimiento"]:
-                        object_text = str(item["descripci_n_del_procedimiento"])
-                    elif "nombre_del_procedimiento" in item and item["nombre_del_procedimiento"]:
-                        object_text = str(item["nombre_del_procedimiento"])
-                    
-                    # Get state (SECOP II: estado_del_procedimiento or estado_resumen)
-                    state = "Unknown"
-                    if "estado_del_procedimiento" in item and item["estado_del_procedimiento"]:
-                        state = str(item["estado_del_procedimiento"])
-                    elif "estado_resumen" in item and item["estado_resumen"]:
-                        state = str(item["estado_resumen"])
-                    
-                    # Get apertura estado (estado_de_apertura_del_proceso)
-                    apertura_estado = None
-                    if "estado_de_apertura_del_proceso" in item and item["estado_de_apertura_del_proceso"]:
-                        apertura_estado = str(item["estado_de_apertura_del_proceso"])
-                    
-                    # Get contract type and modality
-                    contract_type = item.get("tipo_de_contrato")
-                    contract_modality = item.get("modalidad_de_contratacion")
-                    
-                    cat_code = str(item.get("codigo_principal_de_categoria", "")).strip()
-                    unspsc_numeric = None
-                    if cat_code:
-                        unspsc_numeric = cat_code.split(".")[-1] if "." in cat_code else cat_code
-
-                    tender_dto = SecopTenderDTO(
-                        external_id=str(item.get("id_del_proceso", "")),
-                        reference=item.get("referencia_del_proceso"),
-                        portfolio_id=item.get("id_del_portafolio"),
-                        entity_name=str(item.get("entidad", "Unknown")),
-                        object_text=object_text,
-                        current_phase=item.get("fase"),
-                        department=item.get("departamento_entidad"),
-                        municipality=item.get("ciudad_entidad"),
-                        amount=amount,
-                        publication_date=pub_date,
-                        closing_date=closing_date,
-                        state=state,
-                        apertura_estado=apertura_estado,
-                        process_url=process_url,
-                        contract_type=str(contract_type) if contract_type else None,
-                        contract_modality=str(contract_modality) if contract_modality else None,
-                        unspsc_code=unspsc_numeric,
-                        source="SECOP_II",
-                    )
-                    
-                    # Only add if we have essential fields
-                    if tender_dto.external_id and tender_dto.entity_name:
-                        tenders.append(tender_dto)
-                
-                except Exception as e:
-                    logger.warning(f"Error parsing tender item: {e}")
-                    continue
+                tender_dto = _map_secop_row_to_dto(item)
+                if tender_dto:
+                    tenders.append(tender_dto)
             
             # Check if we should stop pagination
             if should_stop:

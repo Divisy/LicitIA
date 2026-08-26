@@ -199,11 +199,11 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     }
   }
 
-  const reloadRequirements = async (tenderId: string) => {
+  const reloadRequirements = async (tenderId: string, refresh = false) => {
     setRequirementsLoading(true)
     setRequirementsError(null)
     try {
-      const response = await getTenderRequirements(tenderId, true)
+      const response = await getTenderRequirements(tenderId, refresh)
       setRequirements(response)
     } catch (err: any) {
       setRequirementsError(
@@ -257,7 +257,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     }
 
     const loadRequirements = async () => {
-      await reloadRequirements(tender.id)
+      await reloadRequirements(tender.id, false)
     }
 
     loadDocuments()
@@ -347,7 +347,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
       await Promise.all([
         reloadDocuments(tender.id),
         reloadSummary(tender.id),
-        reloadRequirements(tender.id),
+        reloadRequirements(tender.id, true),
       ])
     } catch (err: any) {
       setUploadError(

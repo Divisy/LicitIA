@@ -22,11 +22,12 @@ from app.services.tender_requirements.regex_extraction import EXTRACTORS, SECTIO
 from app.services.tender_requirements.pdf_pages import extract_pdf_pages, join_pages
 from app.services.tender_requirements.text_selection import (
     prepare_pliego_requirement_text,
+    select_experience_text_for_llm,
     select_requirement_relevant_text,
 )
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.5.2"
+EXTRACTION_VERSION = "1.5.3"
 
 _SECTION_SOURCE = {key: source for key, _, source in SECTION_DEFINITIONS}
 _SECTION_TITLE = {key: title for key, title, _ in SECTION_DEFINITIONS}
@@ -83,6 +84,7 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
 
     pliego_text = ""
     anexo_text = ""
+    pliego_pages: list[tuple[int, str]] = []
     warnings: list[str] = []
 
     if pliego:
@@ -152,11 +154,16 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
             source_document_id,
         )
 
+    llm_context = select_experience_text_for_llm(
+        pliego_pages or None,
+        pliego_text,
+        anexo_text,
+        settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS,
+    )
     extracted_by_section = enrich_requirements_with_llm(
         tender_external_id=tender.external_id,
-        object_text=tender.object_text,
-        pliego_excerpt=pliego_text,
-        anexo_excerpt=anexo_text,
+        object_text=tender.object_text or "",
+        context_excerpt=llm_context,
         existing_sections=extracted_by_section,
     )
 

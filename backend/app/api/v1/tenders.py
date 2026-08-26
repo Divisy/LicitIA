@@ -29,6 +29,7 @@ from app.schemas.tender_requirements import (
     TenderRequirementItemResponse,
 )
 from app.services.tender_requirements.service import (
+    EXTRACTION_VERSION,
     build_tender_requirements,
     persist_tender_requirements,
 )
@@ -436,13 +437,17 @@ async def get_tender_requirements(
         else db.query(TenderRequirements).filter(TenderRequirements.tender_id == tender_id).first()
     )
     if cached and cached.requirements_json:
-        payload = cached.requirements_json
-        return _requirements_response_from_payload(
-            tender,
-            payload,
-            extracted_at=cached.extracted_at,
-            cached=True,
+        cached_version = cached.extraction_version or cached.requirements_json.get(
+            "extraction_version"
         )
+        if cached_version == EXTRACTION_VERSION:
+            payload = cached.requirements_json
+            return _requirements_response_from_payload(
+                tender,
+                payload,
+                extracted_at=cached.extracted_at,
+                cached=True,
+            )
 
     payload = build_tender_requirements(tender)
     record = persist_tender_requirements(db, tender, payload)

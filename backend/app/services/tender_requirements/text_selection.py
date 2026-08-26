@@ -148,3 +148,94 @@ def prepare_pliego_requirement_text(
     if toc_text.strip():
         return toc_text, notes
     return select_requirement_relevant_text(raw_text, max_chars), notes
+
+
+_EXPERIENCE_MARKERS: tuple[str, ...] = (
+    "3.8 exigencias minimas de la experiencia",
+    "3.8.1 exigencia minima de la experiencia del proponente",
+    "requisitos de experiencia son",
+    "experiencia general",
+    "experiencia especifica",
+    "10.1 acreditacion de la experiencia del proponente",
+    "matriz 1 - experiencia",
+    "formato 3 - experiencia",
+)
+
+
+def _select_experience_markers_text(text: str, max_chars: int) -> str:
+    if not text or len(text) <= max_chars:
+        return text
+
+    normalized = normalize_text(text)
+    ranges: list[tuple[int, int]] = []
+    for marker in _EXPERIENCE_MARKERS:
+        for match in re.finditer(re.escape(marker), normalized):
+            raw_start = max(0, int(match.start() * len(text) / max(len(normalized), 1)) - 400)
+            raw_end = min(
+                len(text),
+                int(match.end() * len(text) / max(len(normalized), 1)) + 4_500,
+            )
+            ranges.append((raw_start, raw_end))
+
+    if not ranges:
+        return text[:max_chars]
+
+    merged = _merge_ranges(ranges)
+    chunks: list[str] = []
+    total = 0
+    for start, end in merged:
+        chunk = text[start:end]
+        if not chunk.strip():
+            continue
+        if total + len(chunk) > max_chars:
+            remaining = max_chars - total
+            if remaining <= 0:
+                break
+            chunk = chunk[:remaining]
+        chunks.append(chunk)
+        total += len(chunk)
+        if total >= max_chars:
+            break
+    return "\n\n".join(chunks) if chunks else text[:max_chars]
+
+
+def select_experience_text_for_llm(
+    pages: list[tuple[int, str]] | None,
+    pliego_text: str,
+    anexo_text: str,
+    max_chars: int,
+) -> str:
+    """Build a compact excerpt for LLM enrichment (experience sections only)."""
+    budget = max_chars
+    parts: list[str] = []
+
+    if pages:
+        grouped_pages = locate_pages_from_toc(pages)
+        experience_pages = grouped_pages.get("experiencia", [])
+        if experience_pages:
+            refined = refine_page_window_with_heading(
+                pages,
+                experience_pages,
+                (
+                    "exigencia minima de la experiencia",
+                    "exigencias minimas de la experiencia",
+                    "requisitos de experiencia son",
+                    "experiencia general",
+                ),
+            )
+            pliego_excerpt = select_text_from_pages(pages, sorted(refined), budget)
+            if pliego_excerpt.strip():
+                parts.append(pliego_excerpt)
+                budget = max(0, budget - len(pliego_excerpt))
+
+    if not parts and pliego_text.strip() and budget > 0:
+        parts.append(_select_experience_markers_text(pliego_text, budget))
+        budget = max(0, budget - len(parts[-1]))
+
+    if anexo_text.strip() and budget > 0:
+        anexo_excerpt = _select_experience_markers_text(anexo_text, min(budget, 4_000))
+        if anexo_excerpt.strip():
+            parts.append(anexo_excerpt)
+
+    combined = "\n\n".join(parts)
+    return combined[:max_chars]

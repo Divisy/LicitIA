@@ -1,10 +1,18 @@
 """Tender ingestion service - fetches, stores, classifies, and notifies."""
 from datetime import datetime, timedelta
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
 from app.core.db import SessionLocal
 from app.core.logging import get_logger
 from app.models.tender import Tender, TenderSource
 from app.models.subscription import Subscription
-from app.services.secop_client import SecopTenderDTO, fetch_mvp_secop_tenders
+from app.services.secop_client import (
+    SecopTenderDTO,
+    fetch_mvp_secop_tenders,
+    fetch_tenders_by_external_ids,
+)
 from app.config import settings
 from app.services.notifications import send_email_alert, send_whatsapp_alert
 from app.services.document_extraction import extract_documents_for_pending_tenders
@@ -44,7 +52,113 @@ def _tender_from_secop(secop_tender: SecopTenderDTO) -> Tender:
     return tender
 
 
-def fetch_and_store_new_tenders() -> None:
+def _persist_secop_batch(
+    db: Session,
+    secop_tenders: list[SecopTenderDTO],
+) -> tuple[list[Tender], int]:
+    """Insert new tenders and update existing ones from a SECOP batch."""
+    new_tenders: list[Tender] = []
+    updated_count = 0
+
+    if not secop_tenders:
+        return new_tenders, updated_count
+
+    batch_size = 100
+    for i in range(0, len(secop_tenders), batch_size):
+        batch = secop_tenders[i : i + batch_size]
+        batch_external_ids = [tender.external_id for tender in batch]
+        existing_ids = set(
+            row[0]
+            for row in db.query(Tender.external_id)
+            .filter(Tender.external_id.in_(batch_external_ids))
+            .all()
+        )
+
+        for secop_tender in batch:
+            try:
+                if secop_tender.external_id in existing_ids:
+                    existing = (
+                        db.query(Tender)
+                        .filter(Tender.external_id == secop_tender.external_id)
+                        .first()
+                    )
+                    if existing:
+                        _apply_secop_fields(existing, secop_tender)
+                        updated_count += 1
+                    continue
+
+                new_tender = _tender_from_secop(secop_tender)
+                db.add(new_tender)
+                new_tenders.append(new_tender)
+            except Exception as exc:
+                logger.error(
+                    "Error processing tender %s: %s",
+                    secop_tender.external_id,
+                    exc,
+                )
+
+        try:
+            db.commit()
+        except Exception as exc:
+            logger.error("Error committing batch: %s", exc)
+            db.rollback()
+
+    return new_tenders, updated_count
+
+
+def refresh_stale_tender_states(db: Session) -> dict[str, int]:
+    """
+    Re-fetch SECOP metadata for tenders already stored (any estado).
+
+    Rotates through the catalogue by oldest updated_at so every tender is
+    refreshed over time without a single heavy API call.
+    """
+    if not settings.SECOP_STATE_REFRESH_ENABLED:
+        return {"candidates": 0, "refreshed": 0, "state_changes": 0}
+
+    batch_size = settings.SECOP_STATE_REFRESH_BATCH_SIZE
+    stale_tenders = (
+        db.query(Tender)
+        .order_by(Tender.updated_at.asc())
+        .limit(batch_size)
+        .all()
+    )
+    if not stale_tenders:
+        return {"candidates": 0, "refreshed": 0, "state_changes": 0}
+
+    by_external_id = {tender.external_id: tender for tender in stale_tenders}
+    refreshed_dtos = fetch_tenders_by_external_ids(list(by_external_id.keys()))
+
+    state_changes = 0
+    refreshed = 0
+    for dto in refreshed_dtos:
+        existing = by_external_id.get(dto.external_id)
+        if not existing:
+            continue
+        previous_state = existing.state
+        previous_apertura = existing.apertura_estado
+        _apply_secop_fields(existing, dto)
+        refreshed += 1
+        if previous_state != dto.state or previous_apertura != dto.apertura_estado:
+            state_changes += 1
+
+    if refreshed:
+        db.commit()
+
+    logger.info(
+        "SECOP state refresh: candidates=%s refreshed=%s state_changes=%s",
+        len(stale_tenders),
+        refreshed,
+        state_changes,
+    )
+    return {
+        "candidates": len(stale_tenders),
+        "refreshed": refreshed,
+        "state_changes": state_changes,
+    }
+
+
+def fetch_and_store_new_tenders(lookback_days: Optional[int] = None) -> None:
     """
     Main background job: fetch MVP-filtered SECOP tenders and persist them.
 
@@ -58,65 +172,26 @@ def fetch_and_store_new_tenders() -> None:
         logger.info("STARTING MVP SECOP TENDER FETCH JOB")
         logger.info("=" * 60)
 
-        since_timestamp = datetime.utcnow() - timedelta(days=settings.SECOP_FETCH_LOOKBACK_DAYS)
+        lookback = lookback_days if lookback_days is not None else settings.SECOP_FETCH_LOOKBACK_DAYS
+        since_timestamp = datetime.utcnow() - timedelta(days=lookback)
         logger.info(
             "Fetching tenders published in the last %s day(s) (since %s)",
-            settings.SECOP_FETCH_LOOKBACK_DAYS,
+            lookback,
             since_timestamp.strftime("%Y-%m-%d %H:%M:%S"),
         )
 
         secop_tenders = fetch_mvp_secop_tenders(since_timestamp=since_timestamp)
         logger.info("Total unique MVP tenders found: %s", len(secop_tenders))
 
-        new_tenders = []
-        updated_count = 0
-
-        batch_size = 100
-        for i in range(0, len(secop_tenders), batch_size):
-            batch = secop_tenders[i:i + batch_size]
-
-            batch_external_ids = [t.external_id for t in batch]
-            existing_ids = set(
-                row[0]
-                for row in db.query(Tender.external_id)
-                .filter(Tender.external_id.in_(batch_external_ids))
-                .all()
-            )
-
-            for secop_tender in batch:
-                try:
-                    if secop_tender.external_id in existing_ids:
-                        existing = db.query(Tender).filter(
-                            Tender.external_id == secop_tender.external_id
-                        ).first()
-                        if existing:
-                            _apply_secop_fields(existing, secop_tender)
-                            updated_count += 1
-                        continue
-
-                    new_tender = _tender_from_secop(secop_tender)
-                    db.add(new_tender)
-                    new_tenders.append(new_tender)
-                except Exception as e:
-                    logger.error(
-                        "Error processing tender %s: %s",
-                        secop_tender.external_id,
-                        e,
-                    )
-                    continue
-
-            try:
-                db.commit()
-            except Exception as e:
-                logger.error("Error committing batch: %s", e)
-                db.rollback()
-
+        new_tenders, updated_count = _persist_secop_batch(db, secop_tenders)
         logger.info(
-            "Stored %s new tenders, updated %s existing",
+            "Stored %s new tenders, updated %s existing from MVP fetch",
             len(new_tenders),
             updated_count,
         )
-        db.commit()
+
+        refresh_stats = refresh_stale_tender_states(db)
+        logger.info("SECOP state refresh stats: %s", refresh_stats)
 
         logger.info(
             "Next fetch scheduled in %s hours",
