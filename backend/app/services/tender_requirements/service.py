@@ -19,10 +19,14 @@ from app.services.tender_requirements.document_selection import (
 )
 from app.services.tender_requirements.llm_extraction import enrich_requirements_with_llm
 from app.services.tender_requirements.regex_extraction import EXTRACTORS, SECTION_DEFINITIONS, _merge_items
-from app.services.tender_requirements.text_selection import select_requirement_relevant_text
+from app.services.tender_requirements.pdf_pages import extract_pdf_pages, join_pages
+from app.services.tender_requirements.text_selection import (
+    prepare_pliego_requirement_text,
+    select_requirement_relevant_text,
+)
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.5.1"
+EXTRACTION_VERSION = "1.5.2"
 
 _SECTION_SOURCE = {key: source for key, _, source in SECTION_DEFINITIONS}
 _SECTION_TITLE = {key: title for key, title, _ in SECTION_DEFINITIONS}
@@ -37,7 +41,7 @@ def _visible_documents(tender: Tender) -> list[TenderDocument]:
     return deduplicate_visible_documents(documents)
 
 
-def _prepare_document_text(raw_text: str) -> str:
+def _prepare_anexo_text(raw_text: str) -> str:
     return select_requirement_relevant_text(
         raw_text,
         settings.TENDER_REQUIREMENTS_MAX_CHARS,
@@ -82,7 +86,14 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
     warnings: list[str] = []
 
     if pliego:
-        pliego_text = _prepare_document_text(extract_pdf_text(pliego, storage))
+        pliego_pages = extract_pdf_pages(pliego, storage)
+        pliego_raw = join_pages(pliego_pages) or extract_pdf_text(pliego, storage)
+        pliego_text, pliego_notes = prepare_pliego_requirement_text(
+            pliego_pages,
+            pliego_raw,
+            settings.TENDER_REQUIREMENTS_MAX_CHARS,
+        )
+        warnings.extend(pliego_notes)
         if not pliego_text.strip():
             warnings.append(f"No se pudo extraer texto del pliego ({pliego.file_name})")
     if anexo:
@@ -92,7 +103,7 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
                 f"El anexo ({anexo.file_name}) es DOCX; la experiencia específica se extrae del pliego cuando aplique"
             )
         else:
-            anexo_text = _prepare_document_text(extract_pdf_text(anexo, storage))
+            anexo_text = _prepare_anexo_text(extract_pdf_text(anexo, storage))
             if not anexo_text.strip():
                 warnings.append(f"No se pudo extraer texto del anexo ({anexo.file_name})")
 
