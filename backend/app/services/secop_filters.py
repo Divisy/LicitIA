@@ -6,6 +6,12 @@ MODALITY_LICITACION_OBRA_PUBLICA = "Licitación pública Obra Publica"
 
 # Estado del procedimiento requerido por el MVP
 ESTADO_PUBLICADO = "Publicado"
+ESTADO_APERTURA_ABIERTO = "Abierto"
+
+
+def is_dashboard_active_tender(*, state: str, apertura_estado: str | None) -> bool:
+    """True when the tender is Publicado and still open for offers in SECOP."""
+    return state == ESTADO_PUBLICADO and apertura_estado == ESTADO_APERTURA_ABIERTO
 
 # UNSPSC solo aplica a Concurso de méritos abierto (estudios, diseños, interventoría, obras)
 UNSPSC_CODES_CONCURSO_MERITOS = [

@@ -11,6 +11,7 @@ from app.config import settings
 from app.core.logging import get_logger
 from app.models.tender import Tender
 from app.models.tender_document import TenderDocument
+from app.services.tender_lifecycle import filter_active_dashboard_tenders
 from app.services.secop_documents import (
     SecopDocumentDTO,
     build_document_object_key,
@@ -107,8 +108,8 @@ class ExtractionBatchStats:
 
 
 def pending_document_extraction_query(db: Session):
-    """Tenders not yet attempted for document extraction and without stored documents."""
-    return (
+    """Active tenders not yet attempted for document extraction and without stored documents."""
+    return filter_active_dashboard_tenders(
         db.query(Tender)
         .filter(
             Tender.documents_extraction_attempted_at.is_(None),

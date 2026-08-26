@@ -34,6 +34,7 @@ from app.services.tender_requirements.service import (
     persist_tender_requirements,
 )
 from app.services.experience_matching import match_tender_against_experiences, MIN_MATCH_THRESHOLD
+from app.services.tender_lifecycle import filter_active_dashboard_tenders
 from app.services.tender_summary.contract_kind import apply_contract_kind_filter, parse_contract_kind
 from app.services.tender_summary.service import build_tender_summary, persist_tender_summary
 from app.services.manual_document_upload import save_manual_tender_document, validate_document_type
@@ -61,8 +62,8 @@ async def list_tenders(
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     db: Session = Depends(get_db),
 ):
-    """List tenders with optional filters and experience matching."""
-    query = db.query(Tender)
+    """List active tenders (Publicado + apertura Abierto) with optional filters."""
+    query = filter_active_dashboard_tenders(db.query(Tender))
     
     # Apply filters (relevance filter removed - experience matching is the main feature)
     
@@ -209,8 +210,10 @@ async def get_tender(
     company_name: Optional[str] = Query(None, description="Company name for experience matching"),
     db: Session = Depends(get_db),
 ):
-    """Get a single tender by ID with optional experience matching."""
-    tender = db.query(Tender).filter(Tender.id == tender_id).first()
+    """Get a single active tender by ID with optional experience matching."""
+    tender = filter_active_dashboard_tenders(
+        db.query(Tender).filter(Tender.id == tender_id)
+    ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found")
     
@@ -237,8 +240,10 @@ async def list_tender_documents(
     tender_id: UUID,
     db: Session = Depends(get_db),
 ):
-    """List downloaded key documents for a tender."""
-    tender = db.query(Tender).filter(Tender.id == tender_id).first()
+    """List downloaded key documents for an active tender."""
+    tender = filter_active_dashboard_tenders(
+        db.query(Tender).filter(Tender.id == tender_id)
+    ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found")
 
@@ -265,7 +270,13 @@ async def download_tender_document(
     document_id: UUID,
     db: Session = Depends(get_db),
 ):
-    """Download a stored tender document file."""
+    """Download a stored tender document file for an active tender."""
+    tender = filter_active_dashboard_tenders(
+        db.query(Tender).filter(Tender.id == tender_id)
+    ).first()
+    if not tender:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
     document = (
         db.query(TenderDocument)
         .filter(
@@ -303,7 +314,9 @@ async def upload_tender_document(
     if not settings.MANUAL_DOCUMENT_UPLOAD_ENABLED:
         raise HTTPException(status_code=503, detail="Manual document upload is disabled")
 
-    tender = db.query(Tender).filter(Tender.id == tender_id).first()
+    tender = filter_active_dashboard_tenders(
+        db.query(Tender).filter(Tender.id == tender_id)
+    ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found")
 
@@ -363,7 +376,9 @@ async def get_tender_summary(
     if not settings.TENDER_SUMMARY_EXTRACTION_ENABLED:
         raise HTTPException(status_code=503, detail="Tender summary extraction is disabled")
 
-    tender = db.query(Tender).filter(Tender.id == tender_id).first()
+    tender = filter_active_dashboard_tenders(
+        db.query(Tender).filter(Tender.id == tender_id)
+    ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found")
 
@@ -427,7 +442,9 @@ async def get_tender_requirements(
     if not settings.TENDER_REQUIREMENTS_EXTRACTION_ENABLED:
         raise HTTPException(status_code=503, detail="Tender requirements extraction is disabled")
 
-    tender = db.query(Tender).filter(Tender.id == tender_id).first()
+    tender = filter_active_dashboard_tenders(
+        db.query(Tender).filter(Tender.id == tender_id)
+    ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found")
 

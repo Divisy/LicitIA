@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     SECOP_FETCH_LOOKBACK_DAYS: int = 7
     SECOP_STATE_REFRESH_ENABLED: bool = True
     SECOP_STATE_REFRESH_BATCH_SIZE: int = 50
+    INACTIVE_TENDER_PURGE_BATCH_SIZE: int = 100
 
     # SECOP documents dataset (Archivos Descarga desde 2025)
     SECOP_DOCUMENTS_DATASET_ID: str = "dmgg-8hin"

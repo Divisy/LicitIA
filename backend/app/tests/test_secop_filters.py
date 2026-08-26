@@ -3,10 +3,12 @@ from datetime import datetime
 
 from app.services.secop_client import build_location
 from app.services.secop_filters import (
+    ESTADO_APERTURA_ABIERTO,
     ESTADO_PUBLICADO,
     MODALITY_CONCURSO_MERITOS_ABIERTO,
     MODALITY_LICITACION_OBRA_PUBLICA,
     UNSPSC_CODES_CONCURSO_MERITOS,
+    is_dashboard_active_tender,
 )
 
 
@@ -26,6 +28,13 @@ def test_modalities_match_secop_dataset_values():
 
 def test_estado_publicado_value():
     assert ESTADO_PUBLICADO == "Publicado"
+
+
+def test_is_dashboard_active_tender():
+    assert is_dashboard_active_tender(state="Publicado", apertura_estado="Abierto")
+    assert not is_dashboard_active_tender(state="Publicado", apertura_estado="Cerrado")
+    assert not is_dashboard_active_tender(state="Evaluación", apertura_estado="Abierto")
+    assert not is_dashboard_active_tender(state="Publicado", apertura_estado=None)
 
 
 def test_build_location_combines_department_and_municipality():

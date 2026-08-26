@@ -6,10 +6,12 @@ from pydantic import BaseModel
 from app.config import settings
 from app.core.logging import get_logger
 from app.services.secop_filters import (
+    ESTADO_APERTURA_ABIERTO,
     ESTADO_PUBLICADO,
     MODALITY_CONCURSO_MERITOS_ABIERTO,
     MODALITY_LICITACION_OBRA_PUBLICA,
     UNSPSC_CODES_CONCURSO_MERITOS,
+    is_dashboard_active_tender,
 )
 
 logger = get_logger(__name__)
@@ -251,6 +253,7 @@ def fetch_recent_tenders(
     unspsc_code: Optional[str] = None,
     contract_modality: Optional[str] = None,
     estado: Optional[str] = None,
+    apertura_estado: Optional[str] = None,
 ) -> List[SecopTenderDTO]:
     """
     Fetch recent tenders from SECOP dataset via Socrata API.
@@ -264,6 +267,7 @@ def fetch_recent_tenders(
         unspsc_code: Optional UNSPSC code to filter by (e.g., "81101500" for civil engineering)
         contract_modality: Optional modalidad de contratación (e.g. "Concurso de méritos abierto")
         estado: Optional estado del procedimiento (e.g. "Publicado")
+        apertura_estado: Optional estado de apertura (e.g. "Abierto")
         
     Returns:
         List of SecopTenderDTO objects
@@ -304,6 +308,10 @@ def fetch_recent_tenders(
             if estado:
                 safe_estado = estado.replace("'", "''")
                 where_clauses.append(f"estado_del_procedimiento = '{safe_estado}'")
+
+            if apertura_estado:
+                safe_apertura = apertura_estado.replace("'", "''")
+                where_clauses.append(f"estado_de_apertura_del_proceso = '{safe_apertura}'")
 
             # UNSPSC code filter (only for Concurso de méritos abierto)
             if unspsc_code:
@@ -521,8 +529,11 @@ def fetch_recent_tenders(
             # Field mappings based on actual SECOP II dataset structure
             for item in data:
                 tender_dto = _map_secop_row_to_dto(item)
-                if tender_dto:
-                    tenders.append(tender_dto)
+                if not tender_dto:
+                    continue
+                if apertura_estado and tender_dto.apertura_estado != apertura_estado:
+                    continue
+                tenders.append(tender_dto)
             
             # Check if we should stop pagination
             if should_stop:
@@ -592,9 +603,9 @@ def fetch_recent_tenders(
 
 def fetch_mvp_secop_tenders(since_timestamp: datetime) -> List[SecopTenderDTO]:
     """
-    Fetch tenders for MVP user story 1.1:
-    - Concurso de méritos abierto + UNSPSC codes + estado Publicado
-    - Licitación pública Obra Publica + estado Publicado (sin UNSPSC)
+    Fetch active MVP opportunities from SECOP:
+    - Concurso de méritos abierto + UNSPSC + Publicado + apertura Abierto
+    - Licitación pública Obra Publica + Publicado + apertura Abierto
     """
     all_tenders: List[SecopTenderDTO] = []
     seen_ids: set[str] = set()
@@ -604,10 +615,15 @@ def fetch_mvp_secop_tenders(since_timestamp: datetime) -> List[SecopTenderDTO]:
         for tender in batch:
             if tender.external_id in seen_ids:
                 continue
+            if not is_dashboard_active_tender(
+                state=tender.state,
+                apertura_estado=tender.apertura_estado,
+            ):
+                continue
             seen_ids.add(tender.external_id)
             all_tenders.append(tender)
             added += 1
-        logger.info(f"{label}: fetched {len(batch)}, added {added} unique")
+        logger.info(f"{label}: fetched {len(batch)}, added {added} unique active")
         return added
 
     for unspsc_code in UNSPSC_CODES_CONCURSO_MERITOS:
@@ -616,6 +632,7 @@ def fetch_mvp_secop_tenders(since_timestamp: datetime) -> List[SecopTenderDTO]:
             unspsc_code=unspsc_code,
             contract_modality=MODALITY_CONCURSO_MERITOS_ABIERTO,
             estado=ESTADO_PUBLICADO,
+            apertura_estado=ESTADO_APERTURA_ABIERTO,
         )
         _add_unique(batch, f"Concurso méritos UNSPSC {unspsc_code}")
 
@@ -623,9 +640,10 @@ def fetch_mvp_secop_tenders(since_timestamp: datetime) -> List[SecopTenderDTO]:
         since_timestamp=since_timestamp,
         contract_modality=MODALITY_LICITACION_OBRA_PUBLICA,
         estado=ESTADO_PUBLICADO,
+        apertura_estado=ESTADO_APERTURA_ABIERTO,
     )
     _add_unique(obra_batch, "Licitación pública Obra Publica")
 
-    logger.info(f"MVP SECOP fetch complete: {len(all_tenders)} unique tenders")
+    logger.info(f"MVP SECOP fetch complete: {len(all_tenders)} unique active tenders")
     return all_tenders
 

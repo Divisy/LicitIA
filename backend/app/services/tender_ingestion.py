@@ -14,6 +14,11 @@ from app.services.secop_client import (
     fetch_tenders_by_external_ids,
 )
 from app.config import settings
+from app.services.tender_lifecycle import (
+    purge_inactive_tenders,
+    purge_tender,
+)
+from app.services.secop_filters import is_dashboard_active_tender
 from app.services.notifications import send_email_alert, send_whatsapp_alert
 from app.services.document_extraction import extract_documents_for_pending_tenders
 
@@ -76,6 +81,12 @@ def _persist_secop_batch(
 
         for secop_tender in batch:
             try:
+                if not is_dashboard_active_tender(
+                    state=secop_tender.state,
+                    apertura_estado=secop_tender.apertura_estado,
+                ):
+                    continue
+
                 if secop_tender.external_id in existing_ids:
                     existing = (
                         db.query(Tender)
@@ -131,6 +142,7 @@ def refresh_stale_tender_states(db: Session) -> dict[str, int]:
 
     state_changes = 0
     refreshed = 0
+    purged = 0
     for dto in refreshed_dtos:
         existing = by_external_id.get(dto.external_id)
         if not existing:
@@ -138,23 +150,32 @@ def refresh_stale_tender_states(db: Session) -> dict[str, int]:
         previous_state = existing.state
         previous_apertura = existing.apertura_estado
         _apply_secop_fields(existing, dto)
+        if not is_dashboard_active_tender(
+            state=existing.state,
+            apertura_estado=existing.apertura_estado,
+        ):
+            purge_tender(db, existing)
+            purged += 1
+            continue
         refreshed += 1
         if previous_state != dto.state or previous_apertura != dto.apertura_estado:
             state_changes += 1
 
-    if refreshed:
+    if refreshed or purged:
         db.commit()
 
     logger.info(
-        "SECOP state refresh: candidates=%s refreshed=%s state_changes=%s",
+        "SECOP state refresh: candidates=%s refreshed=%s state_changes=%s purged=%s",
         len(stale_tenders),
         refreshed,
         state_changes,
+        purged,
     )
     return {
         "candidates": len(stale_tenders),
         "refreshed": refreshed,
         "state_changes": state_changes,
+        "purged": purged,
     }
 
 
@@ -192,6 +213,17 @@ def fetch_and_store_new_tenders(lookback_days: Optional[int] = None) -> None:
 
         refresh_stats = refresh_stale_tender_states(db)
         logger.info("SECOP state refresh stats: %s", refresh_stats)
+
+        purge_stats = {"purged": 0}
+        while True:
+            batch_stats = purge_inactive_tenders(
+                db,
+                batch_size=settings.INACTIVE_TENDER_PURGE_BATCH_SIZE,
+            )
+            purge_stats["purged"] += batch_stats["purged"]
+            if batch_stats["purged"] == 0:
+                break
+        logger.info("Inactive tender purge stats: %s", purge_stats)
 
         logger.info(
             "Next fetch scheduled in %s hours",

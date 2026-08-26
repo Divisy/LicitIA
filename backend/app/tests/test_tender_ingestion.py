@@ -29,7 +29,7 @@ def _sample_dto(
 
 @patch("app.services.tender_ingestion.fetch_tenders_by_external_ids")
 @patch("app.services.tender_ingestion.settings")
-def test_refresh_stale_tender_states_updates_existing(mock_settings, mock_fetch):
+def test_refresh_stale_tender_states_purges_inactive(mock_settings, mock_fetch):
     mock_settings.SECOP_STATE_REFRESH_ENABLED = True
     mock_settings.SECOP_STATE_REFRESH_BATCH_SIZE = 10
 
@@ -62,16 +62,19 @@ def test_refresh_stale_tender_states_updates_existing(mock_settings, mock_fetch)
         def commit(self):
             return None
 
+        def delete(self, _obj):
+            return None
+
     mock_fetch.return_value = [
         _sample_dto("CO1.REQ.123", state="Adjudicado", apertura_estado="Cerrado")
     ]
 
-    stats = refresh_stale_tender_states(FakeSession())
+    with patch("app.services.tender_ingestion.purge_tender") as mock_purge:
+        stats = refresh_stale_tender_states(FakeSession())
 
-    assert stats["refreshed"] == 1
-    assert stats["state_changes"] == 1
-    assert tender.state == "Adjudicado"
-    assert tender.apertura_estado == "Cerrado"
+    assert stats["purged"] == 1
+    assert stats["refreshed"] == 0
+    mock_purge.assert_called_once()
 
 
 @patch("app.services.tender_ingestion.settings")
