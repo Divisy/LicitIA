@@ -1,0 +1,72 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/type' as *;
+
+.favorites-page {
+  width: 100%;
+  min-height: 100vh;
+  background: var(--cds-background);
+  padding: $spacing-06 $spacing-05;
+
+  @media (max-width: 672px) {
+    padding: $spacing-05 $spacing-04;
+  }
+}
+
+.favorites-page__grid {
+  margin-bottom: $spacing-06;
+}
+
+.favorites-page__header {
+  display: flex;
+  align-items: center;
+  gap: $spacing-05;
+  margin-bottom: $spacing-07;
+  padding-bottom: $spacing-06;
+  border-bottom: 1px solid var(--cds-border-subtle);
+}
+
+.favorites-page__header-logo {
+  flex-shrink: 0;
+}
+
+.favorites-page__title {
+  @include type-style('heading-05');
+  margin: 0 0 $spacing-03 0;
+}
+
+.favorites-page__subtitle {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin: 0;
+}
+
+.favorites-page__loading {
+  padding: $spacing-07;
+  display: flex;
+  justify-content: center;
+}
+
+.favorites-page__section-title {
+  @include type-style('heading-03');
+  margin: 0 0 $spacing-04 0;
+}
+
+.favorites-page__unavailable {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-04;
+  margin-bottom: $spacing-06;
+}
+
+.favorites-page__unavailable-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-04;
+  padding: $spacing-05;
+}
+
+.favorites-page__unavailable-title {
+  @include type-style('heading-compact-01');
+  margin: 0 0 $spacing-02 0;
+}

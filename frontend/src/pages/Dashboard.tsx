@@ -16,6 +16,7 @@ import OnboardingBanner from '../components/onboarding/OnboardingBanner'
 import EmptyState from '../components/empty-states/EmptyState'
 import Logo from '../components/Logo'
 import { useOnboarding } from '../hooks/useOnboarding'
+import { useFavoriteTenders } from '../hooks/useFavoriteTenders'
 import { getTenders, Tender, TenderFilters, ContractKindFilter } from '../api/client'
 import './Dashboard.scss'
 
@@ -27,6 +28,7 @@ const Dashboard: React.FC = () => {
   const [showOnboardingBanner, setShowOnboardingBanner] = useState(false)
   
   const { state: onboardingState, startOnboarding } = useOnboarding()
+  const { isFavorite, toggleFavorite } = useFavoriteTenders()
   
   // Filter state
   const [filters, setFilters] = useState<TenderFilters>({
@@ -316,6 +318,9 @@ const Dashboard: React.FC = () => {
             <TenderTable
               tenders={tenders}
               onSelectTender={setSelectedTender}
+              showFavoriteColumn
+              isFavorite={isFavorite}
+              onToggleFavorite={toggleFavorite}
             />
           </Column>
         </Grid>

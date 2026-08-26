@@ -53,6 +53,14 @@
   display: inline-flex;
 }
 
+.tender-detail-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-04;
+  margin-bottom: $spacing-04;
+}
+
 .tender-detail-panel__summary-info {
   display: flex;
   flex-direction: column;

@@ -1,15 +1,24 @@
 import React, { useMemo } from 'react'
-import { DataTable, Table, TableHead, TableRow, TableHeader, TableBody, TableCell, Tag, Link, Tile } from '@carbon/react'
+import { DataTable, Table, TableHead, TableRow, TableHeader, TableBody, TableCell, Tag, Link, Tile, IconButton } from '@carbon/react'
 import { Tender } from '../api/client'
-import { WatsonMachineLearning, Launch } from '@carbon/icons-react'
+import { WatsonMachineLearning, Launch, Star, StarFilled } from '@carbon/icons-react'
 import './TenderTable.scss'
 
 interface TenderTableProps {
   tenders: Tender[]
   onSelectTender?: (tender: Tender) => void
+  showFavoriteColumn?: boolean
+  isFavorite?: (tenderId: string) => boolean
+  onToggleFavorite?: (tender: Tender) => void
 }
 
-const TenderTable: React.FC<TenderTableProps> = ({ tenders, onSelectTender }) => {
+const TenderTable: React.FC<TenderTableProps> = ({
+  tenders,
+  onSelectTender,
+  showFavoriteColumn = false,
+  isFavorite,
+  onToggleFavorite,
+}) => {
   const formatDate = (dateString: string | null): string => {
     if (!dateString) return 'N/A'
     try {
@@ -53,20 +62,45 @@ const TenderTable: React.FC<TenderTableProps> = ({ tenders, onSelectTender }) =>
     return 'red'
   }
   
-  const headers = useMemo(() => [
-    { key: 'publication_date', header: 'Fecha Publicación' },
-    { key: 'closing_date', header: 'Fecha Presentación Ofertas' },
-    { key: 'entity', header: 'Entidad' },
-    { key: 'department', header: 'Departamento' },
-    { key: 'amount', header: 'Monto' },
-    { key: 'state', header: 'Estado' },
-    { key: 'match', header: 'Match Experiencia' },
-    { key: 'link', header: 'Enlace' },
-  ], [])
+  const headers = useMemo(() => {
+    const base = [
+      { key: 'publication_date', header: 'Fecha Publicación' },
+      { key: 'closing_date', header: 'Fecha Presentación Ofertas' },
+      { key: 'entity', header: 'Entidad' },
+      { key: 'department', header: 'Departamento' },
+      { key: 'amount', header: 'Monto' },
+      { key: 'state', header: 'Estado' },
+      { key: 'match', header: 'Match Experiencia' },
+      { key: 'link', header: 'Enlace' },
+    ]
+    if (showFavoriteColumn) {
+      return [{ key: 'favorite', header: '' }, ...base]
+    }
+    return base
+  }, [showFavoriteColumn])
   
   const rows = useMemo(() => {
-    return tenders.map((tender) => ({
+    return tenders.map((tender) => {
+      const favoriteActive = isFavorite?.(tender.id) ?? false
+      return {
       id: tender.id,
+      ...(showFavoriteColumn
+        ? {
+            favorite: (
+              <IconButton
+                kind="ghost"
+                size="sm"
+                label={favoriteActive ? 'Quitar de favoritas' : 'Agregar a favoritas'}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onToggleFavorite?.(tender)
+                }}
+              >
+                {favoriteActive ? <StarFilled /> : <Star />}
+              </IconButton>
+            ),
+          }
+        : {}),
       publication_date: formatDate(tender.publication_date),
       closing_date: formatDate(tender.closing_date),
       entity: (
@@ -111,8 +145,9 @@ const TenderTable: React.FC<TenderTableProps> = ({ tenders, onSelectTender }) =>
           Ver proceso
         </Link>
       ),
-    }))
-  }, [tenders])
+    }
+    })
+  }, [tenders, showFavoriteColumn, isFavorite, onToggleFavorite])
   
   if (tenders.length === 0) {
     return (
@@ -165,7 +200,11 @@ const TenderTable: React.FC<TenderTableProps> = ({ tenders, onSelectTender }) =>
                   {row.cells.map((cell) => (
                     <TableCell
                       key={cell.id}
-                      onClick={cell.info.header === 'link' ? (event) => event.stopPropagation() : undefined}
+                      onClick={
+                        cell.info.header === 'link' || cell.info.header === 'favorite'
+                          ? (event) => event.stopPropagation()
+                          : undefined
+                      }
                     >
                       {cell.value}
                     </TableCell>

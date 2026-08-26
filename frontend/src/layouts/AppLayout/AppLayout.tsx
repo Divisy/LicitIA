@@ -18,7 +18,8 @@ import {
   ChevronDown,
   Close,
   Search,
-  Chat
+  Chat,
+  Star
 } from '@carbon/icons-react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from '../../theme/ThemeProvider'
@@ -90,6 +91,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   const navigationItems = [
     { id: 'dashboard', label: 'Inicio', icon: DashboardIcon, path: '/dashboard', exact: true },
+    { id: 'favorites', label: 'Favoritas', icon: Star, path: '/favorites' },
     { id: 'experiences', label: 'Experiencias', icon: DocumentAdd, path: '/experiences' },
     { id: 'profile', label: 'Perfil', icon: User, path: '/profile' },
     { id: 'feedback', label: 'Feedback', icon: Chat, path: '/feedback' },

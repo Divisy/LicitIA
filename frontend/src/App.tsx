@@ -2,6 +2,7 @@ import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AppLayout } from './layouts/AppLayout'
 import Dashboard from './pages/Dashboard'
+import Favorites from './pages/Favorites'
 import Profile from './pages/Profile'
 import Experiences from './pages/Experiences'
 import Support from './pages/Support'
@@ -26,6 +27,7 @@ function App() {
           <AppLayout>
             <Routes>
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/favorites" element={<Favorites />} />
               <Route path="/experiences" element={<Experiences />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/help" element={<Support />} />
