@@ -168,6 +168,15 @@ def test_extract_pliego_fields_from_text():
     assert result.lots_groups == "Sí"
 
 
+def test_extract_pliego_no_anticipo_returns_zero():
+    text = (
+        "8.3 ANTICIPO Y/O PAGO ANTICIPADO. "
+        "En el presente proceso la entidad no entregará al contratista anticipo."
+    )
+    result = extract_from_pliego_text(text)
+    assert result.advance_payment_percentage == 0.0
+
+
 def test_extract_plazo_from_table_with_spanish_words():
     text = """
     PRESUPUESTO OFICIAL, PLAZO Y UBICACION

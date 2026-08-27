@@ -59,6 +59,9 @@ class Settings(BaseSettings):
 
     # Tender summary extraction (US 1.4)
     TENDER_SUMMARY_EXTRACTION_ENABLED: bool = True
+    TENDER_SUMMARY_USE_LLM_FOR_ANTICIPO: bool = True
+    TENDER_SUMMARY_ANTICIPO_LLM_MAX_CHARS: int = 6_000
+    TENDER_SUMMARY_ANTICIPO_LLM_MIN_CONFIDENCE: float = 0.70
 
     # Tender requirements extraction (US 1.5)
     TENDER_REQUIREMENTS_EXTRACTION_ENABLED: bool = True

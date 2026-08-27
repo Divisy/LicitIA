@@ -9,6 +9,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.tender import Tender
 from app.models.tender_document import TenderDocument
 from app.models.tender_summary import TenderSummary
@@ -26,10 +27,13 @@ from app.services.tender_summary.document_selection import (
     select_presupuesto_document,
 )
 from app.services.tender_summary.pdf_text import extract_pdf_text
+from app.services.tender_summary.llm_extraction import resolve_anticipo_extraction
 from app.services.tender_summary.pliego_extraction import extract_from_pliego_text
 from app.services.tender_summary.presupuesto_extraction import extract_from_presupuesto_xlsx
+from app.services.tender_summary.text_selection import select_anticipo_text_for_llm
+from app.services.tender_requirements.pdf_pages import extract_pdf_pages
 
-SUMMARY_EXTRACTION_VERSION = "1.4.2"
+SUMMARY_EXTRACTION_VERSION = "1.4.3"
 
 FieldStatus = str  # available | not_applicable | unavailable
 
@@ -121,7 +125,13 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
     presupuesto = select_presupuesto_document(documents)
     storage = get_document_storage()
 
-    pliego_data = extract_from_pliego_text(extract_pdf_text(pliego, storage)) if pliego else None
+    pliego_full_text = ""
+    pliego_pages: list[tuple[int, str]] = []
+    if pliego:
+        pliego_pages = extract_pdf_pages(pliego, storage)
+        pliego_full_text = extract_pdf_text(pliego, storage)
+
+    pliego_data = extract_from_pliego_text(pliego_full_text) if pliego_full_text else None
     presupuesto_data = (
         extract_from_presupuesto_xlsx(presupuesto, storage) if presupuesto else None
     )
@@ -226,16 +236,30 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
     )
 
     if aiu_applies(contract_kind):
-        if pliego_data and pliego_data.advance_payment_percentage is not None:
+        anticipo_result = None
+        if pliego and settings.TENDER_SUMMARY_EXTRACTION_ENABLED:
+            anticipo_excerpt = select_anticipo_text_for_llm(
+                pliego_pages or None,
+                pliego_full_text,
+                settings.TENDER_SUMMARY_ANTICIPO_LLM_MAX_CHARS,
+            )
+            anticipo_result = resolve_anticipo_extraction(
+                tender_external_id=tender.external_id,
+                object_text=tender.object_text or "",
+                excerpt=anticipo_excerpt,
+                fallback_text=pliego_full_text,
+            )
+
+        if anticipo_result is not None:
             fields.append(
                 _field(
                     key="advance_payment_percentage",
                     label="Porcentaje de anticipo",
                     priority="P1",
-                    source="pliego",
+                    source=anticipo_result.extraction_method,
                     status="available",
-                    value=pliego_data.advance_payment_percentage,
-                    display_value=f"{pliego_data.advance_payment_percentage:.2f}%",
+                    value=anticipo_result.percentage,
+                    display_value=anticipo_result.display_value,
                     source_document_id=pliego.id if pliego else None,
                 )
             )

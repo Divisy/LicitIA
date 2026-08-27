@@ -148,14 +148,27 @@ def _extract_execution_duration_from_region(region: str) -> Optional[str]:
     return None
 
 
-def _extract_advance_payment(text: str) -> Optional[float]:
+def extract_advance_payment_from_text(text: str) -> Optional[float]:
+    """Extract anticipo % from pliego text; returns 0.0 when explicitly no anticipo."""
+    lowered = _normalize(text).lower()
+
+    if re.search(
+        r"no\s+(?:entregar[aá]|otorgar[aá]|habr[aá])[^.\n]{0,100}anticipo",
+        lowered,
+    ):
+        return 0.0
+    if re.search(r"no\s+se\s+entregar[aá][^.\n]{0,100}anticipo", lowered):
+        return 0.0
+    if re.search(r"\bsin\s+anticipo\b", lowered):
+        return 0.0
+
     patterns = (
         r"(?:el\s+)?anticipo(?:\s+ser[aá]|\s+equivaldr[aá]|[^.\n]{0,30}?del)[^.\n]{0,80}?(\d{1,2}(?:[.,]\d+)?)\s*(?:%|por ciento)",
         r"(\d{1,2}(?:[.,]\d+)?)\s*(?:%|por ciento)[^.\n]{0,60}?(?:del\s+)?(?:valor\s+del\s+)?anticipo",
         r"anticipo[^.\n]{0,120}?(\d{1,2}(?:[.,]\d+)?)\s*(?:%|por ciento)",
     )
     for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE)
+        match = re.search(pattern, lowered, flags=re.IGNORECASE)
         if not match:
             continue
         snippet = match.group(0).lower()
@@ -163,6 +176,10 @@ def _extract_advance_payment(text: str) -> Optional[float]:
             continue
         return float(match.group(1).replace(",", "."))
     return None
+
+
+def _extract_advance_payment(text: str) -> Optional[float]:
+    return extract_advance_payment_from_text(text)
 
 
 def extract_from_pliego_text(text: str) -> PliegoExtraction:
