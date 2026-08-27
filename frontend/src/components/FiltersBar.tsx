@@ -11,6 +11,7 @@ import {
   Edit,
   Rule,
   Construction,
+  Layers,
 } from '@carbon/icons-react'
 import { ContractKindFilter } from '../api/client'
 import './FiltersBar.scss'
@@ -43,6 +44,12 @@ const CONTRACT_KIND_OPTIONS: ContractKindOption[] = [
     label: 'Estudios y diseños',
     shortLabel: 'Estudios',
     icon: Edit,
+  },
+  {
+    value: 'estudios_disenos_y_obra',
+    label: 'Estudios, diseños y obra',
+    shortLabel: 'E+D+Obra',
+    icon: Layers,
   },
   {
     value: 'interventoria',
@@ -115,7 +122,7 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
               const optionClass =
                 option.value === ''
                   ? 'all'
-                  : option.value.replace('_', '-')
+                  : option.value.replace(/_/g, '-')
 
               return (
                 <button

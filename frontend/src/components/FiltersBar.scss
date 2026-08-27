@@ -44,7 +44,7 @@
 
 .filters-bar-kind__options {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: $spacing-03;
 }
 
@@ -97,6 +97,11 @@
   &--estudios-disenos:not(.filters-bar-kind__option--selected) .filters-bar-kind__option-icon {
     background: rgba(138, 63, 252, 0.12);
     color: #6929c4;
+  }
+
+  &--estudios-disenos-y-obra:not(.filters-bar-kind__option--selected) .filters-bar-kind__option-icon {
+    background: rgba(178, 134, 0, 0.14);
+    color: #b28600;
   }
 
   &--interventoria:not(.filters-bar-kind__option--selected) .filters-bar-kind__option-icon {

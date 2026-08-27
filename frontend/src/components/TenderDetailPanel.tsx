@@ -70,6 +70,13 @@ const SUMMARY_FIELD_KEYS_BY_KIND: Record<string, readonly string[]> = {
     'execution_duration',
     'monthly_cost',
   ],
+  estudios_disenos_y_obra: [
+    'aiu_percentage',
+    'lots_groups',
+    'execution_duration',
+    'advance_payment_percentage',
+    'monthly_cost',
+  ],
   desconocido: ['lots_groups', 'execution_duration', 'monthly_cost'],
 }
 

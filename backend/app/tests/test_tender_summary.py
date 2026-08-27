@@ -89,6 +89,31 @@ def test_detect_contract_kind_estudios_disenos():
     assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS
 
 
+def test_detect_contract_kind_estudios_disenos_y_obra_acueducto():
+    tender = _tender(
+        object_text=(
+            "ELABORACION DE ESTUDIOS, DISENOS Y CONSTRUCCION Y PUESTA EN MARCHA "
+            "DE SISTEMAS DE ACUEDUCTO EN COMUNIDADES INDIGENAS"
+        ),
+        contract_type="Obra",
+        contract_modality=MODALITY_LICITACION_OBRA_PUBLICA,
+    )
+    assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS_Y_OBRA
+
+
+def test_detect_contract_kind_estudios_disenos_y_obra_parque():
+    tender = _tender(
+        object_text=(
+            "CONTRATAR LOS ESTUDIOS, DISENOS TECNICOS Y LA CONSTRUCCION "
+            "DEL PARQUE DE PROXIMIDAD SAN CAYETANO"
+        ),
+        contract_type="Obra",
+        contract_modality=MODALITY_CONCURSO_MERITOS_ABIERTO,
+    )
+    assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS_Y_OBRA
+
+
+
 def test_extract_pliego_fields_from_text():
     text = """
     PLIEGO DE CONDICIONES

@@ -58,7 +58,7 @@ async def list_tenders(
     only_interventoria: bool = Query(False, description="Deprecated: use contract_kind=interventoria"),
     contract_kind: Optional[str] = Query(
         None,
-        description="Filter by category: estudios_disenos, interventoria, ejecucion_obra",
+        description="Filter by category: estudios_disenos, estudios_disenos_y_obra, interventoria, ejecucion_obra",
     ),
     min_match_score: float = Query(0.55, ge=0.0, le=1.0, description="Minimum match score (0-1), default 0.55 for better quality"),
     company_name: Optional[str] = Query(None, description="Company name for experience matching"),

@@ -111,6 +111,7 @@ export interface TenderListResponse {
 export type ContractKindFilter =
   | ''
   | 'estudios_disenos'
+  | 'estudios_disenos_y_obra'
   | 'interventoria'
   | 'ejecucion_obra'
 

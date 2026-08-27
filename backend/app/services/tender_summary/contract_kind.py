@@ -22,6 +22,7 @@ class ContractKind(str, enum.Enum):
     EJECUCION_OBRA = "ejecucion_obra"
     INTERVENTORIA = "interventoria"
     ESTUDIOS_DISENOS = "estudios_disenos"
+    ESTUDIOS_DISENOS_Y_OBRA = "estudios_disenos_y_obra"
     DESCONOCIDO = "desconocido"
 
 
@@ -46,6 +47,22 @@ _ESTUDIOS = (
     "ingeniería de detalle",
     "prefactibilidad",
     "factibilidad",
+)
+_OBRA_EJECUCION = (
+    "construccion",
+    "construir",
+    "ejecucion de la obra",
+    "ejecución de la obra",
+    "puesta en marcha",
+)
+# Estudios/diseños y construcción listados como entregables del mismo contrato.
+_HYBRID_ESTUDIOS_OBRA_RE = re.compile(
+    r"estudios?.{0,45}(?:y|,).{0,45}(?:disenos?.{0,45}(?:y|,).{0,45})?construcc",
+    re.DOTALL,
+)
+_HYBRID_DISENOS_OBRA_RE = re.compile(
+    r"disenos?.{0,45}(?:y|,).{0,45}construcc",
+    re.DOTALL,
 )
 
 
@@ -87,16 +104,34 @@ def is_consultoria_contract_type(contract_type: str | None) -> bool:
     return "consultoria" in norm
 
 
+def is_estudios_disenos_y_obra(haystack: str) -> bool:
+    """True when the object contracts studies/designs and construction in the same process."""
+    if _contains_any(haystack, _INTERVENTORIA):
+        return False
+    if _HYBRID_ESTUDIOS_OBRA_RE.search(haystack):
+        return True
+    if _HYBRID_DISENOS_OBRA_RE.search(haystack):
+        return True
+    if re.search(r"elaboracion de estudios.{0,80}construcc", haystack):
+        return True
+    if re.search(r"contratar los estudios.{0,100}construcc", haystack):
+        return True
+    return False
+
+
 def detect_contract_kind(tender: Tender) -> ContractKind:
     """Classify tender by SECOP process type and object (filter groups)."""
     modality = tender.contract_modality
     haystack = _tender_haystack(tender)
 
-    if is_licitacion_obra_publica(modality):
-        return ContractKind.EJECUCION_OBRA
-
     if _contains_any(haystack, _INTERVENTORIA):
         return ContractKind.INTERVENTORIA
+
+    if is_estudios_disenos_y_obra(haystack):
+        return ContractKind.ESTUDIOS_DISENOS_Y_OBRA
+
+    if is_licitacion_obra_publica(modality):
+        return ContractKind.EJECUCION_OBRA
 
     if (
         is_concurso_meritos(modality)
@@ -113,13 +148,17 @@ def contract_kind_label(kind: ContractKind) -> str:
         ContractKind.EJECUCION_OBRA: "Ejecución de obra",
         ContractKind.INTERVENTORIA: "Interventoría",
         ContractKind.ESTUDIOS_DISENOS: "Estudios y diseños",
+        ContractKind.ESTUDIOS_DISENOS_Y_OBRA: "Estudios, diseños y obra",
         ContractKind.DESCONOCIDO: "No identificado",
     }
     return labels[kind]
 
 
 def aiu_applies(kind: ContractKind) -> bool:
-    return kind == ContractKind.EJECUCION_OBRA
+    return kind in (
+        ContractKind.EJECUCION_OBRA,
+        ContractKind.ESTUDIOS_DISENOS_Y_OBRA,
+    )
 
 
 def _sql_haystack():
@@ -164,6 +203,22 @@ def _sql_consultoria_type():
     return contract_type.contains("consultoria")
 
 
+def _sql_hybrid_estudios_obra():
+    haystack = _sql_haystack()
+    construccion = or_(
+        haystack.contains("construccion"),
+        haystack.contains("construir"),
+        haystack.contains("puesta en marcha"),
+    )
+    estudios_y_construcc = or_(
+        and_(haystack.contains("estudios"), haystack.contains("construcc")),
+        and_(haystack.contains("diseno"), haystack.contains("construcc")),
+        and_(haystack.contains("elaboracion de estudios"), haystack.contains("construcc")),
+        and_(haystack.contains("contratar los estudios"), haystack.contains("construcc")),
+    )
+    return and_(construccion, estudios_y_construcc)
+
+
 def apply_contract_kind_filter(query: "Query", kind: ContractKind) -> "Query":
     """Filter tenders using the same category rules as detect_contract_kind."""
     haystack = _sql_haystack()
@@ -172,16 +227,19 @@ def apply_contract_kind_filter(query: "Query", kind: ContractKind) -> "Query":
     estudios_kw = _sql_contains_any(haystack, _ESTUDIOS)
     concurso = _sql_concurso_meritos()
     consultoria = _sql_consultoria_type()
+    hybrid = _sql_hybrid_estudios_obra()
 
+    if kind == ContractKind.ESTUDIOS_DISENOS_Y_OBRA:
+        return query.filter(and_(not_(interventoria), hybrid))
     if kind == ContractKind.EJECUCION_OBRA:
-        return query.filter(obra_modality)
+        return query.filter(and_(obra_modality, not_(hybrid)))
     if kind == ContractKind.INTERVENTORIA:
-        return query.filter(and_(not_(obra_modality), interventoria))
+        return query.filter(interventoria)
     if kind == ContractKind.ESTUDIOS_DISENOS:
         return query.filter(
             and_(
-                not_(obra_modality),
                 not_(interventoria),
+                not_(hybrid),
                 or_(concurso, consultoria, estudios_kw),
             )
         )
