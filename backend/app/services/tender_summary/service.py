@@ -29,7 +29,7 @@ from app.services.tender_summary.pdf_text import extract_pdf_text
 from app.services.tender_summary.pliego_extraction import extract_from_pliego_text
 from app.services.tender_summary.presupuesto_extraction import extract_from_presupuesto_xlsx
 
-SUMMARY_EXTRACTION_VERSION = "1.4.1"
+SUMMARY_EXTRACTION_VERSION = "1.4.2"
 
 FieldStatus = str  # available | not_applicable | unavailable
 
@@ -252,28 +252,16 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
                 )
             )
 
-    fields.extend(
-        [
-            _field(
-                key="payment_method",
-                label="Forma de pago",
-                priority="P1",
-                source="pliego",
-                status="available" if pliego_data and pliego_data.payment_method else "unavailable",
-                value=pliego_data.payment_method if pliego_data else None,
-                display_value=pliego_data.payment_method if pliego_data else None,
-                source_document_id=pliego.id if pliego else None,
-            ),
-            _field(
-                key="exact_location",
-                label="Ubicación exacta",
-                priority="P1",
-                source="secop",
-                status="available" if exact_location else "unavailable",
-                value=exact_location,
-                display_value=exact_location,
-            ),
-        ]
+    fields.append(
+        _field(
+            key="exact_location",
+            label="Ubicación exacta",
+            priority="P1",
+            source="secop",
+            status="available" if exact_location else "unavailable",
+            value=exact_location,
+            display_value=exact_location,
+        )
     )
 
     duration_months = _parse_duration_months(pliego_data.execution_duration if pliego_data else None)

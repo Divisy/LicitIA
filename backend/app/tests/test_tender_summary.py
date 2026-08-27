@@ -101,26 +101,8 @@ def test_extract_pliego_fields_from_text():
     result = extract_from_pliego_text(text)
     assert result.execution_duration == "8 meses"
     assert result.advance_payment_percentage == 20.0
-    assert result.payment_method == "Pagos parciales"
     assert result.price_adjustment == "Sí"
     assert result.lots_groups == "Sí"
-
-
-def test_extract_payment_method_from_pliego_phrasing():
-    text = """
-    La forma de pago es por precios unitarios. El Anexo 1 debe ser concordante.
-    """
-    result = extract_from_pliego_text(text)
-    assert result.payment_method == "Precios unitarios"
-
-
-def test_extract_payment_method_sera_por():
-    text = """
-    La forma de pago del contrato derivado del presente proceso de contratacion
-    sera por precios unitarios. Para calificar este factor se tendra en cuenta.
-    """
-    result = extract_from_pliego_text(text)
-    assert result.payment_method == "Precios unitarios"
 
 
 def test_extract_plazo_from_table_with_spanish_words():

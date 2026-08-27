@@ -58,22 +58,19 @@ const SUMMARY_FIELD_KEYS_BY_KIND: Record<string, readonly string[]> = {
     'lots_groups',
     'execution_duration',
     'advance_payment_percentage',
-    'payment_method',
     'monthly_cost',
   ],
   interventoria: [
     'lots_groups',
     'execution_duration',
-    'payment_method',
     'monthly_cost',
   ],
   estudios_disenos: [
     'lots_groups',
     'execution_duration',
-    'payment_method',
     'monthly_cost',
   ],
-  desconocido: ['lots_groups', 'execution_duration', 'payment_method', 'monthly_cost'],
+  desconocido: ['lots_groups', 'execution_duration', 'monthly_cost'],
 }
 
 const DEFAULT_SUMMARY_FIELD_KEYS = SUMMARY_FIELD_KEYS_BY_KIND.desconocido
@@ -96,7 +93,6 @@ const SUMMARY_FIELD_LABELS: Record<string, string> = {
   lots_groups: 'Grupos o lotes',
   execution_duration: 'Duración de la obra',
   advance_payment_percentage: 'Anticipo',
-  payment_method: 'Forma de pago',
   monthly_cost: 'Flujo de caja',
 }
 
