@@ -103,6 +103,30 @@ def test_detect_contract_kind_estudios_disenos_y_obra_ciudad_bolivar():
     assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS_Y_OBRA
 
 
+def test_detect_contract_kind_estudios_disenos_y_obra_acueducto_complementarios():
+    tender = _tender(
+        object_text=(
+            "ELABORACION DE ESTUDIOS Y DISENOS COMPLEMENTARIOS Y EJECUCION DE OBRAS "
+            "DE OPTIMIZACION DEL SISTEMA DE ACUEDUCTO DEL CENTRO POBLADO DE LA ANM LA PEDRERA"
+        ),
+        contract_type="Obra",
+        contract_modality=MODALITY_LICITACION_OBRA_PUBLICA,
+    )
+    assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS_Y_OBRA
+
+
+def test_detect_contract_kind_estudios_disenos_y_obra_santa_fe():
+    tender = _tender(
+        object_text=(
+            "REALIZAR LA FACTIBILIDAD, LOS ESTUDIOS Y DISENOS DEFINITIVOS Y LA EJECUCION "
+            "DE LA OBRA DE ESPACIO PUBLICO, EN EL MARCO DE LA ESTRATEGIA REVITALIZA TU BARRIO"
+        ),
+        contract_type="Obra",
+        contract_modality=MODALITY_LICITACION_OBRA_PUBLICA,
+    )
+    assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS_Y_OBRA
+
+
 def test_detect_contract_kind_estudios_disenos_y_obra_acueducto():
     tender = _tender(
         object_text=(
@@ -115,7 +139,7 @@ def test_detect_contract_kind_estudios_disenos_y_obra_acueducto():
     assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS_Y_OBRA
 
 
-def test_detect_contract_kind_estudios_disenos_y_obra_parque():
+def test_detect_contract_kind_estudios_disenos_y_obra_parque_es_estudios_puro():
     tender = _tender(
         object_text=(
             "CONTRATAR LOS ESTUDIOS, DISENOS TECNICOS Y LA CONSTRUCCION "
@@ -124,7 +148,7 @@ def test_detect_contract_kind_estudios_disenos_y_obra_parque():
         contract_type="Obra",
         contract_modality=MODALITY_CONCURSO_MERITOS_ABIERTO,
     )
-    assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS_Y_OBRA
+    assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS
 
 
 
