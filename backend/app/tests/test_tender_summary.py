@@ -89,6 +89,20 @@ def test_detect_contract_kind_estudios_disenos():
     assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS
 
 
+def test_detect_contract_kind_estudios_disenos_y_obra_ciudad_bolivar():
+    tender = _tender(
+        object_text=(
+            "REALIZAR EL DIAGNÓSTICO, ACTUALIZACIÓN DE ESTUDIOS, DISEÑOS Y CULMINACIÓN "
+            "DE LAS OBRAS DE ESPACIO PÚBLICO PARA EL MEJORAMIENTO INTEGRAL DE LOS BARRIOS "
+            "LOS ALPES Y CARACOLÍ, QUE HACE PARTE DEL TERRITORIO PRIORIZADO POR LA "
+            "SECRETARÍA DISTRITAL DEL HÁBITAT EN LA CONURBACIÓN CIUDAD BOLÍVAR"
+        ),
+        contract_type="Obra",
+        contract_modality=MODALITY_LICITACION_OBRA_PUBLICA,
+    )
+    assert detect_contract_kind(tender) == ContractKind.ESTUDIOS_DISENOS_Y_OBRA
+
+
 def test_detect_contract_kind_estudios_disenos_y_obra_acueducto():
     tender = _tender(
         object_text=(

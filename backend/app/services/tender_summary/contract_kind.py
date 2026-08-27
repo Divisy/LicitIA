@@ -51,17 +51,28 @@ _ESTUDIOS = (
 _OBRA_EJECUCION = (
     "construccion",
     "construir",
+    "culminacion de las obras",
+    "culminacion de obra",
+    "ejecucion de las obras",
+    "ejecucion de obra",
     "ejecucion de la obra",
-    "ejecución de la obra",
+    "realizacion de las obras",
+    "realizacion de obra",
     "puesta en marcha",
 )
-# Estudios/diseños y construcción listados como entregables del mismo contrato.
+# Estudios/diseños y ejecución de obra listados como entregables del mismo contrato.
 _HYBRID_ESTUDIOS_OBRA_RE = re.compile(
-    r"estudios?.{0,45}(?:y|,).{0,45}(?:disenos?.{0,45}(?:y|,).{0,45})?construcc",
+    r"estudios?.{0,60}(?:y|,).{0,60}"
+    r"(?:disenos?.{0,60}(?:y|,).{0,60})?"
+    r"(?:construcc|culminacion|ejecucion|realizacion)",
     re.DOTALL,
 )
 _HYBRID_DISENOS_OBRA_RE = re.compile(
-    r"disenos?.{0,45}(?:y|,).{0,45}construcc",
+    r"disenos?.{0,60}(?:y|,).{0,60}(?:construcc|culminacion|ejecucion|realizacion)",
+    re.DOTALL,
+)
+_HYBRID_MEJORAMIENTO_SOLO_ESTUDIOS_RE = re.compile(
+    r"para el mejoramiento.{0,120}construccion de placa",
     re.DOTALL,
 )
 
@@ -105,17 +116,36 @@ def is_consultoria_contract_type(contract_type: str | None) -> bool:
 
 
 def is_estudios_disenos_y_obra(haystack: str) -> bool:
-    """True when the object contracts studies/designs and construction in the same process."""
+    """True when the object contracts studies/designs and obra execution in the same process."""
     if _contains_any(haystack, _INTERVENTORIA):
+        return False
+    if _HYBRID_MEJORAMIENTO_SOLO_ESTUDIOS_RE.search(haystack):
         return False
     if _HYBRID_ESTUDIOS_OBRA_RE.search(haystack):
         return True
     if _HYBRID_DISENOS_OBRA_RE.search(haystack):
         return True
-    if re.search(r"elaboracion de estudios.{0,80}construcc", haystack):
+    if re.search(
+        r"elaboracion de estudios.{0,80}(?:construcc|culminacion|ejecucion|realizacion)",
+        haystack,
+    ):
         return True
-    if re.search(r"contratar los estudios.{0,100}construcc", haystack):
+    if re.search(
+        r"contratar los estudios.{0,100}(?:construcc|culminacion|ejecucion|realizacion)",
+        haystack,
+    ):
         return True
+    if re.search(
+        r"actualizacion de estudios.{0,80}(?:construcc|culminacion|ejecucion|realizacion)",
+        haystack,
+    ):
+        return True
+    if _contains_any(haystack, _ESTUDIOS) and _contains_any(haystack, _OBRA_EJECUCION):
+        if re.search(
+            r"(?:culminacion|ejecucion|realizacion).{0,30}(?:de las )?obras?\b",
+            haystack,
+        ):
+            return True
     return False
 
 
@@ -205,18 +235,32 @@ def _sql_consultoria_type():
 
 def _sql_hybrid_estudios_obra():
     haystack = _sql_haystack()
-    construccion = or_(
+    obra_ejecucion = or_(
         haystack.contains("construccion"),
         haystack.contains("construir"),
         haystack.contains("puesta en marcha"),
+        haystack.contains("culminacion de las obras"),
+        haystack.contains("culminacion de obra"),
+        haystack.contains("ejecucion de las obras"),
+        haystack.contains("ejecucion de obra"),
+        and_(haystack.contains("culminacion"), haystack.contains("obras")),
+        and_(haystack.contains("ejecucion"), haystack.contains("obras")),
     )
-    estudios_y_construcc = or_(
+    estudios_y_obra = or_(
         and_(haystack.contains("estudios"), haystack.contains("construcc")),
         and_(haystack.contains("diseno"), haystack.contains("construcc")),
         and_(haystack.contains("elaboracion de estudios"), haystack.contains("construcc")),
         and_(haystack.contains("contratar los estudios"), haystack.contains("construcc")),
+        and_(haystack.contains("estudios"), haystack.contains("diseno"), haystack.contains("culminacion")),
+        and_(haystack.contains("estudios"), haystack.contains("diseno"), haystack.contains("ejecucion")),
+        and_(haystack.contains("actualizacion de estudios"), haystack.contains("culminacion")),
+        and_(haystack.contains("estudios"), haystack.contains("culminacion")),
     )
-    return and_(construccion, estudios_y_construcc)
+    mejoramiento_solo_estudios = and_(
+        haystack.contains("para el mejoramiento"),
+        haystack.contains("construccion de placa"),
+    )
+    return and_(obra_ejecucion, estudios_y_obra, not_(mejoramiento_solo_estudios))
 
 
 def apply_contract_kind_filter(query: "Query", kind: ContractKind) -> "Query":
