@@ -231,7 +231,10 @@ def fetch_and_store_new_tenders(lookback_days: Optional[int] = None) -> None:
         )
         logger.info("=" * 60)
 
-        doc_stats = extract_documents_for_pending_tenders(db)
+        doc_stats = extract_documents_for_pending_tenders(
+            db,
+            limit=settings.DOCUMENT_EXTRACTION_FETCH_BATCH_SIZE,
+        )
         logger.info(
             "Document extraction: %s tenders processed, %s files saved",
             doc_stats["tenders_processed"],

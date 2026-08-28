@@ -201,8 +201,8 @@ async def startup_event():
         from app.core.scheduler import scheduler
         from datetime import datetime, timedelta
         
-        # Don't run immediately on startup - wait 1 minute to let server fully start
-        next_run = datetime.utcnow() + timedelta(minutes=1)
+        # Wait before first SECOP fetch so the API stays responsive after deploy/restart.
+        next_run = datetime.utcnow() + timedelta(minutes=10)
         
         scheduler.add_job(
             fetch_and_store_new_tenders,
@@ -213,8 +213,8 @@ async def startup_event():
             next_run_time=next_run,  # Wait 1 minute before first run
         )
         
-        print(f"[STARTUP] Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 1 minute)")
-        logger.info(f"Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 1 minute)")
+        print(f"[STARTUP] Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 10 minutes)")
+        logger.info(f"Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 10 minutes)")
         
         # NOTE: Semantic AI model will be loaded lazily on first use
         # This avoids downloading the model (~470MB) during startup/build

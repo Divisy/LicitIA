@@ -48,7 +48,9 @@ class Settings(BaseSettings):
     SECOP_DOCUMENTS_DATASET_ID: str = "dmgg-8hin"
     DOCUMENTS_STORAGE_PATH: str = "storage/documents"
     DOCUMENT_EXTRACTION_ENABLED: bool = True
-    DOCUMENT_EXTRACTION_BATCH_SIZE: int = 25
+    DOCUMENT_EXTRACTION_BATCH_SIZE: int = 5
+    # Smaller cap when extraction runs right after the SECOP fetch job (avoids OOM on Railway).
+    DOCUMENT_EXTRACTION_FETCH_BATCH_SIZE: int = 3
 
     # Archive extraction (US 1.2.4)
     ARCHIVE_EXTRACTION_ENABLED: bool = True

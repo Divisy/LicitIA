@@ -1,6 +1,7 @@
 """Orchestrates extraction and storage of SECOP tender documents (user story 1.2)."""
 from __future__ import annotations
 
+import gc
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
