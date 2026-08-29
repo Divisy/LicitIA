@@ -74,6 +74,43 @@ const EXPERIENCE_METRIC_LABELS: Record<string, string> = {
   activity_codes: 'Códigos de actividad',
 }
 
+const PO_PERCENTAGE_KEYS = new Set(['min_percentage_budget', 'specific_min_percentage'])
+
+const parsePoPercentage = (item: TenderRequirementItem): number | null => {
+  if (typeof item.value === 'number' && Number.isFinite(item.value)) {
+    return item.value
+  }
+  const text = item.display_value || ''
+  const match = text.match(/(\d{1,3}(?:[.,]\d+)?)\s*%/)
+  if (!match) {
+    return null
+  }
+  const percentage = parseFloat(match[1].replace(',', '.'))
+  return Number.isFinite(percentage) ? percentage : null
+}
+
+const formatCopCurrency = (amount: number): string =>
+  new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount)
+
+const computePoMinimumAmount = (
+  officialBudgetTotal: number | null,
+  item: TenderRequirementItem
+): number | null => {
+  if (!PO_PERCENTAGE_KEYS.has(item.key) || officialBudgetTotal == null || officialBudgetTotal <= 0) {
+    return null
+  }
+  const percentage = parsePoPercentage(item)
+  if (percentage == null) {
+    return null
+  }
+  return Math.round((officialBudgetTotal * percentage) / 100)
+}
+
 const sortRequirementItems = (
   sectionKey: string,
   items: TenderRequirementSection['items']
@@ -541,6 +578,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
 
   const renderExperienceSection = (section: TenderRequirementSection) => {
     const items = sortRequirementItems(section.key, section.items)
+    const officialBudgetTotal = resolveTotalCost(summary?.fields ?? [], tender?.amount)
     const scopeKey = EXPERIENCE_SCOPE_KEY[section.key]
     const scopeItem = scopeKey ? findRequirementItem(items, scopeKey) : undefined
     const accreditationItem = findRequirementItem(items, EXPERIENCE_ACCREDITATION_KEY)
@@ -578,7 +616,9 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
           <>
             {metricItems.length > 0 && (
               <div className="tender-detail-panel__experience-metrics">
-                {metricItems.map((item) => (
+                {metricItems.map((item) => {
+                  const minimumAmount = computePoMinimumAmount(officialBudgetTotal, item)
+                  return (
                   <div key={`${section.key}-${item.key}`} className="tender-detail-panel__experience-metric">
                     <span className="tender-detail-panel__experience-metric-label">
                       {EXPERIENCE_METRIC_LABELS[item.key] || item.label}
@@ -586,8 +626,14 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                     <span className="tender-detail-panel__experience-metric-value">
                       {item.display_value}
                     </span>
+                    {minimumAmount != null && (
+                      <span className="tender-detail-panel__experience-metric-amount">
+                        Valor mínimo: {formatCopCurrency(minimumAmount)}
+                      </span>
+                    )}
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
 

@@ -347,6 +347,12 @@
   line-height: 1.35;
 }
 
+.tender-detail-panel__experience-metric-amount {
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+  line-height: 1.35;
+}
+
 .tender-detail-panel__experience-block {
   margin-bottom: $spacing-04;
 
