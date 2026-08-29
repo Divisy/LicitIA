@@ -254,19 +254,40 @@ function parseDurationMonths(duration: string | null | undefined): number | null
   return null
 }
 
+function resolveOfficialBudgetTotal(
+  secopAmount: number | null | undefined,
+  extractedAmount: number | null | undefined
+): number | null {
+  const secop = secopAmount != null && secopAmount > 0 ? secopAmount : null
+  const extracted =
+    extractedAmount != null && Number.isFinite(extractedAmount) && extractedAmount > 0
+      ? extractedAmount
+      : null
+
+  if (extracted == null) {
+    return secop
+  }
+  if (secop == null) {
+    return extracted
+  }
+
+  const ratio = extracted / secop
+  if (ratio < 0.25 || ratio > 4) {
+    return secop
+  }
+  return extracted
+}
+
 function resolveTotalCost(
   fields: TenderSummaryField[],
   tenderAmount: number | null | undefined
 ): number | null {
   const total = fields.find((field) => field.key === 'total_cost')
-  if (total?.status === 'available' && total.value != null) {
-    const value = Number(total.value)
-    return Number.isFinite(value) ? value : null
-  }
-  if (tenderAmount != null && tenderAmount > 0) {
-    return tenderAmount
-  }
-  return null
+  const extracted =
+    total?.status === 'available' && total.value != null
+      ? Number(total.value)
+      : null
+  return resolveOfficialBudgetTotal(tenderAmount, extracted)
 }
 
 function computeMonthlyCashFlow(
