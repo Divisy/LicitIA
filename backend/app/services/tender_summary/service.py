@@ -34,17 +34,14 @@ from app.services.tender_summary.llm_extraction import (
     resolve_anticipo_extraction,
 )
 from app.services.tender_summary.pliego_extraction import extract_from_pliego_text
-from app.services.tender_summary.presupuesto_extraction import (
-    extract_from_presupuesto_xlsx,
-    resolve_official_budget_total,
-)
+from app.services.tender_summary.presupuesto_extraction import extract_from_presupuesto_xlsx
 from app.services.tender_summary.text_selection import (
     select_aiu_text_for_llm,
     select_anticipo_text_for_llm,
 )
 from app.services.tender_requirements.pdf_pages import extract_pdf_pages
 
-SUMMARY_EXTRACTION_VERSION = "1.5.0"
+SUMMARY_EXTRACTION_VERSION = "1.5.1"
 
 FieldStatus = str  # available | not_applicable | unavailable
 
@@ -165,16 +162,7 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
     ) or None
     exact_location = admin_location
 
-    secop_amount = float(tender.amount) if tender.amount is not None else None
-    extracted_budget = (
-        presupuesto_data.official_budget_total if presupuesto_data else None
-    )
-    total_cost = resolve_official_budget_total(secop_amount, extracted_budget)
-    used_presupuesto_budget = (
-        extracted_budget is not None
-        and extracted_budget > 0
-        and total_cost == extracted_budget
-    )
+    total_cost = float(tender.amount) if tender.amount is not None else None
 
     fields: list[dict[str, Any]] = []
 
@@ -216,11 +204,11 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
             key="total_cost",
             label="Costo total de la obra",
             priority="P0",
-            source="presupuesto" if used_presupuesto_budget else "secop",
+            source="secop",
             status="available" if total_cost is not None else "unavailable",
             value=total_cost,
             display_value=_format_currency(total_cost),
-            source_document_id=presupuesto.id if used_presupuesto_budget and presupuesto else None,
+            source_document_id=None,
         )
     )
 

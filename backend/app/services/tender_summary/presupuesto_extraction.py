@@ -235,29 +235,6 @@ def _normalize(value: str) -> str:
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
-def resolve_official_budget_total(
-    secop_amount: Optional[float],
-    extracted_amount: Optional[float],
-    *,
-    min_ratio: float = 0.25,
-    max_ratio: float = 4.0,
-) -> Optional[float]:
-    """Prefer SECOP when presupuesto extraction returns an implausible total."""
-    if extracted_amount is None or extracted_amount <= 0:
-        if secop_amount is None or secop_amount <= 0:
-            return None
-        return float(secop_amount)
-    if secop_amount is None or secop_amount <= 0:
-        return float(extracted_amount)
-
-    secop = float(secop_amount)
-    extracted = float(extracted_amount)
-    ratio = extracted / secop
-    if ratio < min_ratio or ratio > max_ratio:
-        return secop
-    return extracted
-
-
 def _parse_number(value) -> Optional[float]:
     if value is None:
         return None

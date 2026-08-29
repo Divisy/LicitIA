@@ -254,40 +254,13 @@ function parseDurationMonths(duration: string | null | undefined): number | null
   return null
 }
 
-function resolveOfficialBudgetTotal(
-  secopAmount: number | null | undefined,
-  extractedAmount: number | null | undefined
-): number | null {
-  const secop = secopAmount != null && secopAmount > 0 ? secopAmount : null
-  const extracted =
-    extractedAmount != null && Number.isFinite(extractedAmount) && extractedAmount > 0
-      ? extractedAmount
-      : null
-
-  if (extracted == null) {
-    return secop
-  }
-  if (secop == null) {
-    return extracted
-  }
-
-  const ratio = extracted / secop
-  if (ratio < 0.25 || ratio > 4) {
-    return secop
-  }
-  return extracted
-}
-
-function resolveTotalCost(
-  fields: TenderSummaryField[],
+function resolveSecopBudgetAmount(
   tenderAmount: number | null | undefined
 ): number | null {
-  const total = fields.find((field) => field.key === 'total_cost')
-  const extracted =
-    total?.status === 'available' && total.value != null
-      ? Number(total.value)
-      : null
-  return resolveOfficialBudgetTotal(tenderAmount, extracted)
+  if (tenderAmount != null && tenderAmount > 0) {
+    return tenderAmount
+  }
+  return null
 }
 
 function computeMonthlyCashFlow(
@@ -297,7 +270,7 @@ function computeMonthlyCashFlow(
   const duration = fields.find((field) => field.key === 'execution_duration')
   const durationText = String(duration?.display_value || duration?.value || '')
   const months = parseDurationMonths(durationText)
-  const total = resolveTotalCost(fields, tenderAmount)
+  const total = resolveSecopBudgetAmount(tenderAmount)
   if (!months || !total) {
     return null
   }
@@ -599,7 +572,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
 
   const renderExperienceSection = (section: TenderRequirementSection) => {
     const items = sortRequirementItems(section.key, section.items)
-    const officialBudgetTotal = resolveTotalCost(summary?.fields ?? [], tender?.amount)
+    const officialBudgetTotal = resolveSecopBudgetAmount(tender?.amount)
     const scopeKey = EXPERIENCE_SCOPE_KEY[section.key]
     const scopeItem = scopeKey ? findRequirementItem(items, scopeKey) : undefined
     const accreditationItem = findRequirementItem(items, EXPERIENCE_ACCREDITATION_KEY)
