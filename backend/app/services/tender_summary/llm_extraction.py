@@ -18,6 +18,8 @@ from app.services.tender_summary.presupuesto_extraction import (
     format_aiu_display,
     has_presupuesto_aiu_context,
     is_credible_aiu_extraction,
+    normalize_aiu_percentages,
+    is_plausible_aiu_range,
 )
 
 logger = get_logger(__name__)
@@ -150,6 +152,9 @@ def _presupuesto_to_aiu_result(
 ) -> Optional[AiuExtraction]:
     if parsed.aiu_percentage is None:
         return None
+    parsed = normalize_aiu_percentages(parsed)
+    if not is_plausible_aiu_range(parsed):
+        return None
     return AiuExtraction(
         percentage=parsed.aiu_percentage,
         display_value=format_aiu_display(parsed),
@@ -248,6 +253,7 @@ def extract_aiu_with_llm(
         aiu_imprevistos_percentage=_optional_float(payload.get("imprevistos_percentage")),
         aiu_utilidad_percentage=_optional_float(payload.get("utilidad_percentage")),
     )
+    parsed = normalize_aiu_percentages(parsed)
     evidence = payload.get("evidence")
     if not is_credible_aiu_extraction(parsed, evidence=evidence):
         return None
@@ -296,6 +302,7 @@ def extract_aiu_with_vision(
                 '  "evidence": "cita breve"\n'
                 "}\n"
                 "Reglas: aiu_percentage = A+I+U. "
+                "Los porcentajes son enteros (ej. A=24, I=1, U=5, total=30), NO decimales como 0.24. "
                 "NO uses experiencia del contratista, anticipo, interventoría, RETILAP ni IVA."
             ),
         }
@@ -349,6 +356,7 @@ def extract_aiu_with_vision(
         aiu_imprevistos_percentage=_optional_float(payload.get("imprevistos_percentage")),
         aiu_utilidad_percentage=_optional_float(payload.get("utilidad_percentage")),
     )
+    parsed = normalize_aiu_percentages(parsed)
     evidence = payload.get("evidence")
     if not is_credible_aiu_extraction(parsed, evidence=evidence):
         return None

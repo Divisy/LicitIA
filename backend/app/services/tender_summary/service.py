@@ -41,7 +41,7 @@ from app.services.tender_summary.text_selection import (
 )
 from app.services.tender_requirements.pdf_pages import extract_pdf_pages
 
-SUMMARY_EXTRACTION_VERSION = "1.4.8"
+SUMMARY_EXTRACTION_VERSION = "1.4.9"
 
 FieldStatus = str  # available | not_applicable | unavailable
 

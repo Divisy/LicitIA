@@ -39,7 +39,7 @@ def extract_aiu_percentage_from_text(text: str) -> PresupuestoExtraction:
     )
     if direct:
         result.aiu_percentage = float(direct.group(1).replace(",", "."))
-        return _attach_aiu_components(result, lowered)
+        return normalize_aiu_percentages(_attach_aiu_components(result, lowered))
 
     admin = re.search(r"\ba\s*=\s*(\d{1,2}(?:[.,]\d+)?)\s*%", lowered)
     imprev = re.search(r"\bi\s*=\s*(\d{1,2}(?:[.,]\d+)?)\s*%", lowered)
@@ -54,7 +54,7 @@ def extract_aiu_percentage_from_text(text: str) -> PresupuestoExtraction:
             + result.aiu_utilidad_percentage,
             2,
         )
-        return result
+        return normalize_aiu_percentages(result)
 
     percentages: list[float] = []
     for pattern in (
@@ -72,7 +72,7 @@ def extract_aiu_percentage_from_text(text: str) -> PresupuestoExtraction:
         result.aiu_imprevistos_percentage = percentages[1]
         result.aiu_utilidad_percentage = percentages[2]
 
-    return result
+    return normalize_aiu_percentages(result)
 
 
 def _attach_aiu_components(result: PresupuestoExtraction, lowered: str) -> PresupuestoExtraction:
@@ -130,12 +130,80 @@ def has_presupuesto_aiu_context(text: str) -> bool:
     return False
 
 
+def is_plausible_aiu_range(parsed: PresupuestoExtraction) -> bool:
+    """Typical obra pública AIU in Colombia: total ~15–40%, A ~18–30%, I ~1–3%, U ~3–8%."""
+    total = parsed.aiu_percentage
+    if total is None or total < 10 or total > 50:
+        return False
+
+    admin = parsed.aiu_admin_percentage
+    imprev = parsed.aiu_imprevistos_percentage
+    util = parsed.aiu_utilidad_percentage
+
+    if admin is not None and (admin < 10 or admin > 35):
+        return False
+    if imprev is not None and (imprev < 0.5 or imprev > 10):
+        return False
+    if util is not None and (util < 2 or util > 15):
+        return False
+    return True
+
+
+def _scale_decimal_percent(value: float) -> float:
+    if 0 < value < 5:
+        return round(value * 100, 2)
+    return value
+
+
+def normalize_aiu_percentages(parsed: PresupuestoExtraction) -> PresupuestoExtraction:
+    """Fix common OCR/vision misreads like 0.24 instead of 24%."""
+    if parsed.aiu_percentage is None:
+        return parsed
+
+    admin = parsed.aiu_admin_percentage
+    imprev = parsed.aiu_imprevistos_percentage
+    util = parsed.aiu_utilidad_percentage
+
+    if admin is not None and imprev is not None and util is not None:
+        if max(admin, imprev, util) < 5 and (admin + imprev + util) < 5:
+            admin = _scale_decimal_percent(admin)
+            imprev = _scale_decimal_percent(imprev)
+            util = _scale_decimal_percent(util)
+            return PresupuestoExtraction(
+                aiu_percentage=round(admin + imprev + util, 2),
+                aiu_admin_percentage=admin,
+                aiu_imprevistos_percentage=imprev,
+                aiu_utilidad_percentage=util,
+                official_budget_total=parsed.official_budget_total,
+                budget_relation_note=parsed.budget_relation_note,
+            )
+
+    total = parsed.aiu_percentage
+    if 0 < total < 5:
+        scaled_total = round(total * 100, 2)
+        if 15 <= scaled_total <= 50:
+            return PresupuestoExtraction(
+                aiu_percentage=scaled_total,
+                aiu_admin_percentage=admin,
+                aiu_imprevistos_percentage=imprev,
+                aiu_utilidad_percentage=util,
+                official_budget_total=parsed.official_budget_total,
+                budget_relation_note=parsed.budget_relation_note,
+            )
+
+    return parsed
+
+
 def is_credible_aiu_extraction(
     parsed: PresupuestoExtraction,
     *,
     evidence: Optional[str] = None,
 ) -> bool:
     if parsed.aiu_percentage is None:
+        return False
+
+    parsed = normalize_aiu_percentages(parsed)
+    if not is_plausible_aiu_range(parsed):
         return False
 
     components = (

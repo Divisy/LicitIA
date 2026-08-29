@@ -61,6 +61,35 @@ def test_is_credible_aiu_rejects_experiencia_evidence():
     ) is False
 
 
+def test_is_credible_aiu_rejects_garbage_decimal_components():
+    from app.services.tender_summary.presupuesto_extraction import PresupuestoExtraction
+
+    parsed = PresupuestoExtraction(
+        aiu_percentage=0.53,
+        aiu_admin_percentage=0.24,
+        aiu_imprevistos_percentage=0.05,
+        aiu_utilidad_percentage=0.24,
+    )
+    assert is_credible_aiu_extraction(parsed, evidence="A.I.U.= 0.53%") is False
+
+
+def test_normalize_aiu_fixes_decimal_misread():
+    from app.services.tender_summary.presupuesto_extraction import (
+        PresupuestoExtraction,
+        normalize_aiu_percentages,
+    )
+
+    parsed = PresupuestoExtraction(
+        aiu_percentage=0.3,
+        aiu_admin_percentage=0.24,
+        aiu_imprevistos_percentage=0.01,
+        aiu_utilidad_percentage=0.05,
+    )
+    fixed = normalize_aiu_percentages(parsed)
+    assert fixed.aiu_percentage == 30.0
+    assert fixed.aiu_admin_percentage == 24.0
+
+
 def test_is_credible_aiu_accepts_components_sum():
     from app.services.tender_summary.presupuesto_extraction import PresupuestoExtraction
 
