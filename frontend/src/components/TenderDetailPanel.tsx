@@ -20,6 +20,7 @@ import {
   TenderSummaryField,
   TenderRequirements,
   TenderRequirementSection,
+  TenderRequirementItem,
   TenderDocumentType,
   getTenderDocuments,
   getTenderDocumentDownloadUrl,
@@ -29,6 +30,86 @@ import {
 } from '../api/client'
 import { useFavoriteTenders } from '../hooks/useFavoriteTenders'
 import './TenderDetailPanel.scss'
+
+const EXPERIENCE_SECTION_KEYS = new Set(['experiencia_general', 'experiencia_especifica'])
+
+const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
+  experiencia_general: [
+    'requirement_description',
+    'min_percentage_budget',
+    'min_amount_smmlv',
+    'time_window_years',
+    'accreditation_method',
+  ],
+  experiencia_especifica: [
+    'specific_scope',
+    'specific_min_percentage',
+    'activity_codes',
+    'contracts_minimum',
+  ],
+}
+
+const EXPERIENCE_METRIC_KEYS = new Set([
+  'min_percentage_budget',
+  'min_amount_smmlv',
+  'time_window_years',
+  'specific_min_percentage',
+  'contracts_minimum',
+  'activity_codes',
+])
+
+const EXPERIENCE_SCOPE_KEY: Record<string, string> = {
+  experiencia_general: 'requirement_description',
+  experiencia_especifica: 'specific_scope',
+}
+
+const EXPERIENCE_ACCREDITATION_KEY = 'accreditation_method'
+
+const EXPERIENCE_METRIC_LABELS: Record<string, string> = {
+  min_percentage_budget: '% mínimo del PO',
+  min_amount_smmlv: 'Monto en SMMLV',
+  time_window_years: 'Antigüedad',
+  specific_min_percentage: '% mínimo específico',
+  contracts_minimum: 'Nº de contratos',
+  activity_codes: 'Códigos de actividad',
+}
+
+const sortRequirementItems = (
+  sectionKey: string,
+  items: TenderRequirementSection['items']
+) => {
+  const order = REQUIREMENT_ITEM_ORDER[sectionKey] || []
+  return [...items].sort((a, b) => {
+    const aIndex = order.indexOf(a.key)
+    const bIndex = order.indexOf(b.key)
+    if (aIndex === -1 && bIndex === -1) return 0
+    if (aIndex === -1) return 1
+    if (bIndex === -1) return -1
+    return aIndex - bIndex
+  })
+}
+
+const normalizeComparableText = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const isRedundantEvidence = (item: TenderRequirementItem) => {
+  if (!item.evidence || !item.display_value) return true
+  const evidence = normalizeComparableText(item.evidence)
+  const display = normalizeComparableText(item.display_value)
+  if (evidence.length < 24) return true
+  if (display.includes(evidence) || evidence.includes(display)) return true
+  return false
+}
+
+const findRequirementItem = (
+  items: TenderRequirementItem[],
+  key: string
+): TenderRequirementItem | undefined => items.find((item) => item.key === key)
 
 interface TenderDetailPanelProps {
   tender: Tender | null
@@ -458,35 +539,114 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     }
   }
 
-const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
-  experiencia_general: [
-    'requirement_description',
-    'min_percentage_budget',
-    'min_amount_smmlv',
-    'time_window_years',
-    'accreditation_method',
-  ],
-  experiencia_especifica: [
-    'specific_scope',
-    'specific_min_percentage',
-    'activity_codes',
-  ],
-}
+  const renderExperienceSection = (section: TenderRequirementSection) => {
+    const items = sortRequirementItems(section.key, section.items)
+    const scopeKey = EXPERIENCE_SCOPE_KEY[section.key]
+    const scopeItem = scopeKey ? findRequirementItem(items, scopeKey) : undefined
+    const accreditationItem = findRequirementItem(items, EXPERIENCE_ACCREDITATION_KEY)
+    const metricItems = items.filter(
+      (item) =>
+        EXPERIENCE_METRIC_KEYS.has(item.key) &&
+        item.key !== scopeKey &&
+        Boolean(item.display_value)
+    )
+    const otherItems = items.filter(
+      (item) =>
+        item.key !== scopeKey &&
+        item.key !== EXPERIENCE_ACCREDITATION_KEY &&
+        !EXPERIENCE_METRIC_KEYS.has(item.key) &&
+        Boolean(item.display_value)
+    )
+    const sourceLabel = items[0]
+      ? REQUIREMENT_SOURCE_LABELS[items[0].source_document] || items[0].source_document
+      : null
 
-const sortRequirementItems = (
-  sectionKey: string,
-  items: TenderRequirementSection['items']
-) => {
-  const order = REQUIREMENT_ITEM_ORDER[sectionKey] || []
-  return [...items].sort((a, b) => {
-    const aIndex = order.indexOf(a.key)
-    const bIndex = order.indexOf(b.key)
-    if (aIndex === -1 && bIndex === -1) return 0
-    if (aIndex === -1) return 1
-    if (bIndex === -1) return -1
-    return aIndex - bIndex
-  })
-}
+    return (
+      <div key={section.key} className="tender-detail-panel__experience-card">
+        <div className="tender-detail-panel__requirements-group-header">
+          <h5 className="tender-detail-panel__requirements-group-title">{section.title}</h5>
+          <Tag type={requirementStatusTagType(section.status)} size="sm">
+            {REQUIREMENT_STATUS_LABELS[section.status] || section.status}
+          </Tag>
+        </div>
+
+        {sourceLabel && (
+          <p className="tender-detail-panel__experience-source">Fuente: {sourceLabel}</p>
+        )}
+
+        {items.length > 0 ? (
+          <>
+            {metricItems.length > 0 && (
+              <div className="tender-detail-panel__experience-metrics">
+                {metricItems.map((item) => (
+                  <div key={`${section.key}-${item.key}`} className="tender-detail-panel__experience-metric">
+                    <span className="tender-detail-panel__experience-metric-label">
+                      {EXPERIENCE_METRIC_LABELS[item.key] || item.label}
+                    </span>
+                    <span className="tender-detail-panel__experience-metric-value">
+                      {item.display_value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {scopeItem?.display_value && (
+              <div className="tender-detail-panel__experience-block">
+                <h6 className="tender-detail-panel__experience-block-title">Qué se exige</h6>
+                <p className="tender-detail-panel__experience-prose">{scopeItem.display_value}</p>
+              </div>
+            )}
+
+            {accreditationItem?.display_value && (
+              <div className="tender-detail-panel__experience-block">
+                <h6 className="tender-detail-panel__experience-block-title">Cómo acreditar</h6>
+                <p className="tender-detail-panel__experience-prose">
+                  {accreditationItem.display_value}
+                </p>
+              </div>
+            )}
+
+            {otherItems.length > 0 && (
+              <dl className="tender-detail-panel__requirements-list tender-detail-panel__requirements-list--compact">
+                {otherItems.map((item) => (
+                  <div key={`${section.key}-${item.key}`} className="tender-detail-panel__requirements-item">
+                    <dt>{item.label}</dt>
+                    <dd>
+                      <span className="tender-detail-panel__requirements-value">
+                        {item.display_value}
+                      </span>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+
+            {items.some((item) => item.evidence && !isRedundantEvidence(item)) && (
+              <details className="tender-detail-panel__experience-citations">
+                <summary>Ver citas del pliego</summary>
+                <ul>
+                  {items
+                    .filter((item) => item.evidence && !isRedundantEvidence(item))
+                    .map((item) => (
+                      <li key={`${section.key}-${item.key}-evidence`}>
+                        <strong>{item.label}:</strong> {item.evidence}
+                      </li>
+                    ))}
+                </ul>
+              </details>
+            )}
+          </>
+        ) : (
+          <p className="tender-detail-panel__requirements-empty">
+            {section.status === 'documento_no_disponible'
+              ? 'Sube el documento correspondiente para extraer esta sección.'
+              : 'No se encontraron requisitos en el documento analizado.'}
+          </p>
+        )}
+      </div>
+    )
+  }
 
   const renderRequirementSection = (section: TenderRequirementSection) => (
     <div key={section.key} className="tender-detail-panel__requirements-group">
@@ -766,7 +926,19 @@ const sortRequirementItems = (
                   />
                 )}
                 <div className="tender-detail-panel__requirements-groups">
-                  {requirements.sections.map((section) => renderRequirementSection(section))}
+                  {requirements.sections.some((section) =>
+                    EXPERIENCE_SECTION_KEYS.has(section.key)
+                  ) && (
+                    <div className="tender-detail-panel__experience-section">
+                      <h5 className="tender-detail-panel__experience-heading">Experiencia requerida</h5>
+                      {requirements.sections
+                        .filter((section) => EXPERIENCE_SECTION_KEYS.has(section.key))
+                        .map((section) => renderExperienceSection(section))}
+                    </div>
+                  )}
+                  {requirements.sections
+                    .filter((section) => !EXPERIENCE_SECTION_KEYS.has(section.key))
+                    .map((section) => renderRequirementSection(section))}
                 </div>
               </>
             )}

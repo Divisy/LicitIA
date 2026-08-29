@@ -291,6 +291,113 @@
   margin: 0;
 }
 
+.tender-detail-panel__experience-section {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-04;
+  padding: $spacing-04;
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-02;
+  background: var(--cds-layer-02);
+}
+
+.tender-detail-panel__experience-heading {
+  @include type-style('heading-compact-02');
+  margin: 0;
+}
+
+.tender-detail-panel__experience-card {
+  padding: $spacing-04;
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-02;
+  background: var(--cds-layer-01);
+}
+
+.tender-detail-panel__experience-source {
+  @include type-style('label-01');
+  color: var(--cds-text-helper);
+  margin: 0 0 $spacing-04;
+}
+
+.tender-detail-panel__experience-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: $spacing-03;
+  margin-bottom: $spacing-04;
+}
+
+.tender-detail-panel__experience-metric {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-02;
+  padding: $spacing-03;
+  border-radius: $spacing-02;
+  background: var(--cds-layer-accent);
+  border: 1px solid var(--cds-border-subtle);
+}
+
+.tender-detail-panel__experience-metric-label {
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+}
+
+.tender-detail-panel__experience-metric-value {
+  @include type-style('heading-compact-01');
+  color: var(--cds-text-primary);
+  line-height: 1.35;
+}
+
+.tender-detail-panel__experience-block {
+  margin-bottom: $spacing-04;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.tender-detail-panel__experience-block-title {
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin: 0 0 $spacing-02;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.tender-detail-panel__experience-prose {
+  @include type-style('body-01');
+  color: var(--cds-text-primary);
+  margin: 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.tender-detail-panel__experience-citations {
+  margin-top: $spacing-03;
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+
+  summary {
+    cursor: pointer;
+    color: var(--cds-link-primary);
+    margin-bottom: $spacing-02;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: $spacing-05;
+  }
+
+  li + li {
+    margin-top: $spacing-02;
+  }
+}
+
+.tender-detail-panel__requirements-list--compact {
+  margin-top: $spacing-03;
+  padding-top: $spacing-03;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
 .tender-detail-panel__documents-title {
   @include type-style('heading-02');
   margin: 0 0 $spacing-03;
