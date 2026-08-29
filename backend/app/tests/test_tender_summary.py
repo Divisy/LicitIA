@@ -232,6 +232,43 @@ def test_parse_duration_months_for_monthly_cash_flow():
     assert _parse_duration_months("Hasta 31 de Diciembre de 2026") is None
 
 
+def test_select_presupuesto_rejects_pliego_filename():
+    from uuid import uuid4
+
+    from app.models.tender_document import TenderDocument
+    from app.services.tender_summary.document_selection import (
+        is_presupuesto_source_document,
+        select_presupuesto_document,
+    )
+
+    presupuesto = TenderDocument(
+        id=uuid4(),
+        tender_id=uuid4(),
+        external_document_id="p1",
+        document_type="presupuesto",
+        file_name="1.3. PRESUPUESTO.pdf",
+        file_path="x",
+        download_url="https://example.com/p.pdf",
+        extension="pdf",
+        file_size=1000,
+    )
+    pliego_mislabeled = TenderDocument(
+        id=uuid4(),
+        tender_id=uuid4(),
+        external_document_id="p2",
+        document_type="presupuesto",
+        file_name="DOCUMENTO BASE PLIEGO.pdf",
+        file_path="y",
+        download_url="https://example.com/pl.pdf",
+        extension="pdf",
+        file_size=5000,
+    )
+    assert is_presupuesto_source_document(presupuesto) is True
+    assert is_presupuesto_source_document(pliego_mislabeled) is False
+    selected = select_presupuesto_document([pliego_mislabeled, presupuesto])
+    assert selected is presupuesto
+
+
 def test_build_summary_includes_secop_fields():
     tender = _tender()
     summary = build_tender_summary(tender)

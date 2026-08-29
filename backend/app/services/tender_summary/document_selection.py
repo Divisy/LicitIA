@@ -14,12 +14,32 @@ _PLIEGO_HINTS = (
     "proyecto pliego",
 )
 _PRESUPUESTO_HINTS = (
-    "formulario 1",
+    "presupuesto de obra",
     "presupuesto oficial",
+    "formulario 1",
     "formul1",
     "propuesta economica",
     "propuesta económica",
+    "presupuesto",
 )
+_PRESUPUESTO_FILENAME_REJECT = (
+    "pliego",
+    "documento base",
+    "condiciones",
+    "estudios previos",
+    "anexo tecnico",
+    "anexo técnico",
+)
+
+
+def is_presupuesto_source_document(document: TenderDocument) -> bool:
+    """True when the stored document is a presupuesto key doc, not a misclassified pliego."""
+    if document.document_type != "presupuesto":
+        return False
+    normalized = normalize_document_filename(document.file_name)
+    if any(hint in normalized for hint in _PRESUPUESTO_FILENAME_REJECT):
+        return False
+    return True
 
 
 def _score_document(document: TenderDocument, hints: tuple[str, ...]) -> int:
@@ -44,4 +64,6 @@ def select_presupuesto_document(documents: list[TenderDocument]) -> Optional[Ten
     candidates = [doc for doc in documents if doc.document_type == "presupuesto"]
     if not candidates:
         return None
-    return max(candidates, key=lambda doc: _score_document(doc, _PRESUPUESTO_HINTS))
+    validated = [doc for doc in candidates if is_presupuesto_source_document(doc)]
+    pool = validated or candidates
+    return max(pool, key=lambda doc: _score_document(doc, _PRESUPUESTO_HINTS))

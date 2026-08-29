@@ -121,6 +121,8 @@ def has_presupuesto_aiu_context(text: str) -> bool:
     if not text or not text.strip():
         return False
     lowered = _normalize(text)
+    if re.search(r"\bexperiencia\b", lowered) and not _AIU_CONTEXT_RE.search(lowered):
+        return False
     if _AIU_CONTEXT_RE.search(lowered):
         return True
     if re.search(r"\ba\s*=\s*\d", lowered) and re.search(r"\bi\s*=\s*\d", lowered):

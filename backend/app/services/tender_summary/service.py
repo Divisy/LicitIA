@@ -23,6 +23,7 @@ from app.services.tender_summary.contract_kind import (
     detect_contract_kind,
 )
 from app.services.tender_summary.document_selection import (
+    is_presupuesto_source_document,
     select_pliego_document,
     select_presupuesto_document,
 )
@@ -40,7 +41,7 @@ from app.services.tender_summary.text_selection import (
 )
 from app.services.tender_requirements.pdf_pages import extract_pdf_pages
 
-SUMMARY_EXTRACTION_VERSION = "1.4.7"
+SUMMARY_EXTRACTION_VERSION = "1.4.8"
 
 FieldStatus = str  # available | not_applicable | unavailable
 
@@ -215,7 +216,10 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
 
     if aiu_applies(contract_kind):
         aiu_result = None
-        if presupuesto and settings.TENDER_SUMMARY_EXTRACTION_ENABLED:
+        presupuesto_for_aiu = (
+            presupuesto if presupuesto and is_presupuesto_source_document(presupuesto) else None
+        )
+        if presupuesto_for_aiu and settings.TENDER_SUMMARY_EXTRACTION_ENABLED:
             aiu_excerpt = ""
             if presupuesto_full_text:
                 aiu_excerpt = select_aiu_text_for_llm(
@@ -238,11 +242,11 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
                     key="aiu_percentage",
                     label="Porcentaje de AIU",
                     priority="P0",
-                    source=aiu_result.extraction_method,
+                    source="presupuesto",
                     status="available",
                     value=aiu_result.percentage,
                     display_value=aiu_result.display_value,
-                    source_document_id=presupuesto.id if presupuesto else None,
+                    source_document_id=presupuesto_for_aiu.id if presupuesto_for_aiu else None,
                 )
             )
         else:
@@ -254,7 +258,7 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
                     source="presupuesto",
                     status="unavailable",
                     display_value="No disponible",
-                    source_document_id=presupuesto.id if presupuesto else None,
+                    source_document_id=presupuesto_for_aiu.id if presupuesto_for_aiu else None,
                 )
             )
 
