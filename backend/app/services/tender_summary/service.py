@@ -27,13 +27,19 @@ from app.services.tender_summary.document_selection import (
     select_presupuesto_document,
 )
 from app.services.tender_summary.pdf_text import extract_pdf_text
-from app.services.tender_summary.llm_extraction import resolve_anticipo_extraction
+from app.services.tender_summary.llm_extraction import (
+    resolve_aiu_extraction,
+    resolve_anticipo_extraction,
+)
 from app.services.tender_summary.pliego_extraction import extract_from_pliego_text
 from app.services.tender_summary.presupuesto_extraction import extract_from_presupuesto_xlsx
-from app.services.tender_summary.text_selection import select_anticipo_text_for_llm
+from app.services.tender_summary.text_selection import (
+    select_aiu_text_for_llm,
+    select_anticipo_text_for_llm,
+)
 from app.services.tender_requirements.pdf_pages import extract_pdf_pages
 
-SUMMARY_EXTRACTION_VERSION = "1.4.3"
+SUMMARY_EXTRACTION_VERSION = "1.4.4"
 
 FieldStatus = str  # available | not_applicable | unavailable
 
@@ -136,6 +142,12 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
         extract_from_presupuesto_xlsx(presupuesto, storage) if presupuesto else None
     )
 
+    presupuesto_full_text = ""
+    presupuesto_pages: list[tuple[int, str]] = []
+    if presupuesto and (presupuesto.extension or "").lower() == "pdf":
+        presupuesto_pages = extract_pdf_pages(presupuesto, storage)
+        presupuesto_full_text = extract_pdf_text(presupuesto, storage)
+
     admin_location = ", ".join(
         part for part in (tender.department, tender.municipality) if part
     ) or None
@@ -194,16 +206,33 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
     )
 
     if aiu_applies(contract_kind):
-        if presupuesto_data and presupuesto_data.aiu_percentage is not None:
+        aiu_result = None
+        if presupuesto and settings.TENDER_SUMMARY_EXTRACTION_ENABLED:
+            aiu_excerpt = ""
+            if presupuesto_full_text:
+                aiu_excerpt = select_aiu_text_for_llm(
+                    presupuesto_pages or None,
+                    presupuesto_full_text,
+                    settings.TENDER_SUMMARY_AIU_LLM_MAX_CHARS,
+                )
+            aiu_result = resolve_aiu_extraction(
+                tender_external_id=tender.external_id,
+                object_text=tender.object_text or "",
+                excerpt=aiu_excerpt,
+                fallback_text=presupuesto_full_text,
+                xlsx_parsed=presupuesto_data,
+            )
+
+        if aiu_result is not None:
             fields.append(
                 _field(
                     key="aiu_percentage",
                     label="Porcentaje de AIU",
                     priority="P0",
-                    source="presupuesto",
+                    source=aiu_result.extraction_method,
                     status="available",
-                    value=presupuesto_data.aiu_percentage,
-                    display_value=f"{presupuesto_data.aiu_percentage:.2f}%",
+                    value=aiu_result.percentage,
+                    display_value=aiu_result.display_value,
                     source_document_id=presupuesto.id if presupuesto else None,
                 )
             )

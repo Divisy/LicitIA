@@ -127,3 +127,45 @@ def select_anticipo_text_for_llm(
 
     combined = "\n\n".join(parts)
     return combined[:max_chars]
+
+
+_AIU_MARKERS: tuple[str, ...] = (
+    "a.i.u.",
+    "a.i.u.=",
+    "formulario 1",
+    "presupuesto oficial",
+    "total de administracion",
+    "imprevistos (i)",
+    "utilidad (u)",
+    "administracion (a)",
+    "porcentaje a=",
+    "propuesta economica",
+)
+
+
+def select_aiu_text_for_llm(
+    pages: list[tuple[int, str]] | None,
+    presupuesto_text: str,
+    max_chars: int,
+) -> str:
+    """Build a compact excerpt around AIU / Formulario 1 sections in presupuesto."""
+    parts: list[str] = []
+    budget = max_chars
+
+    if pages:
+        # AIU usually appears on summary pages near the end of Formulario 1.
+        tail_pages = sorted({page_no for page_no, text in pages if text.strip()})[-8:]
+        excerpt = select_text_from_pages(pages, tail_pages, min(budget, 12_000))
+        if excerpt.strip():
+            parts.append(excerpt)
+            budget = max(0, budget - len(excerpt))
+
+    if presupuesto_text.strip() and budget > 0:
+        marker_excerpt = _select_marker_windows(presupuesto_text, _AIU_MARKERS, budget)
+        if marker_excerpt.strip():
+            parts.append(marker_excerpt)
+
+    combined = "\n\n".join(parts)
+    if not combined.strip() and presupuesto_text.strip():
+        return presupuesto_text[-max_chars:]
+    return combined[:max_chars]

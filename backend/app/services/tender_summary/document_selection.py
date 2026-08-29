@@ -44,8 +44,4 @@ def select_presupuesto_document(documents: list[TenderDocument]) -> Optional[Ten
     candidates = [doc for doc in documents if doc.document_type == "presupuesto"]
     if not candidates:
         return None
-    xlsx_candidates = [
-        doc for doc in candidates if (doc.extension or "").lower() in {"xlsx", "xls", "xlsm"}
-    ]
-    pool = xlsx_candidates or candidates
-    return max(pool, key=lambda doc: _score_document(doc, _PRESUPUESTO_HINTS))
+    return max(candidates, key=lambda doc: _score_document(doc, _PRESUPUESTO_HINTS))

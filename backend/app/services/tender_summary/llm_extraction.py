@@ -10,12 +10,29 @@ from openai import OpenAI
 from app.config import settings
 from app.core.logging import get_logger
 from app.services.tender_summary.pliego_extraction import extract_advance_payment_from_text
+from app.services.tender_summary.presupuesto_extraction import (
+    PresupuestoExtraction,
+    extract_aiu_percentage_from_text,
+    format_aiu_display,
+)
 
 logger = get_logger(__name__)
 
 _openai_client: Optional[OpenAI] = None
 if settings.OPENAI_API_KEY:
     _openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+
+@dataclass(frozen=True)
+class AiuExtraction:
+    percentage: float
+    display_value: str
+    confidence: float
+    extraction_method: str
+    admin_percentage: Optional[float] = None
+    imprevistos_percentage: Optional[float] = None
+    utilidad_percentage: Optional[float] = None
+    evidence: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -119,6 +136,174 @@ def extract_anticipo_with_llm(
         extraction_method="llm",
         evidence=payload.get("evidence"),
     )
+
+
+def _presupuesto_to_aiu_result(
+    parsed: PresupuestoExtraction,
+    *,
+    extraction_method: str,
+    confidence: float,
+) -> Optional[AiuExtraction]:
+    if parsed.aiu_percentage is None:
+        return None
+    return AiuExtraction(
+        percentage=parsed.aiu_percentage,
+        display_value=format_aiu_display(parsed),
+        confidence=confidence,
+        extraction_method=extraction_method,
+        admin_percentage=parsed.aiu_admin_percentage,
+        imprevistos_percentage=parsed.aiu_imprevistos_percentage,
+        utilidad_percentage=parsed.aiu_utilidad_percentage,
+    )
+
+
+def _optional_float(value) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def extract_aiu_with_llm(
+    *,
+    tender_external_id: str,
+    object_text: str,
+    context_excerpt: str,
+    regex_hint: Optional[PresupuestoExtraction] = None,
+) -> Optional[AiuExtraction]:
+    if not settings.TENDER_SUMMARY_USE_LLM_FOR_AIU or not _openai_client:
+        return None
+
+    excerpt = (context_excerpt or "").strip()
+    if not excerpt:
+        return None
+
+    hint = ""
+    if regex_hint and regex_hint.aiu_percentage is not None:
+        hint = f"Borrador automático (regex): {format_aiu_display(regex_hint)}\n"
+
+    prompt = (
+        f"Licitación: {tender_external_id}\n"
+        f"Objeto: {object_text}\n\n"
+        f"Fragmento del presupuesto oficial (Formulario 1 / AIU):\n"
+        f"{excerpt[: settings.TENDER_SUMMARY_AIU_LLM_MAX_CHARS]}\n\n"
+        f"{hint}"
+        "Devuelve JSON con:\n"
+        "{\n"
+        '  "aiu_percentage": number,\n'
+        '  "admin_percentage": number or null,\n'
+        '  "imprevistos_percentage": number or null,\n'
+        '  "utilidad_percentage": number or null,\n'
+        '  "display_value": "texto corto para UI",\n'
+        '  "confidence": 0.0-1.0,\n'
+        '  "evidence": "cita breve del presupuesto (máx. 200 caracteres)"\n'
+        "}\n\n"
+        "Reglas:\n"
+        "- aiu_percentage es el total AIU (A+I+U). Si hay A=, I=, U=, súmalos.\n"
+        "- No confundir con IVA, utilidad operacional, retenciones ni anticipo.\n"
+        '- display_value ejemplo: "30% (A 24% · I 1% · U 5%)".\n'
+        "- Solo información explícita en el fragmento."
+    )
+
+    try:
+        response = _openai_client.chat.completions.create(
+            model=settings.OPENAI_MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Eres un analista de licitaciones públicas colombianas (obra pública SECOP). "
+                        "Extraes el porcentaje AIU del presupuesto oficial. Responde únicamente JSON válido."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+            max_tokens=500,
+            response_format={"type": "json_object"},
+        )
+        payload = _parse_json_content(response.choices[0].message.content or "{}")
+    except Exception as exc:
+        logger.warning("LLM AIU extraction failed for %s: %s", tender_external_id, exc)
+        return None
+
+    confidence = float(payload.get("confidence", 0))
+    if confidence < settings.TENDER_SUMMARY_AIU_LLM_MIN_CONFIDENCE:
+        return None
+
+    raw_pct = payload.get("aiu_percentage")
+    if raw_pct is None:
+        return None
+
+    parsed = PresupuestoExtraction(
+        aiu_percentage=round(float(raw_pct), 2),
+        aiu_admin_percentage=_optional_float(payload.get("admin_percentage")),
+        aiu_imprevistos_percentage=_optional_float(payload.get("imprevistos_percentage")),
+        aiu_utilidad_percentage=_optional_float(payload.get("utilidad_percentage")),
+    )
+    display = payload.get("display_value") or format_aiu_display(parsed)
+    return AiuExtraction(
+        percentage=parsed.aiu_percentage,
+        display_value=display,
+        confidence=confidence,
+        extraction_method="llm",
+        admin_percentage=parsed.aiu_admin_percentage,
+        imprevistos_percentage=parsed.aiu_imprevistos_percentage,
+        utilidad_percentage=parsed.aiu_utilidad_percentage,
+        evidence=payload.get("evidence"),
+    )
+
+
+def resolve_aiu_extraction(
+    *,
+    tender_external_id: str,
+    object_text: str,
+    excerpt: str,
+    fallback_text: str = "",
+    xlsx_parsed: Optional[PresupuestoExtraction] = None,
+) -> Optional[AiuExtraction]:
+    """Regex on focused presupuesto excerpt first, then LLM, then fallbacks."""
+    if xlsx_parsed and xlsx_parsed.aiu_percentage is not None:
+        return _presupuesto_to_aiu_result(
+            xlsx_parsed,
+            extraction_method="presupuesto",
+            confidence=0.92,
+        )
+
+    focused = (excerpt or "").strip()
+    regex_text = focused or fallback_text
+    parsed = PresupuestoExtraction()
+    if regex_text:
+        parsed = extract_aiu_percentage_from_text(regex_text)
+        result = _presupuesto_to_aiu_result(
+            parsed,
+            extraction_method="regex",
+            confidence=0.88 if focused else 0.72,
+        )
+        if result is not None:
+            return result
+
+    if focused:
+        llm_result = extract_aiu_with_llm(
+            tender_external_id=tender_external_id,
+            object_text=object_text,
+            context_excerpt=focused,
+            regex_hint=parsed if parsed.aiu_percentage is not None else None,
+        )
+        if llm_result is not None:
+            return llm_result
+
+    if focused and fallback_text and fallback_text != regex_text:
+        parsed = extract_aiu_percentage_from_text(fallback_text)
+        return _presupuesto_to_aiu_result(
+            parsed,
+            extraction_method="regex",
+            confidence=0.65,
+        )
+
+    return None
 
 
 def resolve_anticipo_extraction(

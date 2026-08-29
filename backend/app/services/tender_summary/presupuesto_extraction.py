@@ -18,8 +18,92 @@ logger = get_logger(__name__)
 @dataclass
 class PresupuestoExtraction:
     aiu_percentage: Optional[float] = None
+    aiu_admin_percentage: Optional[float] = None
+    aiu_imprevistos_percentage: Optional[float] = None
+    aiu_utilidad_percentage: Optional[float] = None
     official_budget_total: Optional[float] = None
     budget_relation_note: Optional[str] = None
+
+
+def extract_aiu_percentage_from_text(text: str) -> PresupuestoExtraction:
+    """Extract AIU % from presupuesto text (PDF Formulario 1 or similar)."""
+    result = PresupuestoExtraction()
+    if not text:
+        return result
+
+    lowered = _normalize(text)
+
+    direct = re.search(
+        r"a\.?\s*i\.?\s*u\.?\s*[=:]\s*(\d{1,2}(?:[.,]\d+)?)\s*%",
+        lowered,
+    )
+    if direct:
+        result.aiu_percentage = float(direct.group(1).replace(",", "."))
+        return _attach_aiu_components(result, lowered)
+
+    admin = re.search(r"\ba\s*=\s*(\d{1,2}(?:[.,]\d+)?)\s*%", lowered)
+    imprev = re.search(r"\bi\s*=\s*(\d{1,2}(?:[.,]\d+)?)\s*%", lowered)
+    util = re.search(r"\bu\s*=\s*(\d{1,2}(?:[.,]\d+)?)\s*%", lowered)
+    if admin and imprev and util:
+        result.aiu_admin_percentage = float(admin.group(1).replace(",", "."))
+        result.aiu_imprevistos_percentage = float(imprev.group(1).replace(",", "."))
+        result.aiu_utilidad_percentage = float(util.group(1).replace(",", "."))
+        result.aiu_percentage = round(
+            result.aiu_admin_percentage
+            + result.aiu_imprevistos_percentage
+            + result.aiu_utilidad_percentage,
+            2,
+        )
+        return result
+
+    percentages: list[float] = []
+    for pattern in (
+        r"total de administracion\s*\(a\)\s*(\d{1,2}(?:[.,]\d+)?)\s*%",
+        r"imprevistos\s*\(i\)\s*(\d{1,2}(?:[.,]\d+)?)\s*%",
+        r"utilidad\s*\(u\)\s*(\d{1,2}(?:[.,]\d+)?)\s*%",
+    ):
+        match = re.search(pattern, lowered)
+        if match:
+            percentages.append(float(match.group(1).replace(",", ".")))
+
+    if len(percentages) >= 3:
+        result.aiu_percentage = round(sum(percentages[:3]), 2)
+        result.aiu_admin_percentage = percentages[0]
+        result.aiu_imprevistos_percentage = percentages[1]
+        result.aiu_utilidad_percentage = percentages[2]
+
+    return result
+
+
+def _attach_aiu_components(result: PresupuestoExtraction, lowered: str) -> PresupuestoExtraction:
+    admin = re.search(r"\ba\s*=\s*(\d{1,2}(?:[.,]\d+)?)\s*%", lowered)
+    imprev = re.search(r"\bi\s*=\s*(\d{1,2}(?:[.,]\d+)?)\s*%", lowered)
+    util = re.search(r"\bu\s*=\s*(\d{1,2}(?:[.,]\d+)?)\s*%", lowered)
+    if admin:
+        result.aiu_admin_percentage = float(admin.group(1).replace(",", "."))
+    if imprev:
+        result.aiu_imprevistos_percentage = float(imprev.group(1).replace(",", "."))
+    if util:
+        result.aiu_utilidad_percentage = float(util.group(1).replace(",", "."))
+    return result
+
+
+def format_aiu_display(extraction: PresupuestoExtraction) -> str:
+    if extraction.aiu_percentage is None:
+        return "No disponible"
+    total = extraction.aiu_percentage
+    if (
+        extraction.aiu_admin_percentage is not None
+        and extraction.aiu_imprevistos_percentage is not None
+        and extraction.aiu_utilidad_percentage is not None
+    ):
+        return (
+            f"{total:.2f}% "
+            f"(A {extraction.aiu_admin_percentage:g}% · "
+            f"I {extraction.aiu_imprevistos_percentage:g}% · "
+            f"U {extraction.aiu_utilidad_percentage:g}%)"
+        )
+    return f"{total:.2f}%"
 
 
 def _normalize(value: str) -> str:
@@ -103,6 +187,9 @@ def extract_from_presupuesto_xlsx(
         if percentages:
             if len(percentages) >= 3:
                 result.aiu_percentage = round(sum(percentages[:3]), 2)
+                result.aiu_admin_percentage = round(percentages[0], 2)
+                result.aiu_imprevistos_percentage = round(percentages[1], 2)
+                result.aiu_utilidad_percentage = round(percentages[2], 2)
             else:
                 result.aiu_percentage = round(max(percentages), 2)
 
