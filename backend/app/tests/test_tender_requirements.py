@@ -38,6 +38,40 @@ Códigos de actividad UNSPSC: 72141100, 72141200
 """
 
 
+CCE_PLIEGO_EXPERIENCE = """
+3.5 EXPERIENCIA
+De conformidad con lo anterior, los requisitos de experiencia son: 2.2 MEJORAMIENTO EN VIAS TERCIARIAS.
+EXPERIENCIA GENERAL: CONSTRUCCION O RECONSTRUCCION O MEJORAMIENTO EN PLACA HUELLA DE VIAS TERCIARIAS.
+El Proponente podra acreditar la experiencia solicitada con minimo uno (1) y maximo cinco (5) contratos.
+3.5.9 RELACION DE LOS CONTRATOS FRENTE AL PRESUPUESTO OFICIAL
+De 1 hasta 2 75%
+De 3 hasta 4 120%
+150% Hasta 5
+Numero de contratos con los cuales el Proponente cumple la experiencia acreditada
+Valor minimo a certificar (como % del Presupuesto Oficial de obra expresado en SMMLV)
+La verificacion se hara con base en la sumatoria de los valores totales ejecutados en SMMLV.
+"""
+
+
+def test_extract_cce_experience_value_tiers_and_contracts():
+    general = extract_experiencia_general(CCE_PLIEGO_EXPERIENCE, "pliego_condiciones", None)
+    specific = extract_experiencia_especifica(CCE_PLIEGO_EXPERIENCE, "pliego_condiciones", None)
+    general_keys = {item["key"] for item in general}
+    specific_keys = {item["key"] for item in specific}
+
+    assert "experience_value_tiers" in general_keys
+    assert "contracts_minimum" in general_keys
+    assert "min_amount_smmlv" in general_keys
+    assert "experience_value_tiers" in specific_keys
+
+    tiers = next(item for item in general if item["key"] == "experience_value_tiers")
+    assert tiers["value"] == [
+        {"contract_range": "1-2", "percentage": 75.0},
+        {"contract_range": "3-4", "percentage": 120.0},
+        {"contract_range": "1-5", "percentage": 150.0},
+    ]
+
+
 def test_normalize_text_strips_accents():
     assert normalize_text("Últimos 5 años") == "ultimos 5 anos"
 

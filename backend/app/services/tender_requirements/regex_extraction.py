@@ -103,6 +103,120 @@ def _merge_items(existing: list[RequirementItem], new_items: list[RequirementIte
     return merged
 
 
+def extract_experience_value_tiers(normalized: str) -> list[dict[str, Any]]:
+    """Parse CCE/Matriz 1 table: minimum certified value (% PO in SMMLV) by contract count."""
+    if not re.search(
+        r"valor\s+minimo\s+a\s+certificar|"
+        r"relacion\s+de\s+los\s+contratos\s+frente\s+al\s+presupuesto\s+oficial|"
+        r"como\s+%\s+del\s+presupuesto\s+oficial[^.\n]{0,40}smmlv",
+        normalized,
+    ):
+        return []
+
+    tier_patterns: tuple[tuple[str, str], ...] = (
+        (r"de\s+1\s+hasta\s+2[^\d%]{0,40}(\d{2,3})\s*%", "1-2"),
+        (r"de\s+3\s+hasta\s+4[^\d%]{0,40}(\d{2,3})\s*%", "3-4"),
+        (r"(\d{2,3})\s*%\s+hasta\s+5", "1-5"),
+        (r"hasta\s+5[^\d%]{0,30}(\d{2,3})\s*%", "1-5"),
+    )
+    tiers: list[dict[str, Any]] = []
+    seen_ranges: set[str] = set()
+    for pattern, contract_range in tier_patterns:
+        if contract_range in seen_ranges:
+            continue
+        match = re.search(pattern, normalized)
+        if not match:
+            continue
+        percentage = float(match.group(1))
+        if not 50 <= percentage <= 200:
+            continue
+        tiers.append({"contract_range": contract_range, "percentage": percentage})
+        seen_ranges.add(contract_range)
+
+    order = {"1-2": 0, "3-4": 1, "1-5": 2}
+    tiers.sort(key=lambda tier: order.get(str(tier["contract_range"]), 99))
+    return tiers
+
+
+def _extract_contracts_minimum_item(
+    normalized: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+) -> Optional[RequirementItem]:
+    patterns = (
+        r"minimo\s+uno\s*\(\s*1\s*\)\s+y\s+maximo\s+cinco\s*\(\s*5\s*\)\s+contratos",
+        r"al\s+menos\s+un\s*\(\s*1\s*\)\s+contrato\s+y\s+hasta\s+un\s+maximo\s+de\s+cinco\s*\(\s*5\s*\)",
+        r"se\s+deben\s+presentar\s+al\s+menos\s+un\s*\(\s*1\s*\)\s+contrato\s+y\s+hasta\s+un\s+maximo\s+de\s+cinco\s*\(\s*5\s*\)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, normalized)
+        if match:
+            return _item(
+                key="contracts_minimum",
+                label="Número de contratos",
+                value={"minimum": 1, "maximum": 5},
+                display_value="Mínimo 1 y máximo 5 contratos",
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence=_snippet(normalized, match.start(), match.end() + 80),
+                confidence=0.9,
+            )
+    return None
+
+
+def _append_shared_experience_metrics(
+    items: list[RequirementItem],
+    normalized: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+) -> list[RequirementItem]:
+    tiers = extract_experience_value_tiers(normalized)
+    if tiers and not any(item["key"] == "experience_value_tiers" for item in items):
+        percentages = [f"{tier['percentage']:g}%" for tier in tiers]
+        items.append(
+            _item(
+                key="experience_value_tiers",
+                label="Valor mínimo a certificar",
+                value=tiers,
+                display_value=f"Según nº de contratos: {' / '.join(percentages)} del PO (SMMLV)",
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence="Tabla de valor mínimo a certificar (% del Presupuesto Oficial en SMMLV)",
+                confidence=0.92,
+            )
+        )
+        if not any(item["key"] == "min_amount_smmlv" for item in items):
+            items.append(
+                _item(
+                    key="min_amount_smmlv",
+                    label="Monto mínimo en SMMLV",
+                    value="smmlv",
+                    display_value="Expresado en SMMLV",
+                    source_document=source_document,
+                    source_document_id=source_document_id,
+                    evidence="Valores de experiencia expresados en SMMLV",
+                    confidence=0.88,
+                )
+            )
+
+    contracts_item = _extract_contracts_minimum_item(
+        normalized, source_document, source_document_id
+    )
+    if contracts_item and not any(item["key"] == "contracts_minimum" for item in items):
+        items.append(contracts_item)
+
+    return items
+
+
+def _is_weak_specific_scope(scope: str) -> bool:
+    cleaned = _clean_requirement_text(scope, max_len=400).lower()
+    if len(cleaned) < 30:
+        return True
+    if re.fullmatch(r"acreditar(?:\s+los)?\s+smmlv", cleaned):
+        return True
+    return False
+
+
 def extract_experiencia_general(
     text: str,
     source_document: str,
@@ -281,7 +395,7 @@ def extract_experiencia_general(
                 )
             )
 
-    return items
+    return _append_shared_experience_metrics(items, normalized, source_document, source_document_id)
 
 
 def extract_experiencia_especifica(
@@ -300,7 +414,7 @@ def extract_experiencia_especifica(
         "experiencia especifica",
         ("a. la experiencia", "b. el proponente", "requisitos de experiencia"),
     )
-    if specific_block:
+    if specific_block and not _is_weak_specific_scope(specific_block):
         items.append(
             _item(
                 key="specific_scope",
@@ -375,41 +489,75 @@ def extract_experiencia_especifica(
             )
             if scope_match:
                 scope = _clean_requirement_text(scope_match.group(1))
-                items.append(
-                    _item(
-                        key="specific_scope",
-                        label="Alcance exigido",
-                        value=scope,
-                        display_value=scope,
-                        source_document=source_document,
-                        source_document_id=source_document_id,
-                        evidence=_snippet(region, scope_match.start(), scope_match.end()),
-                        confidence=0.78,
+                if not _is_weak_specific_scope(scope):
+                    items.append(
+                        _item(
+                            key="specific_scope",
+                            label="Alcance exigido",
+                            value=scope,
+                            display_value=scope,
+                            source_document=source_document,
+                            source_document_id=source_document_id,
+                            evidence=_snippet(region, scope_match.start(), scope_match.end()),
+                            confidence=0.78,
+                        )
                     )
-                )
+
+    matriz_activity = re.search(
+        r"requisitos de experiencia son:\s*([\d.]+\s+[a-z0-9\s]+(?:vias?|terciarias?|obras?)[^.]{0,160})",
+        normalized,
+    )
+    if matriz_activity and not any(item["key"] == "specific_scope" for item in items):
+        scope = _clean_requirement_text(matriz_activity.group(1), max_len=280)
+        items.append(
+            _item(
+                key="specific_scope",
+                label="Alcance exigido (Matriz 1)",
+                value=scope,
+                display_value=scope,
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence=_snippet(normalized, matriz_activity.start(), matriz_activity.end()),
+                confidence=0.84,
+            )
+        )
 
     code_matches = re.findall(
-        r"(?:codigo(?:s)?|c[oó]digo(?:s)?\s+unspsc|unspsc)"
+        r"(?:codigo(?:s)?|c[oó]digo(?:s)?\s+unspsc|unspsc|clasificador)"
         r"[^.\n]{0,40}?(\d{6,8}(?:\s*[,/]\s*\d{6,8})*)",
         normalized,
     )
-    if code_matches:
-        raw_codes = [code for code in re.findall(r"\d{6,8}", code_matches[0]) if not code.startswith(("19", "20"))]
-        if raw_codes:
+    unspsc_codes: list[str] = []
+    for raw_codes in code_matches:
+        unspsc_codes.extend(
+            code for code in re.findall(r"\d{6,8}", raw_codes) if not code.startswith(("19", "20"))
+        )
+    classification_region = re.search(
+        r"clasificacion de la experiencia[^.]{0,2200}",
+        normalized,
+    )
+    if classification_region:
+        for match in re.finditer(r"\b(\d{2})\s+(\d{2})\s+(\d{2})\s+", classification_region.group(0)):
+            code = f"{match.group(1)}{match.group(2)}{match.group(3)}"
+            if code.startswith("72"):
+                unspsc_codes.append(code)
+    if unspsc_codes:
+        unique_codes = list(dict.fromkeys(unspsc_codes))
+        if not any(item["key"] == "activity_codes" for item in items):
             items.append(
                 _item(
                     key="activity_codes",
                     label="Códigos de actividad",
-                    value=raw_codes,
-                    display_value=", ".join(raw_codes),
+                    value=unique_codes,
+                    display_value=", ".join(unique_codes),
                     source_document=source_document,
                     source_document_id=source_document_id,
-                    evidence=code_matches[0][:180],
-                    confidence=0.75,
+                    evidence=", ".join(unique_codes),
+                    confidence=0.8,
                 )
             )
 
-    return items
+    return _append_shared_experience_metrics(items, normalized, source_document, source_document_id)
 
 
 def _parse_threshold(raw: str) -> Optional[float]:

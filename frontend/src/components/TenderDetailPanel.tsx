@@ -36,6 +36,8 @@ const EXPERIENCE_SECTION_KEYS = new Set(['experiencia_general', 'experiencia_esp
 const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
   experiencia_general: [
     'requirement_description',
+    'contracts_minimum',
+    'experience_value_tiers',
     'min_percentage_budget',
     'min_amount_smmlv',
     'time_window_years',
@@ -43,9 +45,10 @@ const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
   ],
   experiencia_especifica: [
     'specific_scope',
+    'contracts_minimum',
+    'experience_value_tiers',
     'specific_min_percentage',
     'activity_codes',
-    'contracts_minimum',
   ],
 }
 
@@ -57,6 +60,31 @@ const EXPERIENCE_METRIC_KEYS = new Set([
   'contracts_minimum',
   'activity_codes',
 ])
+
+type ExperienceValueTier = {
+  contract_range: string
+  percentage: number
+}
+
+const parseExperienceValueTiers = (item: TenderRequirementItem): ExperienceValueTier[] => {
+  if (!Array.isArray(item.value)) {
+    return []
+  }
+  return item.value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') {
+        return null
+      }
+      const record = entry as Record<string, unknown>
+      const percentage = Number(record.percentage)
+      const contractRange = String(record.contract_range || '').trim()
+      if (!contractRange || !Number.isFinite(percentage)) {
+        return null
+      }
+      return { contract_range: contractRange, percentage }
+    })
+    .filter((tier): tier is ExperienceValueTier => tier != null)
+}
 
 const EXPERIENCE_SCOPE_KEY: Record<string, string> = {
   experiencia_general: 'requirement_description',
@@ -582,6 +610,8 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
         item.key !== scopeKey &&
         Boolean(item.display_value)
     )
+    const tiersItem = findRequirementItem(items, 'experience_value_tiers')
+    const experienceTiers = tiersItem ? parseExperienceValueTiers(tiersItem) : []
     const otherItems = items.filter(
       (item) =>
         item.key !== scopeKey &&
@@ -628,6 +658,40 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                   </div>
                   )
                 })}
+              </div>
+            )}
+
+            {experienceTiers.length > 0 && (
+              <div className="tender-detail-panel__experience-tiers">
+                <h6 className="tender-detail-panel__experience-block-title">
+                  Valor mínimo a certificar (% del PO en SMMLV)
+                </h6>
+                <div className="tender-detail-panel__experience-tier-grid">
+                  {experienceTiers.map((tier) => {
+                    const minimumAmount =
+                      officialBudgetTotal != null
+                        ? Math.round((officialBudgetTotal * tier.percentage) / 100)
+                        : null
+                    return (
+                      <div
+                        key={`${section.key}-tier-${tier.contract_range}`}
+                        className="tender-detail-panel__experience-tier"
+                      >
+                        <span className="tender-detail-panel__experience-tier-range">
+                          {tier.contract_range} contratos
+                        </span>
+                        <span className="tender-detail-panel__experience-tier-percentage">
+                          {tier.percentage}% del PO
+                        </span>
+                        {minimumAmount != null && (
+                          <span className="tender-detail-panel__experience-tier-amount">
+                            Valor mínimo: {formatCopCurrency(minimumAmount)}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )}
 

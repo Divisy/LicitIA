@@ -15,6 +15,8 @@ EXPERIENCE_TOC_KEYWORDS: tuple[str, ...] = (
     "condiciones de acreditacion de la experiencia",
     "requisitos de participacion",
     "capacidad de experiencia",
+    "3.5 experiencia",
+    "relacion de los contratos frente al presupuesto oficial",
 )
 
 FINANCIAL_TOC_KEYWORDS: tuple[str, ...] = (

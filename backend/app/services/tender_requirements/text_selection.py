@@ -13,6 +13,9 @@ from app.services.tender_requirements.toc_parser import (
 _SECTION_MARKERS: tuple[str, ...] = (
     "3.8 exigencias minimas de la experiencia",
     "3.8.1 exigencia minima de la experiencia del proponente",
+    "3.5 experiencia",
+    "3.5.9 relacion de los contratos frente al presupuesto oficial",
+    "valor minimo a certificar",
     "requisitos de experiencia son",
     "experiencia general",
     "experiencia especifica",
@@ -153,6 +156,9 @@ def prepare_pliego_requirement_text(
 _EXPERIENCE_MARKERS: tuple[str, ...] = (
     "3.8 exigencias minimas de la experiencia",
     "3.8.1 exigencia minima de la experiencia del proponente",
+    "3.5 experiencia",
+    "3.5.9 relacion de los contratos frente al presupuesto oficial",
+    "valor minimo a certificar",
     "requisitos de experiencia son",
     "experiencia general",
     "experiencia especifica",

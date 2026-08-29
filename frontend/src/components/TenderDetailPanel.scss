@@ -353,6 +353,43 @@
   line-height: 1.35;
 }
 
+.tender-detail-panel__experience-tiers {
+  margin-bottom: $spacing-04;
+}
+
+.tender-detail-panel__experience-tier-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: $spacing-03;
+}
+
+.tender-detail-panel__experience-tier {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-02;
+  padding: $spacing-03;
+  border-radius: $spacing-02;
+  background: var(--cds-layer-accent);
+  border: 1px solid var(--cds-border-subtle);
+}
+
+.tender-detail-panel__experience-tier-range {
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+}
+
+.tender-detail-panel__experience-tier-percentage {
+  @include type-style('heading-compact-01');
+  color: var(--cds-text-primary);
+  line-height: 1.35;
+}
+
+.tender-detail-panel__experience-tier-amount {
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+  line-height: 1.35;
+}
+
 .tender-detail-panel__experience-block {
   margin-bottom: $spacing-04;
 
