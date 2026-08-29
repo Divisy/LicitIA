@@ -132,14 +132,13 @@ def select_anticipo_text_for_llm(
 _AIU_MARKERS: tuple[str, ...] = (
     "a.i.u.",
     "a.i.u.=",
-    "formulario 1",
-    "presupuesto oficial",
+    "(a.i.u",
+    "presupuesto de obra",
     "total de administracion",
     "imprevistos (i)",
     "utilidad (u)",
     "administracion (a)",
     "porcentaje a=",
-    "propuesta economica",
 )
 
 
@@ -166,6 +165,4 @@ def select_aiu_text_for_llm(
             parts.append(marker_excerpt)
 
     combined = "\n\n".join(parts)
-    if not combined.strip() and presupuesto_text.strip():
-        return presupuesto_text[-max_chars:]
     return combined[:max_chars]

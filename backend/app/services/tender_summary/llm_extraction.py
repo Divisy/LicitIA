@@ -16,6 +16,8 @@ from app.services.tender_summary.presupuesto_extraction import (
     PresupuestoExtraction,
     extract_aiu_percentage_from_text,
     format_aiu_display,
+    has_presupuesto_aiu_context,
+    is_credible_aiu_extraction,
 )
 
 logger = get_logger(__name__)
@@ -204,7 +206,8 @@ def extract_aiu_with_llm(
         "}\n\n"
         "Reglas:\n"
         "- aiu_percentage es el total AIU (A+I+U). Si hay A=, I=, U=, súmalos.\n"
-        "- No confundir con IVA, utilidad operacional, retenciones ni anticipo.\n"
+        "- Busca solo la fila A.I.U. / ADMINISTRACION (A) / IMPREVISTOS (I) / UTILIDAD (U) del presupuesto de obra.\n"
+        "- NO uses porcentajes de experiencia del contratista, anticipo, interventoría ni IVA.\n"
         '- display_value ejemplo: "30% (A 24% · I 1% · U 5%)".\n'
         "- Solo información explícita en el fragmento."
     )
@@ -245,16 +248,18 @@ def extract_aiu_with_llm(
         aiu_imprevistos_percentage=_optional_float(payload.get("imprevistos_percentage")),
         aiu_utilidad_percentage=_optional_float(payload.get("utilidad_percentage")),
     )
-    display = payload.get("display_value") or format_aiu_display(parsed)
+    evidence = payload.get("evidence")
+    if not is_credible_aiu_extraction(parsed, evidence=evidence):
+        return None
     return AiuExtraction(
         percentage=parsed.aiu_percentage,
-        display_value=display,
+        display_value=format_aiu_display(parsed),
         confidence=confidence,
         extraction_method="llm",
         admin_percentage=parsed.aiu_admin_percentage,
         imprevistos_percentage=parsed.aiu_imprevistos_percentage,
         utilidad_percentage=parsed.aiu_utilidad_percentage,
-        evidence=payload.get("evidence"),
+        evidence=evidence,
     )
 
 
@@ -277,7 +282,9 @@ def extract_aiu_with_vision(
             "text": (
                 f"Licitación: {tender_external_id}\n"
                 f"Objeto: {object_text}\n\n"
-                "Extrae el porcentaje AIU del presupuesto oficial en estas imágenes escaneadas. "
+                "Extrae el porcentaje AIU (Administración + Imprevistos + Utilidad) "
+                "del resumen del presupuesto de obra en la imagen. "
+                "Busca la fila A.I.U. o los porcentajes A=, I=, U=. "
                 "Devuelve JSON:\n"
                 "{\n"
                 '  "aiu_percentage": number,\n'
@@ -288,7 +295,8 @@ def extract_aiu_with_vision(
                 '  "confidence": 0.0-1.0,\n'
                 '  "evidence": "cita breve"\n'
                 "}\n"
-                "Reglas: aiu_percentage = A+I+U. No confundir con IVA ni anticipo."
+                "Reglas: aiu_percentage = A+I+U. "
+                "NO uses experiencia del contratista, anticipo, interventoría, RETILAP ni IVA."
             ),
         }
     ]
@@ -341,16 +349,18 @@ def extract_aiu_with_vision(
         aiu_imprevistos_percentage=_optional_float(payload.get("imprevistos_percentage")),
         aiu_utilidad_percentage=_optional_float(payload.get("utilidad_percentage")),
     )
-    display = payload.get("display_value") or format_aiu_display(parsed)
+    evidence = payload.get("evidence")
+    if not is_credible_aiu_extraction(parsed, evidence=evidence):
+        return None
     return AiuExtraction(
         percentage=parsed.aiu_percentage,
-        display_value=display,
+        display_value=format_aiu_display(parsed),
         confidence=confidence,
         extraction_method="vision",
         admin_percentage=parsed.aiu_admin_percentage,
         imprevistos_percentage=parsed.aiu_imprevistos_percentage,
         utilidad_percentage=parsed.aiu_utilidad_percentage,
-        evidence=payload.get("evidence"),
+        evidence=evidence,
     )
 
 
@@ -371,19 +381,12 @@ def resolve_aiu_extraction(
             confidence=0.92,
         )
 
-    if vision_page_images:
-        vision_result = extract_aiu_with_vision(
-            tender_external_id=tender_external_id,
-            object_text=object_text,
-            page_images=vision_page_images,
-        )
-        if vision_result is not None:
-            return vision_result
-
     focused = (excerpt or "").strip()
     regex_text = focused or fallback_text
     parsed = PresupuestoExtraction()
-    if regex_text:
+    text_has_aiu_context = has_presupuesto_aiu_context(regex_text)
+
+    if regex_text and text_has_aiu_context:
         parsed = extract_aiu_percentage_from_text(regex_text)
         result = _presupuesto_to_aiu_result(
             parsed,
@@ -393,25 +396,31 @@ def resolve_aiu_extraction(
         if result is not None:
             return result
 
-    if focused:
         llm_result = extract_aiu_with_llm(
             tender_external_id=tender_external_id,
             object_text=object_text,
-            context_excerpt=focused,
+            context_excerpt=focused or regex_text,
             regex_hint=parsed if parsed.aiu_percentage is not None else None,
         )
         if llm_result is not None:
             return llm_result
 
-    if focused and fallback_text and fallback_text != regex_text:
+    if vision_page_images:
+        vision_result = extract_aiu_with_vision(
+            tender_external_id=tender_external_id,
+            object_text=object_text,
+            page_images=vision_page_images,
+        )
+        if vision_result is not None:
+            return vision_result
+
+    if fallback_text and has_presupuesto_aiu_context(fallback_text) and fallback_text != regex_text:
         parsed = extract_aiu_percentage_from_text(fallback_text)
-        result = _presupuesto_to_aiu_result(
+        return _presupuesto_to_aiu_result(
             parsed,
             extraction_method="regex",
             confidence=0.65,
         )
-        if result is not None:
-            return result
 
     return None
 

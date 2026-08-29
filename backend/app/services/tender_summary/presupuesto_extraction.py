@@ -106,6 +106,59 @@ def format_aiu_display(extraction: PresupuestoExtraction) -> str:
     return f"{total:.2f}%"
 
 
+_AIU_CONTEXT_RE = re.compile(
+    r"a\.?\s*i\.?\s*u\.?\s*[=:(]|\badministraci[oó]n\s*\(a\b|\bimprevistos\s*\(i\b|\butilidad\s*\(u\b",
+    re.IGNORECASE,
+)
+_REJECT_AIU_EVIDENCE_RE = re.compile(
+    r"\bexperiencia\b|\banticipo\b|\binterventor",
+    re.IGNORECASE,
+)
+
+
+def has_presupuesto_aiu_context(text: str) -> bool:
+    """True when text likely comes from a presupuesto AIU block, not pliego experiencia."""
+    if not text or not text.strip():
+        return False
+    lowered = _normalize(text)
+    if _AIU_CONTEXT_RE.search(lowered):
+        return True
+    if re.search(r"\ba\s*=\s*\d", lowered) and re.search(r"\bi\s*=\s*\d", lowered):
+        return True
+    return False
+
+
+def is_credible_aiu_extraction(
+    parsed: PresupuestoExtraction,
+    *,
+    evidence: Optional[str] = None,
+) -> bool:
+    if parsed.aiu_percentage is None:
+        return False
+
+    components = (
+        parsed.aiu_admin_percentage,
+        parsed.aiu_imprevistos_percentage,
+        parsed.aiu_utilidad_percentage,
+    )
+    if all(value is not None for value in components):
+        expected = round(sum(components), 2)  # type: ignore[type-arg]
+        if abs(expected - parsed.aiu_percentage) > 0.15:
+            return False
+        return True
+
+    evidence_text = (evidence or "").strip()
+    if evidence_text:
+        if _REJECT_AIU_EVIDENCE_RE.search(evidence_text) and not _AIU_CONTEXT_RE.search(
+            _normalize(evidence_text)
+        ):
+            return False
+        if _AIU_CONTEXT_RE.search(_normalize(evidence_text)):
+            return True
+
+    return False
+
+
 def _normalize(value: str) -> str:
     text = unicodedata.normalize("NFKD", value or "")
     text = "".join(ch for ch in text if not unicodedata.combining(ch))

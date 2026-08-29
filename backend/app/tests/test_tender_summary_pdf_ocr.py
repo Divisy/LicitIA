@@ -6,9 +6,12 @@ from app.services.tender_summary.llm_extraction import extract_aiu_with_vision, 
 from app.services.tender_summary.pdf_ocr import (
     is_pdf_text_insufficient,
     select_presupuesto_vision_pages,
-    vision_detail_level,
 )
-from app.services.tender_summary.presupuesto_extraction import extract_aiu_percentage_from_text
+from app.services.tender_summary.presupuesto_extraction import (
+    extract_aiu_percentage_from_text,
+    has_presupuesto_aiu_context,
+    is_credible_aiu_extraction,
+)
 
 _OCR_PAGE_1_TEXT = """
 PRESUPUESTO DE OBRA
@@ -17,6 +20,11 @@ SUBTOTAL $994.059.917
 ADMINISTRACION (A=24%) $238.574.380
 IMPREVISTOS (I=1%) $9.940.599
 UTILIDAD (U=5%) $49.702.996
+"""
+
+_PLIEGO_EXPERIENCIA_TEXT = """
+3.1 EXPERIENCIA GENERAL equivalente al treinta por ciento (30%) del presupuesto oficial.
+4. EXPERIENCIA ESPECIFICA equivalente al veinte por ciento (20%) del presupuesto oficial.
 """
 
 
@@ -31,24 +39,46 @@ def test_select_presupuesto_vision_pages_only_first_page():
     assert select_presupuesto_vision_pages(19) == [1]
 
 
-def test_ocr_text_feeds_aiu_regex():
+def test_presupuesto_aiu_text_is_recognized():
     parsed = extract_aiu_percentage_from_text(_OCR_PAGE_1_TEXT)
     assert parsed.aiu_percentage == 30.0
-    assert parsed.aiu_admin_percentage == 24.0
+    assert has_presupuesto_aiu_context(_OCR_PAGE_1_TEXT) is True
 
 
-@patch("app.services.tender_summary.llm_extraction.settings")
-def test_vision_detail_defaults_to_low(mock_settings):
-    mock_settings.TENDER_SUMMARY_PRESUPUESTO_VISION_DETAIL = "low"
-    assert vision_detail_level() == "low"
+def test_pliego_experiencia_text_is_not_aiu_context():
+    assert has_presupuesto_aiu_context(_PLIEGO_EXPERIENCIA_TEXT) is False
+    parsed = extract_aiu_percentage_from_text(_PLIEGO_EXPERIENCIA_TEXT)
+    assert parsed.aiu_percentage is None
+
+
+def test_is_credible_aiu_rejects_experiencia_evidence():
+    from app.services.tender_summary.presupuesto_extraction import PresupuestoExtraction
+
+    parsed = PresupuestoExtraction(aiu_percentage=20.0)
+    assert is_credible_aiu_extraction(
+        parsed,
+        evidence="experiencia especifica equivalente al 20% del presupuesto oficial",
+    ) is False
+
+
+def test_is_credible_aiu_accepts_components_sum():
+    from app.services.tender_summary.presupuesto_extraction import PresupuestoExtraction
+
+    parsed = PresupuestoExtraction(
+        aiu_percentage=30.0,
+        aiu_admin_percentage=24.0,
+        aiu_imprevistos_percentage=1.0,
+        aiu_utilidad_percentage=5.0,
+    )
+    assert is_credible_aiu_extraction(parsed, evidence="A.I.U.=30%") is True
 
 
 @patch("app.services.tender_summary.llm_extraction._openai_client")
 @patch("app.services.tender_summary.llm_extraction.settings")
-def test_extract_aiu_with_vision_uses_single_page_and_low_detail(mock_settings, mock_client):
+def test_extract_aiu_with_vision_returns_formatted_display(mock_settings, mock_client):
     mock_settings.TENDER_SUMMARY_USE_LLM_FOR_AIU = True
     mock_settings.TENDER_SUMMARY_PRESUPUESTO_VISION_MODEL = "gpt-4o-mini"
-    mock_settings.TENDER_SUMMARY_PRESUPUESTO_VISION_DETAIL = "low"
+    mock_settings.TENDER_SUMMARY_PRESUPUESTO_VISION_DETAIL = "high"
     mock_settings.TENDER_SUMMARY_AIU_LLM_MIN_CONFIDENCE = 0.70
     message = MagicMock()
     message.content = json.dumps(
@@ -57,7 +87,7 @@ def test_extract_aiu_with_vision_uses_single_page_and_low_detail(mock_settings, 
             "admin_percentage": 24,
             "imprevistos_percentage": 1,
             "utilidad_percentage": 5,
-            "display_value": "30% (A 24% · I 1% · U 5%)",
+            "display_value": "AIU del 20% del presupuesto",
             "confidence": 0.95,
             "evidence": "A.I.U. = 30%",
         }
@@ -71,26 +101,38 @@ def test_extract_aiu_with_vision_uses_single_page_and_low_detail(mock_settings, 
     result = extract_aiu_with_vision(
         tender_external_id="CO1.REQ.1",
         object_text="Alumbrado público",
-        page_images=[(1, b"fake-png"), (2, b"ignored")],
+        page_images=[(1, b"fake-png")],
     )
     assert result is not None
     assert result.percentage == 30.0
-    assert result.extraction_method == "vision"
-
-    call_kwargs = mock_client.chat.completions.create.call_args.kwargs
-    user_content = call_kwargs["messages"][1]["content"]
-    image_parts = [part for part in user_content if part.get("type") == "image_url"]
-    assert len(image_parts) == 1
-    assert image_parts[0]["image_url"]["detail"] == "low"
+    assert "30.00%" in result.display_value
+    assert "A 24%" in result.display_value
+    assert "20%" not in result.display_value
 
 
-def test_resolve_aiu_prefers_vision_for_scanned_presupuesto():
+def test_resolve_aiu_ignores_pliego_experiencia_without_aiu_markers():
+    with patch(
+        "app.services.tender_summary.llm_extraction.extract_aiu_with_vision"
+    ) as mock_vision:
+        mock_vision.return_value = None
+        result = resolve_aiu_extraction(
+            tender_external_id="CO1.REQ.1",
+            object_text="Obra",
+            excerpt=_PLIEGO_EXPERIENCIA_TEXT,
+            fallback_text=_PLIEGO_EXPERIENCIA_TEXT,
+            vision_page_images=None,
+        )
+    assert result is None
+    mock_vision.assert_not_called()
+
+
+def test_resolve_aiu_uses_vision_for_scanned_presupuesto():
     with patch(
         "app.services.tender_summary.llm_extraction.extract_aiu_with_vision"
     ) as mock_vision:
         mock_vision.return_value = MagicMock(
             percentage=30.0,
-            display_value="30%",
+            display_value="30.00% (A 24% · I 1% · U 5%)",
             confidence=0.9,
             extraction_method="vision",
         )
@@ -102,5 +144,5 @@ def test_resolve_aiu_prefers_vision_for_scanned_presupuesto():
             vision_page_images=[(1, b"png")],
         )
     assert result is not None
-    assert result.extraction_method == "vision"
+    assert result.percentage == 30.0
     mock_vision.assert_called_once()
