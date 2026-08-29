@@ -45,10 +45,9 @@ const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
   ],
   experiencia_especifica: [
     'specific_scope',
-    'contracts_minimum',
-    'experience_value_tiers',
     'specific_min_percentage',
     'activity_codes',
+    'contracts_minimum',
   ],
 }
 

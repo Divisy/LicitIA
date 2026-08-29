@@ -104,13 +104,15 @@ def _merge_items(existing: list[RequirementItem], new_items: list[RequirementIte
 
 
 def extract_experience_value_tiers(normalized: str) -> list[dict[str, Any]]:
-    """Parse CCE/Matriz 1 table: minimum certified value (% PO in SMMLV) by contract count."""
-    if not re.search(
-        r"valor\s+minimo\s+a\s+certificar|"
-        r"relacion\s+de\s+los\s+contratos\s+frente\s+al\s+presupuesto\s+oficial|"
-        r"como\s+%\s+del\s+presupuesto\s+oficial[^.\n]{0,40}smmlv",
-        normalized,
-    ):
+    """Parse contract-count tier table (% PO in SMMLV) when the pliego defines it explicitly."""
+    has_table_context = bool(
+        re.search(
+            r"relacion\s+de\s+los\s+contratos\s+frente\s+al\s+presupuesto\s+oficial|"
+            r"numero\s+de\s+contratos\s+con\s+los\s+cuales\s+el\s+proponente\s+cumple",
+            normalized,
+        )
+    )
+    if not has_table_context:
         return []
 
     tier_patterns: tuple[tuple[str, str], ...] = (
@@ -132,6 +134,9 @@ def extract_experience_value_tiers(normalized: str) -> list[dict[str, Any]]:
             continue
         tiers.append({"contract_range": contract_range, "percentage": percentage})
         seen_ranges.add(contract_range)
+
+    if len(tiers) < 2:
+        return []
 
     order = {"1-2": 0, "3-4": 1, "1-5": 2}
     tiers.sort(key=lambda tier: order.get(str(tier["contract_range"]), 99))
@@ -164,12 +169,13 @@ def _extract_contracts_minimum_item(
     return None
 
 
-def _append_shared_experience_metrics(
+def _append_general_experience_supplements(
     items: list[RequirementItem],
     normalized: str,
     source_document: str,
     source_document_id: Optional[UUID],
 ) -> list[RequirementItem]:
+    """Add pliego-specific supplements for experiencia general only (e.g. CCE tier table)."""
     tiers = extract_experience_value_tiers(normalized)
     if tiers and not any(item["key"] == "experience_value_tiers" for item in items):
         percentages = [f"{tier['percentage']:g}%" for tier in tiers]
@@ -395,7 +401,7 @@ def extract_experiencia_general(
                 )
             )
 
-    return _append_shared_experience_metrics(items, normalized, source_document, source_document_id)
+    return _append_general_experience_supplements(items, normalized, source_document, source_document_id)
 
 
 def extract_experiencia_especifica(
@@ -557,7 +563,7 @@ def extract_experiencia_especifica(
                 )
             )
 
-    return _append_shared_experience_metrics(items, normalized, source_document, source_document_id)
+    return items
 
 
 def _parse_threshold(raw: str) -> Optional[float]:

@@ -62,7 +62,7 @@ def test_extract_cce_experience_value_tiers_and_contracts():
     assert "experience_value_tiers" in general_keys
     assert "contracts_minimum" in general_keys
     assert "min_amount_smmlv" in general_keys
-    assert "experience_value_tiers" in specific_keys
+    assert "experience_value_tiers" not in specific_keys
 
     tiers = next(item for item in general if item["key"] == "experience_value_tiers")
     assert tiers["value"] == [
@@ -70,6 +70,22 @@ def test_extract_cce_experience_value_tiers_and_contracts():
         {"contract_range": "3-4", "percentage": 120.0},
         {"contract_range": "1-5", "percentage": 150.0},
     ]
+
+
+def test_interventoria_experience_does_not_use_contract_tier_table():
+    text = """
+    3.8.1 EXIGENCIA MINIMA DE LA EXPERIENCIA DEL PROPONENTE
+    contratos aportados como experiencia es mayor o igual al cien por ciento (100 %)
+    respecto del valor total del Presupuesto Oficial expresado en SMMLV.
+    EXPERIENCIA GENERAL: INTERVENTORIA DE OBRAS VIALES.
+    EXPERIENCIA ESPECIFICA: al menos el 60% del Presupuesto Oficial del presente proceso.
+    """
+    general = extract_experiencia_general(text, "pliego_condiciones", None)
+    specific = extract_experiencia_especifica(text, "pliego_condiciones", None)
+    assert "experience_value_tiers" not in {item["key"] for item in general}
+    assert "experience_value_tiers" not in {item["key"] for item in specific}
+    assert "min_percentage_budget" in {item["key"] for item in general}
+    assert "specific_min_percentage" in {item["key"] for item in specific}
 
 
 def test_normalize_text_strips_accents():
