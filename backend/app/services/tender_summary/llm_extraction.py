@@ -11,6 +11,7 @@ from openai import OpenAI
 from app.config import settings
 from app.core.logging import get_logger
 from app.services.tender_summary.pliego_extraction import extract_advance_payment_from_text
+from app.services.tender_summary.pdf_ocr import vision_detail_level
 from app.services.tender_summary.presupuesto_extraction import (
     PresupuestoExtraction,
     extract_aiu_percentage_from_text,
@@ -291,13 +292,16 @@ def extract_aiu_with_vision(
             ),
         }
     ]
-    for page_no, image_bytes in page_images[:2]:
+    for page_no, image_bytes in page_images[:1]:
         encoded = base64.b64encode(image_bytes).decode("ascii")
         content.append({"type": "text", "text": f"Página {page_no}:"})
         content.append(
             {
                 "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{encoded}", "detail": "high"},
+                "image_url": {
+                    "url": f"data:image/png;base64,{encoded}",
+                    "detail": vision_detail_level(),
+                },
             }
         )
 
@@ -315,7 +319,7 @@ def extract_aiu_with_vision(
                 {"role": "user", "content": content},
             ],
             temperature=0.0,
-            max_tokens=500,
+            max_tokens=300,
             response_format={"type": "json_object"},
         )
         payload = _parse_json_content(response.choices[0].message.content or "{}")
@@ -367,6 +371,15 @@ def resolve_aiu_extraction(
             confidence=0.92,
         )
 
+    if vision_page_images:
+        vision_result = extract_aiu_with_vision(
+            tender_external_id=tender_external_id,
+            object_text=object_text,
+            page_images=vision_page_images,
+        )
+        if vision_result is not None:
+            return vision_result
+
     focused = (excerpt or "").strip()
     regex_text = focused or fallback_text
     parsed = PresupuestoExtraction()
@@ -399,15 +412,6 @@ def resolve_aiu_extraction(
         )
         if result is not None:
             return result
-
-    if vision_page_images:
-        vision_result = extract_aiu_with_vision(
-            tender_external_id=tender_external_id,
-            object_text=object_text,
-            page_images=vision_page_images,
-        )
-        if vision_result is not None:
-            return vision_result
 
     return None
 

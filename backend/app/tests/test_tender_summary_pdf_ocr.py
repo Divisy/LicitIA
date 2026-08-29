@@ -1,15 +1,12 @@
-"""Tests for scanned presupuesto OCR (US 1.4)."""
+"""Tests for scanned presupuesto vision (US 1.4)."""
 import json
-from datetime import datetime
-from pathlib import Path
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
 
 from app.services.tender_summary.llm_extraction import extract_aiu_with_vision, resolve_aiu_extraction
 from app.services.tender_summary.pdf_ocr import (
     is_pdf_text_insufficient,
-    select_presupuesto_ocr_pages,
-    transcribe_page_images_with_vision,
+    select_presupuesto_vision_pages,
+    vision_detail_level,
 )
 from app.services.tender_summary.presupuesto_extraction import extract_aiu_percentage_from_text
 
@@ -29,9 +26,9 @@ def test_is_pdf_text_insufficient_detects_scanned_pdf():
     assert is_pdf_text_insufficient("x" * 120, [], min_chars=80) is False
 
 
-def test_select_presupuesto_ocr_pages_prefers_first_and_tail():
-    assert select_presupuesto_ocr_pages(1, max_pages=4) == [1]
-    assert select_presupuesto_ocr_pages(19, max_pages=4) == [1, 17, 18, 19]
+def test_select_presupuesto_vision_pages_only_first_page():
+    assert select_presupuesto_vision_pages(1) == [1]
+    assert select_presupuesto_vision_pages(19) == [1]
 
 
 def test_ocr_text_feeds_aiu_regex():
@@ -40,35 +37,18 @@ def test_ocr_text_feeds_aiu_regex():
     assert parsed.aiu_admin_percentage == 24.0
 
 
-@patch("app.services.tender_summary.pdf_ocr._openai_client")
-@patch("app.services.tender_summary.pdf_ocr.settings")
-def test_transcribe_page_images_with_vision(mock_settings, mock_client):
-    mock_settings.TENDER_SUMMARY_PRESUPUESTO_OCR_ENABLED = True
-    mock_settings.TENDER_SUMMARY_PRESUPUESTO_VISION_MODEL = "gpt-4o-mini"
-    message = MagicMock()
-    message.content = json.dumps(
-        {
-            "pages": [
-                {"page": 1, "text": _OCR_PAGE_1_TEXT},
-            ]
-        }
-    )
-    choice = MagicMock()
-    choice.message = message
-    response = MagicMock()
-    response.choices = [choice]
-    mock_client.chat.completions.create.return_value = response
-
-    pages = transcribe_page_images_with_vision([(1, b"fake-png")])
-    assert 1 in pages
-    assert "A.I.U." in pages[1]
+@patch("app.services.tender_summary.llm_extraction.settings")
+def test_vision_detail_defaults_to_low(mock_settings):
+    mock_settings.TENDER_SUMMARY_PRESUPUESTO_VISION_DETAIL = "low"
+    assert vision_detail_level() == "low"
 
 
 @patch("app.services.tender_summary.llm_extraction._openai_client")
 @patch("app.services.tender_summary.llm_extraction.settings")
-def test_extract_aiu_with_vision(mock_settings, mock_client):
+def test_extract_aiu_with_vision_uses_single_page_and_low_detail(mock_settings, mock_client):
     mock_settings.TENDER_SUMMARY_USE_LLM_FOR_AIU = True
     mock_settings.TENDER_SUMMARY_PRESUPUESTO_VISION_MODEL = "gpt-4o-mini"
+    mock_settings.TENDER_SUMMARY_PRESUPUESTO_VISION_DETAIL = "low"
     mock_settings.TENDER_SUMMARY_AIU_LLM_MIN_CONFIDENCE = 0.70
     message = MagicMock()
     message.content = json.dumps(
@@ -91,14 +71,20 @@ def test_extract_aiu_with_vision(mock_settings, mock_client):
     result = extract_aiu_with_vision(
         tender_external_id="CO1.REQ.1",
         object_text="Alumbrado público",
-        page_images=[(1, b"fake-png")],
+        page_images=[(1, b"fake-png"), (2, b"ignored")],
     )
     assert result is not None
     assert result.percentage == 30.0
     assert result.extraction_method == "vision"
 
+    call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+    user_content = call_kwargs["messages"][1]["content"]
+    image_parts = [part for part in user_content if part.get("type") == "image_url"]
+    assert len(image_parts) == 1
+    assert image_parts[0]["image_url"]["detail"] == "low"
 
-def test_resolve_aiu_uses_vision_when_text_pipeline_fails():
+
+def test_resolve_aiu_prefers_vision_for_scanned_presupuesto():
     with patch(
         "app.services.tender_summary.llm_extraction.extract_aiu_with_vision"
     ) as mock_vision:
@@ -118,25 +104,3 @@ def test_resolve_aiu_uses_vision_when_text_pipeline_fails():
     assert result is not None
     assert result.extraction_method == "vision"
     mock_vision.assert_called_once()
-
-
-@patch("app.services.tender_summary.pdf_ocr.settings")
-def test_ocr_cache_roundtrip(mock_settings, tmp_path):
-    from app.models.tender_document import TenderDocument
-    from app.services.tender_summary import pdf_ocr
-
-    mock_settings.DOCUMENTS_STORAGE_PATH = str(tmp_path)
-    doc = TenderDocument(
-        id=uuid4(),
-        tender_id=uuid4(),
-        external_document_id="doc-1",
-        document_type="presupuesto",
-        file_name="presupuesto.pdf",
-        file_path="tenders/x/presupuesto.pdf",
-        download_url="https://example.com/presupuesto.pdf",
-        extension="pdf",
-        updated_at=datetime(2025, 1, 15, 12, 0, 0),
-    )
-    pdf_ocr._write_ocr_cache(doc, {1: _OCR_PAGE_1_TEXT})
-    cached = pdf_ocr._read_ocr_cache(doc)
-    assert cached[1].startswith("PRESUPUESTO DE OBRA")

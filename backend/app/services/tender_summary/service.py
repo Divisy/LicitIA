@@ -27,7 +27,7 @@ from app.services.tender_summary.document_selection import (
     select_presupuesto_document,
 )
 from app.services.tender_summary.pdf_text import extract_pdf_text
-from app.services.tender_summary.pdf_ocr import extract_presupuesto_pdf_with_ocr
+from app.services.tender_summary.pdf_ocr import prepare_scanned_presupuesto_vision_images
 from app.services.tender_summary.llm_extraction import (
     resolve_aiu_extraction,
     resolve_anticipo_extraction,
@@ -40,7 +40,7 @@ from app.services.tender_summary.text_selection import (
 )
 from app.services.tender_requirements.pdf_pages import extract_pdf_pages
 
-SUMMARY_EXTRACTION_VERSION = "1.4.5"
+SUMMARY_EXTRACTION_VERSION = "1.4.6"
 
 FieldStatus = str  # available | not_applicable | unavailable
 
@@ -148,14 +148,12 @@ def build_tender_summary(tender: Tender) -> dict[str, Any]:
     presupuesto_vision_images: list[tuple[int, bytes]] = []
     if presupuesto and (presupuesto.extension or "").lower() == "pdf":
         presupuesto_pages = extract_pdf_pages(presupuesto, storage)
-        native_text = extract_pdf_text(presupuesto, storage)
-        presupuesto_full_text, presupuesto_pages, presupuesto_vision_images = (
-            extract_presupuesto_pdf_with_ocr(
-                presupuesto,
-                storage,
-                native_text=native_text,
-                native_pages=presupuesto_pages,
-            )
+        presupuesto_full_text = extract_pdf_text(presupuesto, storage)
+        presupuesto_vision_images = prepare_scanned_presupuesto_vision_images(
+            presupuesto,
+            storage,
+            native_text=presupuesto_full_text,
+            native_pages=presupuesto_pages,
         )
 
     admin_location = ", ".join(
