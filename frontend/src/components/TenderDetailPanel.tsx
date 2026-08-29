@@ -611,6 +611,9 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     )
     const tiersItem = findRequirementItem(items, 'experience_value_tiers')
     const experienceTiers = tiersItem ? parseExperienceValueTiers(tiersItem) : []
+    const visibleMetricItems = experienceTiers.length
+      ? metricItems.filter((item) => item.key !== 'min_percentage_budget')
+      : metricItems
     const otherItems = items.filter(
       (item) =>
         item.key !== scopeKey &&
@@ -637,9 +640,9 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
 
         {items.length > 0 ? (
           <>
-            {metricItems.length > 0 && (
+            {visibleMetricItems.length > 0 && (
               <div className="tender-detail-panel__experience-metrics">
-                {metricItems.map((item) => {
+                {visibleMetricItems.map((item) => {
                   const minimumAmount = computePoMinimumAmount(officialBudgetTotal, item)
                   return (
                   <div key={`${section.key}-${item.key}`} className="tender-detail-panel__experience-metric">

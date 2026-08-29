@@ -116,10 +116,9 @@ def extract_experience_value_tiers(normalized: str) -> list[dict[str, Any]]:
         return []
 
     tier_patterns: tuple[tuple[str, str], ...] = (
-        (r"de\s+1\s+hasta\s+2[^\d%]{0,40}(\d{2,3})\s*%", "1-2"),
-        (r"de\s+3\s+hasta\s+4[^\d%]{0,40}(\d{2,3})\s*%", "3-4"),
-        (r"(\d{2,3})\s*%\s+hasta\s+5", "1-5"),
-        (r"hasta\s+5[^\d%]{0,30}(\d{2,3})\s*%", "1-5"),
+        (r"de\s+1\s+hasta\s+2\s+(\d{2,3})\s*%", "1-2"),
+        (r"de\s+3\s+hasta\s+4\s+(\d{2,3})\s*%", "3-4"),
+        (r"hasta\s+5\s+(\d{2,3})\s*%", "1-5"),
     )
     tiers: list[dict[str, Any]] = []
     seen_ranges: set[str] = set()
@@ -210,6 +209,23 @@ def _append_general_experience_supplements(
     )
     if contracts_item and not any(item["key"] == "contracts_minimum" for item in items):
         items.append(contracts_item)
+
+    tier_percentages = {
+        float(tier["percentage"])
+        for item in items
+        if item["key"] == "experience_value_tiers"
+        for tier in (item.get("value") or [])
+        if isinstance(tier, dict) and tier.get("percentage") is not None
+    }
+    if tier_percentages:
+        items = [
+            item
+            for item in items
+            if not (
+                item["key"] == "min_percentage_budget"
+                and item.get("value") in tier_percentages
+            )
+        ]
 
     return items
 
