@@ -96,6 +96,61 @@ def test_interventoria_experience_does_not_use_contract_tier_table():
     assert "specific_min_percentage" in {item["key"] for item in specific}
 
 
+VILLA_MARIA_SPECIFIC_AREA = """
+FASE I - ESTUDIO, DISEÑOS, OBTENCIÓN DE PERMISOS DEL PROYECTO
+ESPECIFICA
+Con la sumatoria de uno o hasta maximo dos (2) de los contratos validos aportados como
+experiencia general deben contemplar consultoria a un proyecto con un area que sea igual o superior al (60%)
+del total de metros cuadrados del proceso de seleccion, el cual corresponde a 2396 m2
+FASE II – MANTENIMIENTO, MEJORAMIENTO Y ADECUACION PARQUE Y ESPACIO PUBLICO
+ESPECIFICA
+Con la sumatoria de uno o hasta maximo dos (2) de los contratos validos aportados como experiencia general
+deben contemplar un area sea igual o superior al (70%) del total de metros cuadrados del proceso de seleccion,
+el cual corresponde a 2396 m2.
+"""
+
+
+def test_extract_villa_maria_specific_area_phases():
+    specific = extract_experiencia_especifica(VILLA_MARIA_SPECIFIC_AREA, "pliego_condiciones", None)
+    keys = {item["key"] for item in specific}
+    assert "specific_area_phases" in keys
+    assert "specific_min_percentage" not in keys
+    assert "activity_codes" not in keys
+
+    phases = next(item for item in specific if item["key"] == "specific_area_phases")["value"]
+    assert len(phases) == 2
+    assert phases[0]["area_percentage"] == 60.0
+    assert phases[1]["area_percentage"] == 70.0
+    assert phases[0]["minimum_m2"] == 1437.6
+    assert phases[1]["minimum_m2"] == 1677.2
+
+
+def test_sanitize_especifica_removes_po_tier_fields():
+    from app.services.tender_requirements.llm_extraction import sanitize_experiencia_especifica_items
+
+    items = [
+        {"key": "specific_area_phases", "display_value": "Fase I", "value": []},
+        {
+            "key": "specific_min_percentage",
+            "display_value": "120% del Presupuesto Oficial para contratos de experiencia especifica.",
+            "value": 120,
+        },
+        {
+            "key": "contracts_minimum",
+            "display_value": "Minimo 1 y maximo 5 contratos para la experiencia general.",
+            "value": None,
+        },
+        {
+            "key": "activity_codes",
+            "display_value": "Segmentos [72] y [81]",
+            "value": ["72", "81"],
+        },
+    ]
+    sanitized = sanitize_experiencia_especifica_items(items)
+    keys = {item["key"] for item in sanitized}
+    assert keys == {"specific_area_phases"}
+
+
 def test_normalize_text_strips_accents():
     assert normalize_text("Últimos 5 años") == "ultimos 5 anos"
 

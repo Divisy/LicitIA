@@ -17,7 +17,10 @@ from app.services.tender_requirements.document_selection import (
     select_anexo_document,
     select_pliego_document,
 )
-from app.services.tender_requirements.llm_extraction import enrich_requirements_with_llm
+from app.services.tender_requirements.llm_extraction import (
+    enrich_requirements_with_llm,
+    sanitize_experiencia_especifica_items,
+)
 from app.services.tender_requirements.regex_extraction import EXTRACTORS, SECTION_DEFINITIONS, _merge_items
 from app.services.tender_requirements.pdf_pages import extract_pdf_pages, join_pages
 from app.services.tender_requirements.text_selection import (
@@ -27,7 +30,7 @@ from app.services.tender_requirements.text_selection import (
 )
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.5.7"
+EXTRACTION_VERSION = "1.5.8"
 
 _SECTION_SOURCE = {key: source for key, _, source in SECTION_DEFINITIONS}
 _SECTION_TITLE = {key: title for key, title, _ in SECTION_DEFINITIONS}
@@ -166,6 +169,10 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         context_excerpt=llm_context,
         existing_sections=extracted_by_section,
     )
+    if extracted_by_section.get("experiencia_especifica"):
+        extracted_by_section["experiencia_especifica"] = sanitize_experiencia_especifica_items(
+            extracted_by_section["experiencia_especifica"]
+        )
 
     sections: list[dict[str, Any]] = []
     for section_key, title, default_source in SECTION_DEFINITIONS:

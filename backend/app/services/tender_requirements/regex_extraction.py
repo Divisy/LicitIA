@@ -230,6 +230,92 @@ def _append_general_experience_supplements(
     return items
 
 
+def _resolve_phase_label_before(normalized: str, match_start: int) -> Optional[str]:
+    before = normalized[max(0, match_start - 1500):match_start]
+    fase_ii_matches = list(re.finditer(r"fase\s+ii\b", before))
+    fase_i_matches: list[re.Match[str]] = []
+    for phase_match in re.finditer(r"fase\s+i\b", before):
+        if phase_match.end() < len(before) and before[phase_match.end() : phase_match.end() + 1] == "i":
+            continue
+        fase_i_matches.append(phase_match)
+
+    if fase_ii_matches and (
+        not fase_i_matches or fase_ii_matches[-1].start() > fase_i_matches[-1].start()
+    ):
+        return "Fase II"
+    if fase_i_matches:
+        return "Fase I"
+    return None
+
+
+def extract_specific_area_phases(normalized: str) -> list[dict[str, Any]]:
+    """Extract Matriz 1 specific experience by project area (m²), often per project phase."""
+    pattern = re.compile(
+        r"especifica\s+con la sumatoria de uno o hasta\s+maximo dos\s*\(\s*2\s*\)"
+        r"[^%]{0,600}?"
+        r"(?:igual o superior al|superior al)\s*\(?\s*(\d{1,3})\s*%?\s*\)?\s*"
+        r"del total de metros cuadrados[^.\d]{0,160}?(\d+(?:[.,]\d+)?)\s*m2",
+        re.DOTALL,
+    )
+    phases: list[dict[str, Any]] = []
+    roman_labels = ("Fase I", "Fase II", "Fase III")
+    for index, match in enumerate(pattern.finditer(normalized)):
+        percentage = float(match.group(1))
+        total_m2 = float(match.group(2).replace(",", "."))
+        minimum_m2 = round(total_m2 * percentage / 100, 1)
+        phase_label = _resolve_phase_label_before(normalized, match.start()) or (
+            roman_labels[index] if index < len(roman_labels) else f"Fase {index + 1}"
+        )
+        phases.append(
+            {
+                "phase": phase_label,
+                "area_percentage": percentage,
+                "total_m2": total_m2,
+                "minimum_m2": minimum_m2,
+                "max_contracts": 2,
+            }
+        )
+    return phases
+
+
+def _format_specific_area_phases_display(phases: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for phase in phases:
+        label = phase.get("phase") or "Fase"
+        pct = phase.get("area_percentage")
+        minimum = phase.get("minimum_m2")
+        total = phase.get("total_m2")
+        if pct is None or minimum is None or total is None:
+            continue
+        parts.append(
+            f"{label}: ≥{pct:g}% del área ({minimum:g} m² de {total:g} m²)"
+        )
+    return "; ".join(parts)
+
+
+def _extract_specific_contracts_minimum_item(
+    normalized: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+) -> Optional[RequirementItem]:
+    match = re.search(
+        r"(?:uno o hasta|hasta)\s+maximo\s+dos\s*\(\s*2\s*\)\s+de los contratos\s+validos\s+aportados\s+como\s+experiencia\s+general",
+        normalized,
+    )
+    if not match:
+        return None
+    return _item(
+        key="contracts_minimum",
+        label="Número de contratos",
+        value={"minimum": 1, "maximum": 2, "from_general_experience": True},
+        display_value="1 o 2 contratos de la experiencia general",
+        source_document=source_document,
+        source_document_id=source_document_id,
+        evidence=_snippet(normalized, match.start(), match.end() + 80),
+        confidence=0.92,
+    )
+
+
 def _is_weak_specific_scope(scope: str) -> bool:
     cleaned = _clean_requirement_text(scope, max_len=400).lower()
     if len(cleaned) < 30:
@@ -430,6 +516,40 @@ def extract_experiencia_especifica(
 
     items: list[RequirementItem] = []
     normalized = normalize_text(text)
+    area_phases = extract_specific_area_phases(normalized)
+
+    if area_phases:
+        display = _format_specific_area_phases_display(area_phases)
+        items.append(
+            _item(
+                key="specific_area_phases",
+                label="Área mínima por fase",
+                value=area_phases,
+                display_value=display,
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence=display[:220],
+                confidence=0.94,
+            )
+        )
+        items.append(
+            _item(
+                key="specific_scope",
+                label="Alcance exigido",
+                value=display,
+                display_value=display,
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence=display[:220],
+                confidence=0.9,
+            )
+        )
+        contracts_item = _extract_specific_contracts_minimum_item(
+            normalized, source_document, source_document_id
+        )
+        if contracts_item:
+            items.append(contracts_item)
+        return items
 
     specific_block = _extract_labeled_block(
         normalized,

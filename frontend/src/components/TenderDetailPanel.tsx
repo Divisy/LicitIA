@@ -45,6 +45,7 @@ const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
   ],
   experiencia_especifica: [
     'specific_scope',
+    'specific_area_phases',
     'specific_min_percentage',
     'activity_codes',
     'contracts_minimum',
@@ -84,6 +85,48 @@ const parseExperienceValueTiers = (item: TenderRequirementItem): ExperienceValue
     })
     .filter((tier): tier is ExperienceValueTier => tier != null)
 }
+
+type SpecificAreaPhase = {
+  phase: string
+  area_percentage: number
+  total_m2: number
+  minimum_m2: number
+  max_contracts?: number
+}
+
+const parseSpecificAreaPhases = (item: TenderRequirementItem): SpecificAreaPhase[] => {
+  if (!Array.isArray(item.value)) {
+    return []
+  }
+  return item.value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') {
+        return null
+      }
+      const record = entry as Record<string, unknown>
+      const areaPercentage = Number(record.area_percentage)
+      const totalM2 = Number(record.total_m2)
+      const minimumM2 = Number(record.minimum_m2)
+      const phase = String(record.phase || '').trim()
+      if (!phase || !Number.isFinite(areaPercentage) || !Number.isFinite(totalM2)) {
+        return null
+      }
+      return {
+        phase,
+        area_percentage: areaPercentage,
+        total_m2: totalM2,
+        minimum_m2: Number.isFinite(minimumM2)
+          ? minimumM2
+          : Math.round((totalM2 * areaPercentage) / 100),
+        max_contracts:
+          typeof record.max_contracts === 'number' ? record.max_contracts : undefined,
+      }
+    })
+    .filter((phase): phase is SpecificAreaPhase => phase != null)
+}
+
+const formatAreaM2 = (value: number): string =>
+  `${Math.round(value).toLocaleString('es-CO')} m²`
 
 const EXPERIENCE_SCOPE_KEY: Record<string, string> = {
   experiencia_general: 'requirement_description',
@@ -611,13 +654,22 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     )
     const tiersItem = findRequirementItem(items, 'experience_value_tiers')
     const experienceTiers = tiersItem ? parseExperienceValueTiers(tiersItem) : []
-    const visibleMetricItems = experienceTiers.length
+    const areaPhasesItem = findRequirementItem(items, 'specific_area_phases')
+    const specificAreaPhases = areaPhasesItem ? parseSpecificAreaPhases(areaPhasesItem) : []
+    let visibleMetricItems = experienceTiers.length
       ? metricItems.filter((item) => item.key !== 'min_percentage_budget')
       : metricItems
+    if (specificAreaPhases.length > 0) {
+      visibleMetricItems = visibleMetricItems.filter(
+        (item) => item.key !== 'specific_min_percentage'
+      )
+    }
     const otherItems = items.filter(
       (item) =>
         item.key !== scopeKey &&
         item.key !== EXPERIENCE_ACCREDITATION_KEY &&
+        item.key !== 'specific_area_phases' &&
+        item.key !== 'experience_value_tiers' &&
         !EXPERIENCE_METRIC_KEYS.has(item.key) &&
         Boolean(item.display_value)
     )
@@ -697,7 +749,36 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
               </div>
             )}
 
-            {scopeItem?.display_value && (
+            {specificAreaPhases.length > 0 && (
+              <div className="tender-detail-panel__experience-tiers">
+                <h6 className="tender-detail-panel__experience-block-title">
+                  Área mínima a acreditar (experiencia específica)
+                </h6>
+                <div className="tender-detail-panel__experience-tier-grid">
+                  {specificAreaPhases.map((phase) => (
+                    <div
+                      key={`${section.key}-area-${phase.phase}`}
+                      className="tender-detail-panel__experience-tier"
+                    >
+                      <span className="tender-detail-panel__experience-tier-range">{phase.phase}</span>
+                      <span className="tender-detail-panel__experience-tier-percentage">
+                        ≥{phase.area_percentage}% del área del proyecto
+                      </span>
+                      <span className="tender-detail-panel__experience-tier-amount">
+                        Mínimo: {formatAreaM2(phase.minimum_m2)} de {formatAreaM2(phase.total_m2)}
+                      </span>
+                      {phase.max_contracts != null && (
+                        <span className="tender-detail-panel__experience-tier-amount">
+                          Hasta {phase.max_contracts} contratos de la experiencia general
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {scopeItem?.display_value && specificAreaPhases.length === 0 && (
               <div className="tender-detail-panel__experience-block">
                 <h6 className="tender-detail-panel__experience-block-title">Qué se exige</h6>
                 <p className="tender-detail-panel__experience-prose">{scopeItem.display_value}</p>

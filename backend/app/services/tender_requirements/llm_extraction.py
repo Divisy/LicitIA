@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Optional
 
 from openai import OpenAI
@@ -26,9 +27,10 @@ _EXPERIENCE_FIELD_GUIDE: dict[str, list[tuple[str, str]]] = {
     ],
     "experiencia_especifica": [
         ("specific_scope", "Alcance de la experiencia específica (2–4 oraciones)"),
-        ("specific_min_percentage", "Porcentaje mínimo específico del PO"),
-        ("activity_codes", "Códigos UNSPSC o de actividad"),
-        ("contracts_minimum", "Número mínimo de contratos, si aplica"),
+        ("specific_area_phases", "Requisitos de área en m² por fase, si aplica (NO % del PO)"),
+        ("specific_min_percentage", "Porcentaje mínimo específico del PO (solo si es explícito)"),
+        ("activity_codes", "Códigos UNSPSC concretos (6–8 dígitos), no segmentos genéricos"),
+        ("contracts_minimum", "Número de contratos para acreditar la específica"),
     ],
 }
 
@@ -97,6 +99,9 @@ def _build_prompt(
         "- Solo incluye campos explícitos en el texto. Omite keys sin información.\n"
         "- confidence 0.70–1.0 según claridad del fragmento.\n"
         "- Porcentajes: formato legible (ej. \"100% del Presupuesto Oficial\", \"60% del PO\").\n"
+        "- experiencia_especifica: NO uses la tabla de valor mínimo por número de contratos "
+        "(75/120/150% del PO en SMMLV); esa tabla es de experiencia general. "
+        "Si la específica exige área en m² o % del área del proyecto, usa specific_area_phases.\n"
         "- Si el borrador previo tiene un dato correcto pero mal redactado, mejóralo en display_value."
     )
 
@@ -146,6 +151,41 @@ def _merge_with_regex_fallback(
         if item["key"] not in llm_keys:
             merged.append(item)
     return merged
+
+
+_PO_TIER_PERCENTAGES = {75.0, 120.0, 150.0}
+
+
+def sanitize_experiencia_especifica_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop PO tier-table fields incorrectly assigned to experiencia específica."""
+    has_area_phases = any(item.get("key") == "specific_area_phases" for item in items)
+    sanitized: list[dict[str, Any]] = []
+    for item in items:
+        key = item.get("key")
+        display = str(item.get("display_value") or "").lower()
+        value = item.get("value")
+
+        if key == "specific_min_percentage":
+            if has_area_phases:
+                continue
+            if "segun nº de contratos" in display or "según nº de contratos" in display:
+                continue
+            if isinstance(value, (int, float)) and float(value) in _PO_TIER_PERCENTAGES:
+                if "presupuesto oficial" in display and "area" not in display and "m2" not in display:
+                    continue
+
+        if key == "contracts_minimum" and has_area_phases:
+            if "cinco" in display or "maximo 5" in display or "máximo 5" in display:
+                continue
+
+        if key == "activity_codes" and has_area_phases:
+            if re.search(r"\[?\s*72\s*\]?\s*y\s*\[?\s*81\s*\]?", display, re.IGNORECASE):
+                continue
+            if display.strip() in {"72", "81", "72, 81"}:
+                continue
+
+        sanitized.append(item)
+    return sanitized
 
 
 def enrich_requirements_with_llm(
