@@ -1,6 +1,7 @@
 """LLM extraction for tender summary fields (US 1.4)."""
 from __future__ import annotations
 
+import base64
 import json
 from dataclasses import dataclass
 from typing import Optional
@@ -256,6 +257,99 @@ def extract_aiu_with_llm(
     )
 
 
+def extract_aiu_with_vision(
+    *,
+    tender_external_id: str,
+    object_text: str,
+    page_images: list[tuple[int, bytes]],
+) -> Optional[AiuExtraction]:
+    """Extract AIU directly from scanned presupuesto page images."""
+    if not settings.TENDER_SUMMARY_USE_LLM_FOR_AIU or not _openai_client:
+        return None
+    if not page_images:
+        return None
+
+    model = settings.TENDER_SUMMARY_PRESUPUESTO_VISION_MODEL or settings.OPENAI_MODEL_NAME
+    content: list[dict] = [
+        {
+            "type": "text",
+            "text": (
+                f"Licitación: {tender_external_id}\n"
+                f"Objeto: {object_text}\n\n"
+                "Extrae el porcentaje AIU del presupuesto oficial en estas imágenes escaneadas. "
+                "Devuelve JSON:\n"
+                "{\n"
+                '  "aiu_percentage": number,\n'
+                '  "admin_percentage": number or null,\n'
+                '  "imprevistos_percentage": number or null,\n'
+                '  "utilidad_percentage": number or null,\n'
+                '  "display_value": "texto corto para UI",\n'
+                '  "confidence": 0.0-1.0,\n'
+                '  "evidence": "cita breve"\n'
+                "}\n"
+                "Reglas: aiu_percentage = A+I+U. No confundir con IVA ni anticipo."
+            ),
+        }
+    ]
+    for page_no, image_bytes in page_images[:2]:
+        encoded = base64.b64encode(image_bytes).decode("ascii")
+        content.append({"type": "text", "text": f"Página {page_no}:"})
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{encoded}", "detail": "high"},
+            }
+        )
+
+    try:
+        response = _openai_client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Eres un analista de licitaciones públicas colombianas (obra pública SECOP). "
+                        "Extraes AIU de presupuestos escaneados. Responde únicamente JSON válido."
+                    ),
+                },
+                {"role": "user", "content": content},
+            ],
+            temperature=0.0,
+            max_tokens=500,
+            response_format={"type": "json_object"},
+        )
+        payload = _parse_json_content(response.choices[0].message.content or "{}")
+    except Exception as exc:
+        logger.warning("Vision AIU extraction failed for %s: %s", tender_external_id, exc)
+        return None
+
+    confidence = float(payload.get("confidence", 0))
+    if confidence < settings.TENDER_SUMMARY_AIU_LLM_MIN_CONFIDENCE:
+        return None
+
+    raw_pct = payload.get("aiu_percentage")
+    if raw_pct is None:
+        return None
+
+    parsed = PresupuestoExtraction(
+        aiu_percentage=round(float(raw_pct), 2),
+        aiu_admin_percentage=_optional_float(payload.get("admin_percentage")),
+        aiu_imprevistos_percentage=_optional_float(payload.get("imprevistos_percentage")),
+        aiu_utilidad_percentage=_optional_float(payload.get("utilidad_percentage")),
+    )
+    display = payload.get("display_value") or format_aiu_display(parsed)
+    return AiuExtraction(
+        percentage=parsed.aiu_percentage,
+        display_value=display,
+        confidence=confidence,
+        extraction_method="vision",
+        admin_percentage=parsed.aiu_admin_percentage,
+        imprevistos_percentage=parsed.aiu_imprevistos_percentage,
+        utilidad_percentage=parsed.aiu_utilidad_percentage,
+        evidence=payload.get("evidence"),
+    )
+
+
 def resolve_aiu_extraction(
     *,
     tender_external_id: str,
@@ -263,8 +357,9 @@ def resolve_aiu_extraction(
     excerpt: str,
     fallback_text: str = "",
     xlsx_parsed: Optional[PresupuestoExtraction] = None,
+    vision_page_images: Optional[list[tuple[int, bytes]]] = None,
 ) -> Optional[AiuExtraction]:
-    """Regex on focused presupuesto excerpt first, then LLM, then fallbacks."""
+    """Regex on focused presupuesto excerpt first, then LLM, then vision fallback."""
     if xlsx_parsed and xlsx_parsed.aiu_percentage is not None:
         return _presupuesto_to_aiu_result(
             xlsx_parsed,
@@ -297,11 +392,22 @@ def resolve_aiu_extraction(
 
     if focused and fallback_text and fallback_text != regex_text:
         parsed = extract_aiu_percentage_from_text(fallback_text)
-        return _presupuesto_to_aiu_result(
+        result = _presupuesto_to_aiu_result(
             parsed,
             extraction_method="regex",
             confidence=0.65,
         )
+        if result is not None:
+            return result
+
+    if vision_page_images:
+        vision_result = extract_aiu_with_vision(
+            tender_external_id=tender_external_id,
+            object_text=object_text,
+            page_images=vision_page_images,
+        )
+        if vision_result is not None:
+            return vision_result
 
     return None
 

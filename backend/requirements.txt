@@ -41,6 +41,7 @@ rarfile==4.2
 
 # PDF text extraction (US 1.4)
 pypdf==4.3.1
+pymupdf==1.24.14
 
 # AI/ML for semantic matching
 # Compatible versions for sentence-transformers 2.2.2
