@@ -114,8 +114,10 @@ def test_extract_villa_maria_specific_area_phases():
     specific = extract_experiencia_especifica(VILLA_MARIA_SPECIFIC_AREA, "pliego_condiciones", None)
     keys = {item["key"] for item in specific}
     assert "specific_area_phases" in keys
+    assert "contracts_minimum" in keys
     assert "specific_min_percentage" not in keys
     assert "activity_codes" not in keys
+    assert "experience_value_tiers" not in keys
 
     phases = next(item for item in specific if item["key"] == "specific_area_phases")["value"]
     assert len(phases) == 2
@@ -123,6 +125,20 @@ def test_extract_villa_maria_specific_area_phases():
     assert phases[1]["area_percentage"] == 70.0
     assert phases[0]["minimum_m2"] == 1437.6
     assert phases[1]["minimum_m2"] == 1677.2
+
+
+def test_extract_tier_table_without_section_number():
+    text = """
+    Valor minimo a certificar (como % del Presupuesto Oficial de obra expresado en SMMLV)
+    De 1 hasta 2 75 %
+    De 3 hasta 4 120 %
+    Hasta 5 150 %
+    Minimo uno (1) y maximo cinco (5) contratos
+    """
+    general = extract_experiencia_general(text, "pliego_condiciones", None)
+    keys = {item["key"] for item in general}
+    assert "experience_value_tiers" in keys
+    assert "contracts_minimum" in keys
 
 
 def test_sanitize_especifica_removes_po_tier_fields():
@@ -188,6 +204,109 @@ def test_extract_indicadores_financieros_liquidez():
 def test_extract_indicadores_financieros_puntaje():
     items = extract_indicadores_financieros(PLIEGO_SAMPLE, "pliego_condiciones", None)
     assert any(item["key"] == "qualification_score" for item in items)
+
+
+CCE_INTERVENTORIA_FINANCIAL = """
+3.5 CAPACIDAD FINANCIERA
+Los Proponentes deberan acreditar los siguientes indicadores en los terminos senalados en la
+Matriz 2 - Indicadores financieros y organizacionales y bajo las condiciones del numeral 3.7.1.
+
+El Proponente que no tiene pasivos corrientes esta habilitado respecto del indice de liquidez.
+El Proponente que no tiene gastos de intereses esta habilitado respecto de la razon de cobertura
+de intereses, siempre y cuando la Utilidad Operacional sea igual o mayor a cero (0).
+
+3.6 CAPITAL DE TRABAJO
+Para el Proceso de Contratacion los Proponentes deberan acreditar:
+CT = AC - PC >= CTd
+CTd = (POE - Anticipo o Pago anticipado) x 25%
+Para procesos cuyo plazo estimado de ejecucion del contrato sea menor a doce (12) meses.
+
+3.7 CAPACIDAD ORGANIZACIONAL
+Los Proponentes deberan acreditar los indicadores en la Matriz 2 - Indicadores financieros
+y organizacionales.
+
+3.7.1 ACREDITACION DE LA CAPACIDAD FINANCIERA Y ORGANIZACIONAL
+La evaluacion financiera se efectuara a partir de la informacion contenida en el Registro Unico
+de Proponentes vigente y en firme al momento de su presentacion.
+"""
+
+
+TRADITIONAL_PLIEGO_FINANCIAL = """
+3.3 SOLVENCIA ECONOMICA Y FINANCIERA
+El indice de liquidez corriente (activo corriente / pasivo corriente) debera ser mayor o igual a 1.2.
+El endeudamiento (pasivo total / activo total) debera ser menor o igual a 70%.
+La cobertura de intereses (utilidad operacional / gastos por intereses) mayor o igual a 1.5.
+El capital de trabajo (activo corriente - pasivo corriente) mayor o igual a $ 116.000.000.
+El proponente que no tiene pasivos corrientes esta habilitado respecto del indice de liquidez.
+El proponente que no tiene gastos de intereses esta habilitado respecto de la cobertura de intereses.
+Acreditacion mediante Registro Unico de Proponentes (RUP) vigente.
+"""
+
+
+def test_extract_traditional_pliego_financial_without_liquidez_label():
+    """OCR pliegos often omit the 'liquidez corriente' label and only show AC/PC."""
+    text = """
+    3.3 SOLVENCIA ECONOMICA Y FINANCIERA
+    activo corriente / pasivo corriente mayor o igual a 1.2 endeudamiento pasivo total / activo total
+    menor o igual a 70% cobertura de intereses utilidad operacional / gastos por intereses mayor o igual a 1.5
+    capital de trabajo activo corriente - pasivo corriente mayor o igual a $ 116.000.000
+    """
+    items = extract_indicadores_financieros(text, "pliego_condiciones", None)
+    keys = {item["key"] for item in items}
+    assert "liquidez_corriente" in keys
+    assert "endeudamiento" in keys
+    assert "capital_trabajo" in keys
+
+    liquidez = next(item for item in items if item["key"] == "liquidez_corriente")
+    assert liquidez["value"]["threshold"] == 1.2
+
+    endeudamiento = next(item for item in items if item["key"] == "endeudamiento")
+    assert endeudamiento["value"]["threshold"] == 0.7
+
+    capital = next(item for item in items if item["key"] == "capital_trabajo")
+    assert capital["value"]["min_amount_cop"] == 116_000_000
+
+
+def test_extract_traditional_pliego_financial_indicators():
+    items = extract_indicadores_financieros(TRADITIONAL_PLIEGO_FINANCIAL, "pliego_condiciones", None)
+    keys = {item["key"] for item in items}
+    assert "liquidez_corriente" in keys
+    assert "endeudamiento" in keys
+    assert "cobertura_intereses" in keys
+    assert "capital_trabajo" in keys
+    assert "financial_exemptions" in keys
+
+    liquidez = next(item for item in items if item["key"] == "liquidez_corriente")
+    assert liquidez["value"]["threshold"] == 1.2
+
+    endeudamiento = next(item for item in items if item["key"] == "endeudamiento")
+    assert endeudamiento["value"]["operator"] == "<="
+    assert endeudamiento["value"]["threshold"] == 0.7
+
+    cobertura = next(item for item in items if item["key"] == "cobertura_intereses")
+    assert cobertura["value"]["threshold"] == 1.5
+
+    capital = next(item for item in items if item["key"] == "capital_trabajo")
+    assert capital["value"]["min_amount_cop"] == 116_000_000
+
+
+def test_extract_cce_interventoria_financial_indicators():
+    items = extract_indicadores_financieros(CCE_INTERVENTORIA_FINANCIAL, "pliego_condiciones", None)
+    keys = {item["key"] for item in items}
+    assert "financial_summary" in keys
+    assert "liquidez_corriente" in keys
+    assert "endeudamiento" in keys
+    assert "cobertura_intereses" in keys
+    assert "capital_trabajo" in keys
+    assert "accreditation_method" in keys
+    assert "financial_exemptions" in keys
+    assert "matriz_2_reference" in keys
+    assert "rentabilidad_patrimonio" in keys
+    assert "rentabilidad_activo" in keys
+
+    capital = next(item for item in items if item["key"] == "capital_trabajo")
+    assert capital["value"]["ctd_percentage"] == 25.0
+    assert "CTd" in capital["display_value"]
 
 
 def test_extract_requisitos_legales_rup():

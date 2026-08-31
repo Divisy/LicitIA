@@ -204,6 +204,127 @@ def test_llm_rejects_low_confidence_items(mock_settings, mock_client):
     assert result["experiencia_general"] == []
 
 
+@patch("app.services.tender_requirements.llm_extraction._openai_client")
+@patch("app.services.tender_requirements.llm_extraction.settings")
+def test_llm_financial_regex_priority_over_llm_thresholds(mock_settings, mock_client):
+    mock_settings.TENDER_REQUIREMENTS_USE_LLM = True
+    mock_settings.OPENAI_MODEL_NAME = "gpt-4o-mini"
+    mock_settings.TENDER_REQUIREMENTS_LLM_MIN_CONFIDENCE = 0.70
+    mock_settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS = 8000
+    mock_client.chat.completions.create.return_value = _llm_response(
+        {
+            "indicadores_financieros": [
+                {
+                    "key": "endeudamiento",
+                    "label": "Índice de endeudamiento",
+                    "display_value": "≥ 2.0",
+                    "evidence": "hallucinated",
+                    "confidence": 0.95,
+                },
+                {
+                    "key": "financial_summary",
+                    "label": "Resumen",
+                    "display_value": "Acreditar solvencia según Matriz 2 y numeral 3.7.1.",
+                    "evidence": "Matriz 2",
+                    "confidence": 0.88,
+                },
+            ]
+        }
+    )
+
+    regex_endeudamiento = {
+        "key": "endeudamiento",
+        "label": "Índice de endeudamiento",
+        "display_value": "≤ 1.2",
+        "value": {"operator": "<=", "threshold": 1.2},
+        "confidence": 0.9,
+        "extraction_method": "regex",
+    }
+    regex_summary = {
+        "key": "financial_summary",
+        "label": "Resumen",
+        "display_value": "texto crudo del pdf...",
+        "confidence": 0.88,
+        "extraction_method": "regex",
+    }
+    existing = {
+        "experiencia_general": [],
+        "experiencia_especifica": [],
+        "indicadores_financieros": [regex_endeudamiento, regex_summary],
+    }
+    result = enrich_requirements_with_llm(
+        tender_external_id="CO1.REQ.1",
+        object_text="Interventoría",
+        context_excerpt="",
+        financial_context_excerpt="3.5 Capacidad financiera ... endeudamiento <= 1.2",
+        existing_sections=existing,
+    )
+
+    endeudamiento = next(item for item in result["indicadores_financieros"] if item["key"] == "endeudamiento")
+    assert endeudamiento["display_value"] == "≤ 1.2"
+    assert endeudamiento["extraction_method"] == "regex"
+
+    summary = next(item for item in result["indicadores_financieros"] if item["key"] == "financial_summary")
+    assert summary["extraction_method"] == "llm"
+    assert "Matriz 2" in summary["display_value"]
+
+
+@patch("app.services.tender_requirements.llm_extraction._openai_client")
+@patch("app.services.tender_requirements.llm_extraction.settings")
+def test_llm_cannot_inject_financial_metric_keys(mock_settings, mock_client):
+    mock_settings.TENDER_REQUIREMENTS_USE_LLM = True
+    mock_settings.OPENAI_MODEL_NAME = "gpt-4o-mini"
+    mock_settings.TENDER_REQUIREMENTS_LLM_MIN_CONFIDENCE = 0.70
+    mock_settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS = 8000
+    mock_client.chat.completions.create.return_value = _llm_response(
+        {
+            "indicadores_financieros": [
+                {
+                    "key": "endeudamiento",
+                    "label": "Índice de endeudamiento",
+                    "display_value": "≥ 1.2",
+                    "evidence": "hallucinated",
+                    "confidence": 0.95,
+                },
+                {
+                    "key": "financial_summary",
+                    "label": "Resumen",
+                    "display_value": "Acreditar solvencia según el pliego.",
+                    "evidence": "solvencia economica",
+                    "confidence": 0.88,
+                },
+            ]
+        }
+    )
+
+    regex_endeudamiento = {
+        "key": "endeudamiento",
+        "label": "Índice de endeudamiento",
+        "display_value": "PT / AT ≤ 70%",
+        "value": {"operator": "<=", "threshold": 0.7},
+        "confidence": 0.9,
+        "extraction_method": "regex",
+    }
+    existing = {
+        "experiencia_general": [],
+        "experiencia_especifica": [],
+        "indicadores_financieros": [regex_endeudamiento],
+    }
+    result = enrich_requirements_with_llm(
+        tender_external_id="CO1.REQ.1",
+        object_text="Interventoría",
+        context_excerpt="",
+        financial_context_excerpt="endeudamiento menor o igual a 70%",
+        existing_sections=existing,
+    )
+
+    keys = {item["key"] for item in result["indicadores_financieros"]}
+    assert "endeudamiento" in keys
+    endeudamiento = next(item for item in result["indicadores_financieros"] if item["key"] == "endeudamiento")
+    assert endeudamiento["extraction_method"] == "regex"
+    assert endeudamiento["value"]["threshold"] == 0.7
+
+
 @patch("app.services.tender_requirements.llm_extraction._openai_client", None)
 @patch("app.services.tender_requirements.llm_extraction.settings")
 def test_llm_skipped_without_openai_client(mock_settings):

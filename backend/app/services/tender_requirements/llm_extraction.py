@@ -17,6 +17,26 @@ LLM_EXPERIENCE_SECTIONS: tuple[str, ...] = (
     "experiencia_especifica",
 )
 
+LLM_FINANCIAL_SECTIONS: tuple[str, ...] = ("indicadores_financieros",)
+
+LLM_ENRICHED_SECTIONS: tuple[str, ...] = LLM_EXPERIENCE_SECTIONS + LLM_FINANCIAL_SECTIONS
+
+_FINANCIAL_LLM_ALLOWED_KEYS: frozenset[str] = frozenset(
+    {"financial_summary", "accreditation_method", "financial_exemptions"}
+)
+_FINANCIAL_REGEX_PRIORITY_KEYS: frozenset[str] = frozenset(
+    {
+        "liquidez_corriente",
+        "endeudamiento",
+        "cobertura_intereses",
+        "rentabilidad_patrimonio",
+        "rentabilidad_activo",
+        "capital_trabajo",
+        "matriz_2_reference",
+        "qualification_score",
+    }
+)
+
 _EXPERIENCE_FIELD_GUIDE: dict[str, list[tuple[str, str]]] = {
     "experiencia_general": [
         ("requirement_description", "Tipo de experiencia exigida (2–4 oraciones claras)"),
@@ -32,6 +52,19 @@ _EXPERIENCE_FIELD_GUIDE: dict[str, list[tuple[str, str]]] = {
         ("activity_codes", "Códigos UNSPSC concretos (6–8 dígitos), no segmentos genéricos"),
         ("contracts_minimum", "Número de contratos para acreditar la específica"),
     ],
+}
+
+_FINANCIAL_FIELD_GUIDE: dict[str, list[tuple[str, str]]] = {
+    "indicadores_financieros": [
+        ("financial_summary", "Resumen de solvencia y capacidad financiera (2–4 oraciones)"),
+        ("accreditation_method", "Cómo acreditar (RUP, Formatos, Matriz 2)"),
+        ("financial_exemptions", "Excepciones o alternativas de acreditación"),
+    ],
+}
+
+_FIELD_GUIDE: dict[str, list[tuple[str, str]]] = {
+    **_EXPERIENCE_FIELD_GUIDE,
+    **_FINANCIAL_FIELD_GUIDE,
 }
 
 _openai_client: Optional[OpenAI] = None
@@ -50,7 +83,7 @@ def _parse_json_content(content: str) -> dict[str, Any]:
 
 def _serialize_regex_hints(existing_sections: dict[str, list[dict[str, Any]]]) -> str:
     lines: list[str] = []
-    for section_key in LLM_EXPERIENCE_SECTIONS:
+    for section_key in LLM_ENRICHED_SECTIONS:
         items = existing_sections.get(section_key) or []
         if not items:
             continue
@@ -66,12 +99,13 @@ def _build_prompt(
     *,
     tender_external_id: str,
     object_text: str,
-    context_excerpt: str,
+    experience_excerpt: str,
+    financial_excerpt: str,
     regex_hints: str,
 ) -> str:
     field_lines: list[str] = []
-    for section_key in LLM_EXPERIENCE_SECTIONS:
-        fields = _EXPERIENCE_FIELD_GUIDE[section_key]
+    for section_key in LLM_ENRICHED_SECTIONS:
+        fields = _FIELD_GUIDE[section_key]
         field_lines.append(f'  "{section_key}": [')
         for key, description in fields:
             field_lines.append(
@@ -83,18 +117,25 @@ def _build_prompt(
 
     schema = "{\n  \"sections\": {\n" + "\n".join(field_lines) + "\n  }\n}"
 
+    context_parts: list[str] = []
+    if experience_excerpt.strip():
+        context_parts.append(f"Experiencia:\n{experience_excerpt}")
+    if financial_excerpt.strip():
+        context_parts.append(f"Solvencia financiera:\n{financial_excerpt}")
+    context_block = "\n\n".join(context_parts) if context_parts else "(sin extracto)"
+
     return (
         f"Licitación: {tender_external_id}\n"
         f"Objeto del contrato: {object_text}\n\n"
-        f"Texto del pliego (sección de experiencia):\n{context_excerpt}\n\n"
+        f"Texto del pliego (extractos relevantes):\n{context_block}\n\n"
         f"Borrador automático previo (puede contener texto crudo del PDF — no copies tal cual):\n"
         f"{regex_hints}\n\n"
         f"Analiza el pliego y devuelve JSON con este esquema:\n{schema}\n\n"
         "Reglas obligatorias:\n"
         "- display_value: redacción clara y profesional para un contratista (español de Colombia). "
         "Resume y estructura; NO pegues párrafos largos ni texto con errores de OCR.\n"
-        "- requirement_description / specific_scope: explica QUÉ experiencia se exige "
-        "(tipo de obra/interventoría, actividades, umbrales) en pocas oraciones completas.\n"
+        "- requirement_description / specific_scope / financial_summary: explica QUÉ se exige "
+        "en pocas oraciones completas.\n"
         "- evidence: cita literal breve del pliego (máx. 200 caracteres) que respalde cada campo.\n"
         "- Solo incluye campos explícitos en el texto. Omite keys sin información.\n"
         "- confidence 0.70–1.0 según claridad del fragmento.\n"
@@ -102,6 +143,8 @@ def _build_prompt(
         "- experiencia_especifica: NO uses la tabla de valor mínimo por número de contratos "
         "(75/120/150% del PO en SMMLV); esa tabla es de experiencia general. "
         "Si la específica exige área en m² o % del área del proyecto, usa specific_area_phases.\n"
+        "- indicadores_financieros: NO inventes umbrales numéricos (liquidez, endeudamiento, etc.); "
+        "solo redacta financial_summary, accreditation_method y financial_exemptions.\n"
         "- Si el borrador previo tiene un dato correcto pero mal redactado, mejóralo en display_value."
     )
 
@@ -115,10 +158,12 @@ def _accept_llm_items(
     accepted: list[dict[str, Any]] = []
     seen_keys: set[str] = set()
     for raw in llm_items or []:
+        key = raw.get("key") or f"llm_{section_key}_{len(accepted)}"
+        if section_key == "indicadores_financieros" and key not in _FINANCIAL_LLM_ALLOWED_KEYS:
+            continue
         confidence = float(raw.get("confidence", 0))
         if confidence < min_confidence:
             continue
-        key = raw.get("key") or f"llm_{section_key}_{len(accepted)}"
         if key in seen_keys:
             continue
         seen_keys.add(key)
@@ -150,6 +195,28 @@ def _merge_with_regex_fallback(
     for item in regex_items:
         if item["key"] not in llm_keys:
             merged.append(item)
+    return merged
+
+
+def _merge_financial_with_regex_priority(
+    llm_items: list[dict[str, Any]],
+    regex_items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Prefer regex for numeric indicators; LLM for narrative fields."""
+    regex_by_key = {item["key"]: item for item in regex_items}
+    llm_by_key = {item["key"]: item for item in llm_items}
+    merged_keys = set(regex_by_key) | set(llm_by_key)
+    merged: list[dict[str, Any]] = []
+    for key in sorted(merged_keys):
+        if key in _FINANCIAL_REGEX_PRIORITY_KEYS:
+            if key in regex_by_key:
+                merged.append(regex_by_key[key])
+            elif key in llm_by_key:
+                merged.append(llm_by_key[key])
+        elif key in llm_by_key:
+            merged.append(llm_by_key[key])
+        elif key in regex_by_key:
+            merged.append(regex_by_key[key])
     return merged
 
 
@@ -193,22 +260,26 @@ def enrich_requirements_with_llm(
     tender_external_id: str,
     object_text: str,
     context_excerpt: str,
+    financial_context_excerpt: str = "",
     existing_sections: dict[str, list[dict[str, Any]]],
 ) -> dict[str, list[dict[str, Any]]]:
-    """Refine experience requirements with gpt-4o-mini (replaces raw regex dumps when possible)."""
+    """Refine experience and financial requirements with gpt-4o-mini."""
     if not settings.TENDER_REQUIREMENTS_USE_LLM or not _openai_client:
         return existing_sections
 
-    excerpt = (context_excerpt or "").strip()
-    if not excerpt:
+    experience_excerpt = (context_excerpt or "").strip()
+    financial_excerpt = (financial_context_excerpt or "").strip()
+    if not experience_excerpt and not financial_excerpt:
         return existing_sections
 
     max_chars = settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS
+    budget = max_chars // 2 if experience_excerpt and financial_excerpt else max_chars
     regex_hints = _serialize_regex_hints(existing_sections)
     prompt = _build_prompt(
         tender_external_id=tender_external_id,
         object_text=object_text or "",
-        context_excerpt=excerpt[:max_chars],
+        experience_excerpt=experience_excerpt[:budget],
+        financial_excerpt=financial_excerpt[:budget],
         regex_hints=regex_hints,
     )
 
@@ -220,7 +291,7 @@ def enrich_requirements_with_llm(
                     "role": "system",
                     "content": (
                         "Eres un analista senior de licitaciones públicas colombianas (SECOP). "
-                        "Interpretas pliegos de condiciones y redactas requisitos de experiencia "
+                        "Interpretas pliegos de condiciones y redactas requisitos de habilitación "
                         "de forma clara para empresas constructoras e interventoras. "
                         "Responde únicamente JSON válido."
                     ),
@@ -228,7 +299,7 @@ def enrich_requirements_with_llm(
                 {"role": "user", "content": prompt},
             ],
             temperature=0.1,
-            max_tokens=2000,
+            max_tokens=2500,
             response_format={"type": "json_object"},
         )
         payload = _parse_json_content(response.choices[0].message.content or "{}")
@@ -248,5 +319,14 @@ def enrich_requirements_with_llm(
         )
         regex_items = existing_sections.get(section_key, [])
         merged[section_key] = _merge_with_regex_fallback(accepted, regex_items)
+
+    for section_key in LLM_FINANCIAL_SECTIONS:
+        accepted = _accept_llm_items(
+            section_key,
+            llm_sections.get(section_key, []),
+            min_confidence=min_confidence,
+        )
+        regex_items = existing_sections.get(section_key, [])
+        merged[section_key] = _merge_financial_with_regex_priority(accepted, regex_items)
 
     return merged

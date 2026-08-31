@@ -14,8 +14,8 @@ _SECTION_MARKERS: tuple[str, ...] = (
     "3.8 exigencias minimas de la experiencia",
     "3.8.1 exigencia minima de la experiencia del proponente",
     "3.5 experiencia",
-    "3.5.9 relacion de los contratos frente al presupuesto oficial",
     "valor minimo a certificar",
+    "numero de contratos",
     "requisitos de experiencia son",
     "experiencia general",
     "experiencia especifica",
@@ -157,8 +157,8 @@ _EXPERIENCE_MARKERS: tuple[str, ...] = (
     "3.8 exigencias minimas de la experiencia",
     "3.8.1 exigencia minima de la experiencia del proponente",
     "3.5 experiencia",
-    "3.5.9 relacion de los contratos frente al presupuesto oficial",
     "valor minimo a certificar",
+    "numero de contratos",
     "requisitos de experiencia son",
     "experiencia general",
     "experiencia especifica",
@@ -242,6 +242,94 @@ def select_experience_text_for_llm(
         anexo_excerpt = _select_experience_markers_text(anexo_text, min(budget, 4_000))
         if anexo_excerpt.strip():
             parts.append(anexo_excerpt)
+
+    combined = "\n\n".join(parts)
+    return combined[:max_chars]
+
+
+_FINANCIAL_MARKERS: tuple[str, ...] = (
+    "solvencia economica y financiera",
+    "capacidad financiera",
+    "indicadores financieros",
+    "3.5 capacidad financiera",
+    "3.6 capital de trabajo",
+    "3.7 capacidad organizacional",
+    "matriz 2 - indicadores",
+    "indice de liquidez",
+    "liquidez corriente",
+    "indice de endeudamiento",
+    "cobertura de intereses",
+    "capital de trabajo disponible",
+)
+
+
+def _select_financial_markers_text(text: str, max_chars: int) -> str:
+    if not text or len(text) <= max_chars:
+        return text
+
+    normalized = normalize_text(text)
+    ranges: list[tuple[int, int]] = []
+    for marker in _FINANCIAL_MARKERS:
+        for match in re.finditer(re.escape(marker), normalized):
+            raw_start = max(0, int(match.start() * len(text) / max(len(normalized), 1)) - 400)
+            raw_end = min(
+                len(text),
+                int(match.end() * len(text) / max(len(normalized), 1)) + 4_500,
+            )
+            ranges.append((raw_start, raw_end))
+
+    if not ranges:
+        return text[:max_chars]
+
+    merged = _merge_ranges(ranges)
+    chunks: list[str] = []
+    total = 0
+    for start, end in merged:
+        chunk = text[start:end]
+        if not chunk.strip():
+            continue
+        if total + len(chunk) > max_chars:
+            remaining = max_chars - total
+            if remaining <= 0:
+                break
+            chunk = chunk[:remaining]
+        chunks.append(chunk)
+        total += len(chunk)
+        if total >= max_chars:
+            break
+    return "\n\n".join(chunks) if chunks else text[:max_chars]
+
+
+def select_financial_text_for_llm(
+    pages: list[tuple[int, str]] | None,
+    pliego_text: str,
+    max_chars: int,
+) -> str:
+    """Build a compact excerpt for LLM enrichment (financial solvency sections only)."""
+    budget = max_chars
+    parts: list[str] = []
+
+    if pages:
+        grouped_pages = locate_pages_from_toc(pages)
+        financial_pages = grouped_pages.get("financiero", [])
+        if financial_pages:
+            refined = refine_page_window_with_heading(
+                pages,
+                financial_pages,
+                (
+                    "solvencia economica y financiera",
+                    "capacidad financiera",
+                    "indicadores financieros",
+                    "capacidad organizacional",
+                ),
+            )
+            pliego_excerpt = select_text_from_pages(pages, sorted(refined), budget)
+            if pliego_excerpt.strip():
+                parts.append(pliego_excerpt)
+                budget = max(0, budget - len(pliego_excerpt))
+
+    if not parts and pliego_text.strip() and budget > 0:
+        parts.append(_select_financial_markers_text(pliego_text, budget))
 
     combined = "\n\n".join(parts)
     return combined[:max_chars]

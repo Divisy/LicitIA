@@ -103,18 +103,46 @@ def _merge_items(existing: list[RequirementItem], new_items: list[RequirementIte
     return merged
 
 
-def extract_experience_value_tiers(normalized: str) -> list[dict[str, Any]]:
-    """Parse contract-count tier table (% PO in SMMLV) when the pliego defines it explicitly."""
-    has_table_context = bool(
-        re.search(
-            r"relacion\s+de\s+los\s+contratos\s+frente\s+al\s+presupuesto\s+oficial|"
-            r"numero\s+de\s+contratos\s+con\s+los\s+cuales\s+el\s+proponente\s+cumple",
-            normalized,
-        )
-    )
-    if not has_table_context:
-        return []
+def _general_experience_region(normalized: str) -> str:
+    """Text window likely describing general experience (before specific matrix rows)."""
+    start_candidates: list[int] = []
+    for marker in (
+        "3.5 experiencia",
+        "exigencia minima de la experiencia",
+        "experiencia general",
+        "capacidad de experiencia",
+    ):
+        index = normalized.find(marker)
+        if index >= 0:
+            start_candidates.append(index)
+    start = min(start_candidates) if start_candidates else 0
+    end_match = re.search(r"\bespecifica\s+con la sumatoria", normalized[start:])
+    end = start + end_match.start() if end_match else len(normalized)
+    return normalized[start:end]
 
+
+def _specific_experience_region(normalized: str) -> str:
+    """Collect paragraphs around experiencia específica / matriz markers."""
+    chunks: list[str] = []
+    for marker in (
+        "experiencia especifica",
+        "experiencia específica",
+        "tipo de experiencia requisito",
+    ):
+        for match in re.finditer(re.escape(marker), normalized):
+            start = max(0, match.start() - 80)
+            end = min(len(normalized), match.end() + 1600)
+            chunks.append(normalized[start:end])
+    for match in re.finditer(r"\bespecifica\b", normalized):
+        start = match.start()
+        end = min(len(normalized), match.start() + 1600)
+        chunk = normalized[start:end]
+        if chunk not in chunks:
+            chunks.append(chunk)
+    return " ".join(chunks)
+
+
+def _parse_tier_rows(text: str) -> list[dict[str, Any]]:
     tier_patterns: tuple[tuple[str, str], ...] = (
         (r"de\s+1\s+hasta\s+2\s+(\d{2,3})\s*%", "1-2"),
         (r"de\s+3\s+hasta\s+4\s+(\d{2,3})\s*%", "3-4"),
@@ -125,7 +153,7 @@ def extract_experience_value_tiers(normalized: str) -> list[dict[str, Any]]:
     for pattern, contract_range in tier_patterns:
         if contract_range in seen_ranges:
             continue
-        match = re.search(pattern, normalized)
+        match = re.search(pattern, text)
         if not match:
             continue
         percentage = float(match.group(1))
@@ -133,49 +161,153 @@ def extract_experience_value_tiers(normalized: str) -> list[dict[str, Any]]:
             continue
         tiers.append({"contract_range": contract_range, "percentage": percentage})
         seen_ranges.add(contract_range)
-
-    if len(tiers) < 2:
-        return []
-
     order = {"1-2": 0, "3-4": 1, "1-5": 2}
     tiers.sort(key=lambda tier: order.get(str(tier["contract_range"]), 99))
     return tiers
 
 
-def _extract_contracts_minimum_item(
-    normalized: str,
+def extract_experience_value_tiers(normalized: str) -> list[dict[str, Any]]:
+    """Parse tiered 'valor mínimo a certificar' tables (% PO) by contract count."""
+    anchor = re.search(r"valor\s+minimo\s+a\s+certificar", normalized)
+    if anchor:
+        window = normalized[anchor.start() : min(len(normalized), anchor.start() + 900)]
+        tiers = _parse_tier_rows(window)
+        if len(tiers) >= 2:
+            return tiers
+
+    tiers = _parse_tier_rows(normalized)
+    if len(tiers) >= 2:
+        return tiers
+    return []
+
+
+def _extract_contracts_for_experience(
+    region: str,
     source_document: str,
     source_document_id: Optional[UUID],
+    *,
+    from_general: bool = False,
 ) -> Optional[RequirementItem]:
-    patterns = (
-        r"minimo\s+uno\s*\(\s*1\s*\)\s+y\s+maximo\s+cinco\s*\(\s*5\s*\)\s+contratos",
-        r"al\s+menos\s+un\s*\(\s*1\s*\)\s+contrato\s+y\s+hasta\s+un\s+maximo\s+de\s+cinco\s*\(\s*5\s*\)",
-        r"se\s+deben\s+presentar\s+al\s+menos\s+un\s*\(\s*1\s*\)\s+contrato\s+y\s+hasta\s+un\s+maximo\s+de\s+cinco\s*\(\s*5\s*\)",
+    if not region.strip():
+        return None
+
+    patterns: tuple[tuple[str, int, int, str], ...] = (
+        (
+            r"minimo\s+(?:uno|\(?\s*1\s*\)?)\s*(?:\(\s*1\s*\))?\s*y\s+maximo\s+"
+            r"(?:cinco|\(?\s*5\s*\)?)\s*(?:\(\s*5\s*\))?\s+contratos",
+            1,
+            5,
+            "Mínimo 1 y máximo 5 contratos",
+        ),
+        (
+            r"al\s+menos\s+un\s*\(\s*1\s*\)\s+contrato\s+y\s+hasta\s+un\s+maximo\s+de\s+cinco\s*\(\s*5\s*\)",
+            1,
+            5,
+            "Mínimo 1 y máximo 5 contratos",
+        ),
+        (
+            r"se\s+deben\s+presentar\s+al\s+menos\s+un\s*\(\s*1\s*\)\s+contrato\s+y\s+hasta\s+"
+            r"un\s+maximo\s+de\s+cinco\s*\(\s*5\s*\)",
+            1,
+            5,
+            "Mínimo 1 y máximo 5 contratos",
+        ),
+        (
+            r"(?:uno o hasta|hasta)\s+maximo\s+dos\s*\(\s*2\s*\)\s+de los contratos\s+validos"
+            r"(?:\s+aportados\s+como\s+experiencia\s+general)?",
+            1,
+            2,
+            "1 o 2 contratos de la experiencia general",
+        ),
+        (
+            r"con\s+la\s+sumatoria\s+de\s+uno\s+o\s+hasta\s+maximo\s+dos\s*\(\s*2\s*\)\s+"
+            r"de los contratos\s+validos",
+            1,
+            2,
+            "1 o 2 contratos de la experiencia general",
+        ),
     )
-    for pattern in patterns:
-        match = re.search(pattern, normalized)
-        if match:
-            return _item(
-                key="contracts_minimum",
-                label="Número de contratos",
-                value={"minimum": 1, "maximum": 5},
-                display_value="Mínimo 1 y máximo 5 contratos",
-                source_document=source_document,
-                source_document_id=source_document_id,
-                evidence=_snippet(normalized, match.start(), match.end() + 80),
-                confidence=0.9,
-            )
+
+    for pattern, minimum, maximum, display in patterns:
+        match = re.search(pattern, region)
+        if not match:
+            continue
+        if from_general and minimum == 1 and maximum == 2:
+            continue
+        value: dict[str, Any] = {"minimum": minimum, "maximum": maximum}
+        if not from_general and minimum == 1 and maximum == 2:
+            value["from_general_experience"] = True
+        return _item(
+            key="contracts_minimum",
+            label="Número de contratos",
+            value=value,
+            display_value=display,
+            source_document=source_document,
+            source_document_id=source_document_id,
+            evidence=_snippet(region, match.start(), match.end() + 80),
+            confidence=0.9,
+        )
     return None
 
 
-def _append_general_experience_supplements(
-    items: list[RequirementItem],
-    normalized: str,
+def _extract_min_certified_percentage_item(
+    region: str,
     source_document: str,
     source_document_id: Optional[UUID],
+    *,
+    item_key: str = "min_percentage_budget",
+    label: str = "Valor mínimo a certificar",
+) -> Optional[RequirementItem]:
+    """Single % PO minimum when there is no multi-row tier table."""
+    if extract_experience_value_tiers(region):
+        return None
+
+    patterns = (
+        r"valor\s+minimo\s+a\s+certificar[^%]{0,220}?"
+        r"(\d{1,3}(?:[.,]\d+)?)\s*(?:%|por ciento)",
+        r"cien\s+por\s+ciento\s*\(\s*(\d{1,3})\s*%",
+        r"contratos?\s+aportados?\s+como\s+experiencia[^%]{0,160}?(\d{1,3})\s*%",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, region)
+        if not match:
+            continue
+        percentage = float(match.group(1).replace(",", "."))
+        if not 10 <= percentage <= 200:
+            continue
+        smmlv = bool(re.search(r"smmlv|salario\s+minimo", region[match.start() : match.end() + 120]))
+        display = f"{percentage:g}% del Presupuesto Oficial"
+        if smmlv:
+            display += " (en SMMLV)"
+        return _item(
+            key=item_key,
+            label=label,
+            value=percentage,
+            display_value=display,
+            source_document=source_document,
+            source_document_id=source_document_id,
+            evidence=_snippet(region, match.start(), match.end() + 80),
+            confidence=0.88,
+        )
+    return None
+
+
+def _append_certification_supplements(
+    items: list[RequirementItem],
+    region: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+    *,
+    section: str,
 ) -> list[RequirementItem]:
-    """Add pliego-specific supplements for experiencia general only (e.g. CCE tier table)."""
-    tiers = extract_experience_value_tiers(normalized)
+    """Attach número de contratos and valor mínimo a certificar within a section region."""
+    if not region.strip():
+        return items
+
+    from_general = section == "general"
+    percentage_key = "min_percentage_budget" if from_general else "specific_min_percentage"
+
+    tiers = extract_experience_value_tiers(region)
     if tiers and not any(item["key"] == "experience_value_tiers" for item in items):
         percentages = [f"{tier['percentage']:g}%" for tier in tiers]
         items.append(
@@ -186,7 +318,7 @@ def _append_general_experience_supplements(
                 display_value=f"Según nº de contratos: {' / '.join(percentages)} del PO (SMMLV)",
                 source_document=source_document,
                 source_document_id=source_document_id,
-                evidence="Tabla de valor mínimo a certificar (% del Presupuesto Oficial en SMMLV)",
+                evidence="Valor mínimo a certificar según número de contratos (% del PO)",
                 confidence=0.92,
             )
         )
@@ -194,7 +326,7 @@ def _append_general_experience_supplements(
             items.append(
                 _item(
                     key="min_amount_smmlv",
-                    label="Monto mínimo en SMMLV",
+                    label="Monto en SMMLV",
                     value="smmlv",
                     display_value="Expresado en SMMLV",
                     source_document=source_document,
@@ -203,9 +335,22 @@ def _append_general_experience_supplements(
                     confidence=0.88,
                 )
             )
+    elif not any(item["key"] in {percentage_key, "experience_value_tiers"} for item in items):
+        single_pct = _extract_min_certified_percentage_item(
+            region,
+            source_document,
+            source_document_id,
+            item_key=percentage_key,
+            label="Valor mínimo a certificar",
+        )
+        if single_pct:
+            items.append(single_pct)
 
-    contracts_item = _extract_contracts_minimum_item(
-        normalized, source_document, source_document_id
+    contracts_item = _extract_contracts_for_experience(
+        region,
+        source_document,
+        source_document_id,
+        from_general=from_general,
     )
     if contracts_item and not any(item["key"] == "contracts_minimum" for item in items):
         items.append(contracts_item)
@@ -217,14 +362,12 @@ def _append_general_experience_supplements(
         for tier in (item.get("value") or [])
         if isinstance(tier, dict) and tier.get("percentage") is not None
     }
+    percentage_keys = {percentage_key, "min_percentage_budget", "specific_min_percentage"}
     if tier_percentages:
         items = [
             item
             for item in items
-            if not (
-                item["key"] == "min_percentage_budget"
-                and item.get("value") in tier_percentages
-            )
+            if not (item["key"] in percentage_keys and item.get("value") in tier_percentages)
         ]
 
     return items
@@ -291,29 +434,6 @@ def _format_specific_area_phases_display(phases: list[dict[str, Any]]) -> str:
             f"{label}: ≥{pct:g}% del área ({minimum:g} m² de {total:g} m²)"
         )
     return "; ".join(parts)
-
-
-def _extract_specific_contracts_minimum_item(
-    normalized: str,
-    source_document: str,
-    source_document_id: Optional[UUID],
-) -> Optional[RequirementItem]:
-    match = re.search(
-        r"(?:uno o hasta|hasta)\s+maximo\s+dos\s*\(\s*2\s*\)\s+de los contratos\s+validos\s+aportados\s+como\s+experiencia\s+general",
-        normalized,
-    )
-    if not match:
-        return None
-    return _item(
-        key="contracts_minimum",
-        label="Número de contratos",
-        value={"minimum": 1, "maximum": 2, "from_general_experience": True},
-        display_value="1 o 2 contratos de la experiencia general",
-        source_document=source_document,
-        source_document_id=source_document_id,
-        evidence=_snippet(normalized, match.start(), match.end() + 80),
-        confidence=0.92,
-    )
 
 
 def _is_weak_specific_scope(scope: str) -> bool:
@@ -503,7 +623,14 @@ def extract_experiencia_general(
                 )
             )
 
-    return _append_general_experience_supplements(items, normalized, source_document, source_document_id)
+    general_region = _general_experience_region(normalized)
+    return _append_certification_supplements(
+        items,
+        general_region,
+        source_document,
+        source_document_id,
+        section="general",
+    )
 
 
 def extract_experiencia_especifica(
@@ -544,12 +671,14 @@ def extract_experiencia_especifica(
                 confidence=0.9,
             )
         )
-        contracts_item = _extract_specific_contracts_minimum_item(
-            normalized, source_document, source_document_id
+        specific_region = _specific_experience_region(normalized)
+        return _append_certification_supplements(
+            items,
+            specific_region,
+            source_document,
+            source_document_id,
+            section="specific",
         )
-        if contracts_item:
-            items.append(contracts_item)
-        return items
 
     specific_block = _extract_labeled_block(
         normalized,
@@ -699,7 +828,14 @@ def extract_experiencia_especifica(
                 )
             )
 
-    return items
+    specific_region = _specific_experience_region(normalized)
+    return _append_certification_supplements(
+        items,
+        specific_region,
+        source_document,
+        source_document_id,
+        section="specific",
+    )
 
 
 def _parse_threshold(raw: str) -> Optional[float]:
@@ -712,6 +848,690 @@ def _parse_threshold(raw: str) -> Optional[float]:
         return None
 
 
+def _financial_cluster_region(normalized: str) -> str:
+    """Window around clustered financial indicator mentions (traditional pliegos)."""
+    markers = (
+        "indice de liquidez",
+        "liquidez corriente",
+        "activo corriente/pasivo corriente",
+        "activo corriente / pasivo corriente",
+        "endeudamiento",
+        "cobertura de intereses",
+        "capital de trabajo",
+        "capacidad financiera",
+        "solvencia economica",
+        "rentabilidad del patrimonio",
+        "rentabilidad del activo",
+    )
+    hits: list[int] = []
+    for marker in markers:
+        for match in re.finditer(re.escape(marker), normalized):
+            snippet = normalized[match.start() : match.end() + 30]
+            if re.search(r"\.{8,}", snippet):
+                continue
+            hits.append(match.start())
+    if len(hits) < 2:
+        return ""
+    start = max(0, min(hits) - 300)
+    end = min(len(normalized), max(hits) + 4000)
+    return normalized[start:end]
+
+
+def _resolve_financial_search_region(normalized: str) -> str:
+    """Alias kept for tests — prefer _financial_pliego_region in new code."""
+    return _financial_pliego_region(normalized)
+
+
+FINANCIAL_REGION_MARKERS: tuple[str, ...] = (
+    "solvencia economica y financiera",
+    "capacidad financiera",
+    "indicadores financieros",
+    "3.5 capacidad financiera",
+    "3.6 capital de trabajo",
+    "3.7 capacidad organizacional",
+    "matriz 2 - indicadores",
+    "indice de liquidez",
+    "liquidez corriente",
+)
+
+
+def _financial_pliego_region(normalized: str) -> str:
+    """Text window for financial solvency (like _general_experience_region for experience)."""
+    section = _financial_section_region(normalized)
+    cluster = _financial_cluster_region(normalized)
+    if section and cluster:
+        return section if len(section) >= len(cluster) else cluster
+    return section or cluster or ""
+
+
+def _append_financial_supplements(
+    items: list[RequirementItem],
+    region: str,
+    normalized: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+) -> list[RequirementItem]:
+    """Attach structured financial metrics from the pliego region (mirrors certification supplements)."""
+    effective_region = region.strip() or _financial_pliego_region(normalized)
+    if not effective_region.strip():
+        effective_region = normalized[:80_000]
+
+    matriz_2_referenced = bool(re.search(r"matriz\s*2\b", effective_region))
+
+    for item in _extract_financial_indicator_items(
+        effective_region,
+        source_document,
+        source_document_id,
+        matriz_2_referenced=matriz_2_referenced,
+    ):
+        if not any(existing["key"] == item["key"] for existing in items):
+            items.append(item)
+
+    org_start = effective_region.find("3.7 capacidad organizacional")
+    if org_start >= 0:
+        org_region = effective_region[org_start:]
+        org_matriz = bool(re.search(r"matriz\s*2\b", org_region))
+        for item in _extract_financial_indicator_items(
+            org_region,
+            source_document,
+            source_document_id,
+            matriz_2_referenced=org_matriz or matriz_2_referenced,
+            section="organizational",
+        ):
+            if not any(existing["key"] == item["key"] for existing in items):
+                items.append(item)
+
+    capital_item = _extract_capital_trabajo_item(normalized, source_document, source_document_id)
+    if capital_item:
+        items = [item for item in items if item["key"] != "capital_trabajo"]
+        items.append(capital_item)
+
+    if not any(item["key"] == "accreditation_method" for item in items):
+        accreditation = _extract_financial_accreditation_item(
+            effective_region, source_document, source_document_id
+        )
+        if not accreditation:
+            accreditation = _extract_financial_accreditation_item(
+                normalized, source_document, source_document_id
+            )
+        if accreditation:
+            items.append(accreditation)
+
+    if not any(item["key"] == "financial_exemptions" for item in items):
+        exemptions = _extract_financial_exemptions_item(
+            normalized, source_document, source_document_id
+        )
+        if exemptions:
+            items.append(exemptions)
+
+    if matriz_2_referenced and not any(item["key"] == "matriz_2_reference" for item in items):
+        items.append(
+            _item(
+                key="matriz_2_reference",
+                label="Matriz 2",
+                value="Matriz 2 – Indicadores financieros y organizacionales",
+                display_value="Umbrales numéricos en Matriz 2 del proceso",
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence="Matriz 2 – Indicadores financieros y organizacionales",
+                confidence=0.95,
+            )
+        )
+
+    if not any(item["key"] == "qualification_score" for item in items):
+        score_match = re.search(
+            r"capacidad\s+financiera[^.\n]{0,120}"
+            r"(?:puntaje|puntuaci[oó]n)[^.\n]{0,60}"
+            r"(\d{1,3}(?:[.,]\d+)?)\s*(?:puntos?)?",
+            normalized,
+        )
+        if not score_match:
+            score_match = re.search(
+                r"solvencia[^.\n]{0,120}"
+                r"(?:puntaje|puntuaci[oó]n|calificaci[oó]n)[^.\n]{0,80}"
+                r"(\d{1,3}(?:[.,]\d+)?)\s*(?:puntos?)?",
+                effective_region,
+            )
+        if score_match:
+            score = float(score_match.group(1).replace(",", "."))
+            items.append(
+                _item(
+                    key="qualification_score",
+                    label="Puntaje financiero",
+                    value=score,
+                    display_value=f"Hasta {score:g} puntos",
+                    source_document=source_document,
+                    source_document_id=source_document_id,
+                    evidence=_snippet(normalized, score_match.start(), score_match.end() + 60),
+                    confidence=0.75,
+                )
+            )
+
+    return items
+
+
+_FINANCIAL_BLOCK_MARKERS: tuple[tuple[str, str], ...] = (
+    ("liquidez_corriente", r"indice\s+de\s+liquidez|liquidez\s+corriente|activo\s+corriente\s*/\s*pasivo\s+corriente"),
+    ("endeudamiento", r"\bendeudamiento\b|pasivo\s+total\s*/\s*activo\s+total"),
+    (
+        "cobertura_intereses",
+        r"cobertura\s+de\s+intereses|razon\s+de\s+cobertura\s+de\s+intereses",
+    ),
+    ("capital_trabajo", r"capital\s+de\s+trabajo"),
+    ("rentabilidad_patrimonio", r"rentabilidad\s+del\s+patrimonio|rentabilidad\s+sobre\s+patrimonio"),
+    ("rentabilidad_activo", r"rentabilidad\s+del\s+activo"),
+)
+
+
+def _split_financial_blocks(region: str) -> dict[str, str]:
+    markers: list[tuple[int, str]] = []
+    for key, pattern in _FINANCIAL_BLOCK_MARKERS:
+        for match in re.finditer(pattern, region):
+            snippet = region[match.start() : match.end() + 40]
+            if re.search(r"\.{8,}", snippet):
+                continue
+            markers.append((match.start(), key))
+            break
+
+    markers.sort(key=lambda entry: entry[0])
+    blocks: dict[str, str] = {}
+    for index, (start, key) in enumerate(markers):
+        end = markers[index + 1][0] if index + 1 < len(markers) else min(len(region), start + 550)
+        blocks[key] = region[start:end]
+    return blocks
+
+
+def _parse_cop_amount(raw: str) -> Optional[int]:
+    digits = re.sub(r"\D", "", raw)
+    if not digits or len(digits) < 6:
+        return None
+    try:
+        return int(digits)
+    except ValueError:
+        return None
+
+
+def _parse_indicator_threshold(
+    block: str,
+    key: str,
+    default_operator: str,
+) -> tuple[Optional[str], Optional[float], dict[str, Any]]:
+    extras: dict[str, Any] = {}
+
+    if key == "capital_trabajo":
+        cop_match = re.search(
+            r"(?:mayor\s+o\s+igual\s+a|>=)\s*\$?\s*([\d]{1,3}(?:\.\d{3})+|\d{6,})",
+            block,
+        )
+        if cop_match:
+            amount = _parse_cop_amount(cop_match.group(1))
+            if amount:
+                extras["min_amount_cop"] = amount
+                return ">=", float(amount), extras
+
+    lte_pct = re.search(r"menor\s+o\s+igual\s+a\s*(?:al\s+)?(\d{1,3})\s*%", block)
+    if lte_pct:
+        percentage = float(lte_pct.group(1))
+        threshold = percentage / 100 if percentage > 1 else percentage
+        return "<=", threshold, extras
+
+    lte_ratio = re.search(r"menor\s+o\s+igual\s+a\s*(0[.,]\d+)", block)
+    if lte_ratio and key == "endeudamiento":
+        threshold = _parse_threshold(lte_ratio.group(1))
+        if threshold is not None:
+            return "<=", threshold, extras
+
+    gte_match = re.search(
+        r"mayor\s+o\s+igual\s+a\s*(\d{1,3}(?:[.,]\d+)?)",
+        block,
+    )
+    if gte_match:
+        threshold = _parse_threshold(gte_match.group(1))
+        if threshold is not None:
+            return ">=", threshold, extras
+
+    if default_operator:
+        fallback = _find_operator_threshold(block)
+        if fallback:
+            operator, threshold = fallback
+            if key == "endeudamiento" and operator == ">=" and threshold <= 2:
+                pass
+            else:
+                return operator, threshold, extras
+
+    return None, None, extras
+
+
+def _financial_section_region(normalized: str) -> str:
+    """Body text for capacidad financiera / organizacional (§3.5–§3.7.1), excluding TOC."""
+    start = -1
+    for match in re.finditer(r"3\.5\s+capacidad financiera", normalized):
+        window = normalized[match.start() : match.start() + 600]
+        if re.search(r"proponentes\s+deberan|matriz\s*2", window):
+            start = match.start()
+            break
+    if start < 0:
+        for marker in ("solvencia economica y financiera", "indicadores financieros"):
+            idx = normalized.find(marker)
+            if idx >= 0:
+                start = idx
+                break
+    if start < 0:
+        return ""
+
+    end = len(normalized)
+    for marker in (
+        "3.8 exigencias minimas de la experiencia",
+        "3.8 experiencia",
+        "capitulo iv. criterios de evaluacion",
+    ):
+        idx = normalized.find(marker, start + 100)
+        if idx >= 0:
+            end = min(end, idx)
+    return normalized[start:end]
+
+
+def _capital_trabajo_region(normalized: str) -> str:
+    anchor = re.search(r"ct\s*=\s*ac\s*-\s*pc", normalized)
+    if anchor:
+        start = max(0, anchor.start() - 400)
+    else:
+        match = re.search(r"3\.6\s+capital de trabajo", normalized)
+        if not match:
+            return ""
+        start = match.start()
+    end = normalized.find("3.7 capacidad organizacional", start)
+    if end < 0:
+        end = min(len(normalized), start + 2800)
+    return normalized[start:end]
+
+
+def _find_operator_threshold(region: str) -> Optional[tuple[str, float]]:
+    patterns: tuple[tuple[str, str], ...] = (
+        (r"(?:>=?|≥|mayor\s+o\s+igual\s+a)\s*([\d]+(?:[.,]\d+)?)", ">="),
+        (r"(?:<=?|≤|menor\s+o\s+igual\s+a)\s*([\d]+(?:[.,]\d+)?)", "<="),
+    )
+    for pattern, operator in patterns:
+        match = re.search(pattern, region)
+        if not match:
+            continue
+        threshold = _parse_threshold(match.group(1))
+        if threshold is not None:
+            return operator, threshold
+    return None
+
+
+def _format_threshold_display(operator: str, threshold: float) -> str:
+    symbol = "≥" if operator == ">=" else "≤"
+    return f"{symbol} {threshold:g}".replace(".", ",") if "," in str(threshold) else f"{symbol} {threshold:g}"
+
+
+def _build_financial_indicator_item(
+    *,
+    key: str,
+    label: str,
+    formula: str,
+    operator: Optional[str],
+    threshold: Optional[float],
+    threshold_note: Optional[str],
+    source_document: str,
+    source_document_id: Optional[UUID],
+    evidence: str,
+    confidence: float,
+    extras: Optional[dict[str, Any]] = None,
+) -> RequirementItem:
+    value: dict[str, Any] = {
+        "indicator": key,
+        "formula": formula,
+        "requirement_type": "habilitante",
+    }
+    if extras:
+        value.update(extras)
+    if operator:
+        value["operator"] = operator
+    if threshold is not None:
+        value["threshold"] = threshold
+    if threshold_note:
+        value["threshold_note"] = threshold_note
+
+    min_cop = value.get("min_amount_cop")
+    if isinstance(min_cop, (int, float)) and min_cop > 0:
+        cop_display = f"${int(min_cop):,}".replace(",", ".")
+        display_value = f"{formula} ≥ {cop_display}"
+    elif operator and threshold is not None:
+        if key == "endeudamiento" and threshold <= 1:
+            display_value = f"{formula} {_format_threshold_display(operator, threshold * 100)}%"
+            if operator == "<=":
+                display_value = f"{formula} ≤ {threshold * 100:g}%"
+        else:
+            display_value = f"{formula} {_format_threshold_display(operator, threshold)}"
+    elif threshold_note:
+        display_value = f"{formula} — {threshold_note}"
+    else:
+        display_value = formula
+
+    return _item(
+        key=key,
+        label=label,
+        value=value,
+        display_value=display_value,
+        source_document=source_document,
+        source_document_id=source_document_id,
+        evidence=evidence,
+        confidence=confidence,
+    )
+
+
+_FINANCIAL_INDICATOR_SPECS: tuple[dict[str, Any], ...] = (
+    {
+        "key": "liquidez_corriente",
+        "label": "Índice de liquidez",
+        "formula": "AC / PC",
+        "default_operator": ">=",
+        "patterns": (r"indice\s+de\s+liquidez", r"liquidez\s+corriente"),
+    },
+    {
+        "key": "endeudamiento",
+        "label": "Índice de endeudamiento",
+        "formula": "PT / AT",
+        "default_operator": "<=",
+        "patterns": (r"indice\s+de\s+endeudamiento", r"nivel\s+de\s+endeudamiento", r"\bendeudamiento\b"),
+    },
+    {
+        "key": "cobertura_intereses",
+        "label": "Razón de cobertura de intereses",
+        "formula": "UO / Gastos por intereses",
+        "default_operator": ">=",
+        "patterns": (
+            r"razon\s+de\s+cobertura\s+de\s+intereses",
+            r"cobertura\s+de\s+intereses",
+            r"utilidad\s+operacional\s*/\s*gastos?\s+por\s+intereses?",
+        ),
+    },
+    {
+        "key": "rentabilidad_patrimonio",
+        "label": "Rentabilidad del patrimonio (ROE)",
+        "formula": "UO / Patrimonio",
+        "default_operator": ">=",
+        "patterns": (r"rentabilidad\s+del\s+patrimonio", r"rentabilidad\s+sobre\s+patrimonio"),
+    },
+    {
+        "key": "rentabilidad_activo",
+        "label": "Rentabilidad del activo (ROA)",
+        "formula": "UO / Activo total",
+        "default_operator": ">=",
+        "patterns": (r"rentabilidad\s+del\s+activo",),
+    },
+)
+
+
+def _extract_financial_indicator_items(
+    region: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+    *,
+    matriz_2_referenced: bool,
+    section: str = "financial",
+) -> list[RequirementItem]:
+    items: list[RequirementItem] = []
+    seen: set[str] = set()
+    blocks = _split_financial_blocks(region)
+
+    matriz_defaults = {
+        "liquidez_corriente",
+        "endeudamiento",
+        "cobertura_intereses",
+    }
+    if section == "organizational":
+        matriz_defaults = {"rentabilidad_patrimonio", "rentabilidad_activo"}
+
+    for spec in _FINANCIAL_INDICATOR_SPECS:
+        key = str(spec["key"])
+        if section == "financial" and key in {"rentabilidad_patrimonio", "rentabilidad_activo"}:
+            continue
+        if section == "organizational" and key not in {"rentabilidad_patrimonio", "rentabilidad_activo"}:
+            continue
+        if key == "capital_trabajo":
+            continue
+
+        block = blocks.get(key, "")
+        match: Optional[re.Match[str]] = None
+        if not block:
+            for pattern in spec["patterns"]:
+                for candidate in re.finditer(pattern, region):
+                    snippet = region[candidate.start() : candidate.end() + 40]
+                    if re.search(r"\.{8,}", snippet):
+                        continue
+                    match = candidate
+                    block = region[candidate.start() : min(len(region), candidate.end() + 400)]
+                    break
+                if match or block:
+                    break
+
+        if not block and not (matriz_2_referenced and key in matriz_defaults):
+            continue
+
+        threshold_note: Optional[str] = None
+        default_operator = str(spec["default_operator"])
+        operator: Optional[str] = default_operator
+        threshold: Optional[float] = None
+        extras: dict[str, Any] = {}
+
+        if block:
+            parsed_operator, parsed_threshold, parsed_extras = _parse_indicator_threshold(
+                block,
+                key,
+                default_operator,
+            )
+            if parsed_operator:
+                operator = parsed_operator
+            if parsed_threshold is not None:
+                threshold = parsed_threshold
+            extras = parsed_extras
+            block_start = region.find(block[: min(30, len(block))])
+            evidence = _snippet(region, max(0, block_start), block_start + len(block))
+        else:
+            evidence = "Indicadores definidos en Matriz 2 – Indicadores financieros y organizacionales"
+
+        if threshold is None and matriz_2_referenced and key in matriz_defaults:
+            threshold_note = "Umbrales según Matriz 2 (ver anexo del proceso)"
+
+        if key in seen:
+            continue
+        seen.add(key)
+
+        items.append(
+            _build_financial_indicator_item(
+                key=key,
+                label=str(spec["label"]),
+                formula=str(spec["formula"]),
+                operator=operator,
+                threshold=threshold,
+                threshold_note=threshold_note,
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence=evidence,
+                confidence=0.9 if threshold is not None or extras else 0.82,
+                extras=extras,
+            )
+        )
+
+    return items
+
+
+def _extract_capital_trabajo_item(
+    normalized: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+) -> Optional[RequirementItem]:
+    blocks = _split_financial_blocks(normalized)
+    traditional_block = blocks.get("capital_trabajo", "")
+    if traditional_block:
+        operator, threshold, extras = _parse_indicator_threshold(
+            traditional_block,
+            "capital_trabajo",
+            ">=",
+        )
+        if extras.get("min_amount_cop") or threshold is not None:
+            block_start = normalized.find(traditional_block[: min(30, len(traditional_block))])
+            return _build_financial_indicator_item(
+                key="capital_trabajo",
+                label="Capital de trabajo",
+                formula="CT = AC − PC",
+                operator=operator or ">=",
+                threshold=threshold,
+                threshold_note=None,
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence=_snippet(normalized, max(0, block_start), block_start + len(traditional_block)),
+                confidence=0.92,
+                extras={**extras, "compare_to": "mínimo exigido"},
+            )
+
+    region = _capital_trabajo_region(normalized)
+    if not region:
+        inline = re.search(
+            r"capital\s+de\s+trabajo[^.]{0,220}(?:activo\s+corriente|ac)\s*[-–]\s*"
+            r"(?:pasivo\s+corriente|pc)[^.]{0,120}(?:mayor\s+o\s+igual|>=)",
+            normalized,
+        )
+        if inline:
+            region = normalized[max(0, inline.start() - 40) : inline.end() + 120]
+        else:
+            return None
+
+    value: dict[str, Any] = {
+        "indicator": "capital_trabajo",
+        "formula": "CT = AC − PC",
+        "operator": ">=",
+        "compare_to": "CTd",
+        "requirement_type": "habilitante",
+    }
+    display_parts = ["CT = AC − PC ≥ CTd"]
+
+    cop_match = re.search(
+        r"(?:mayor\s+o\s+igual\s+a|>=)\s*\$?\s*([\d]{1,3}(?:\.\d{3})+|\d{6,})",
+        region,
+    )
+    if cop_match:
+        amount = _parse_cop_amount(cop_match.group(1))
+        if amount:
+            value["min_amount_cop"] = amount
+            cop_display = f"${amount:,}".replace(",", ".")
+            display_parts = [f"CT = AC − PC ≥ {cop_display}"]
+
+    ctd_pct_match = re.search(
+        r"ctd\s*=\s*\(\s*poe\s*-\s*anticipo[^)]*\)\s*x\s*(\d{1,3})\s*%",
+        region,
+    )
+    if ctd_pct_match:
+        percentage = float(ctd_pct_match.group(1))
+        value["ctd_formula"] = "(POE − Anticipo) × {pct}%".format(pct=percentage)
+        value["ctd_percentage"] = percentage
+        display_parts.append(f"CTd = (POE − Anticipo) × {percentage:g}%")
+    else:
+        generic_ctd = re.search(
+            r"capital\s+de\s+trabajo\s+demandado[^.]{0,200}?(\d{1,3})\s*%",
+            region,
+        )
+        if generic_ctd:
+            percentage = float(generic_ctd.group(1))
+            value["ctd_percentage"] = percentage
+            display_parts.append(f"CTd: {percentage:g}% del PO")
+
+    if re.search(r"menor\s+a\s+doce\s*\(\s*12\s*\)\s+meses", region):
+        value["ctd_condition"] = "Plazo de ejecución < 12 meses"
+        display_parts.append("Aplica si plazo < 12 meses")
+
+    if re.search(r"no\s+excedera\s+el\s+valor\s+del\s+presupuesto\s+oficial", region):
+        value["ctd_cap"] = "No excede el Presupuesto Oficial"
+
+    anchor = re.search(r"ct\s*=\s*ac\s*-\s*pc", region)
+    evidence_start = anchor.start() if anchor else 0
+    return _item(
+        key="capital_trabajo",
+        label="Capital de trabajo",
+        value=value,
+        display_value=" · ".join(display_parts),
+        source_document=source_document,
+        source_document_id=source_document_id,
+        evidence=_snippet(region, evidence_start, evidence_start + 220),
+        confidence=0.92,
+    )
+
+
+def _extract_financial_accreditation_item(
+    region: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+) -> Optional[RequirementItem]:
+    anchor = re.search(
+        r"3\.7\.1\s+acreditacion de la capacidad financiera",
+        region,
+    )
+    if not anchor:
+        anchor = re.search(r"evaluacion financiera y organizacional", region)
+    if not anchor:
+        anchor = re.search(
+            r"registro\s+unico\s+de\s+proponentes|\brup\b",
+            region,
+        )
+    if not anchor:
+        return None
+
+    window = region[anchor.start() : min(len(region), anchor.start() + 900)]
+    uses_rup = bool(re.search(r"registro\s+unico\s+de\s+proponentes|\brup\b", window))
+    display = (
+        "Información del RUP vigente y en firme (Decreto 1082 de 2015)"
+        if uses_rup
+        else "Estados financieros y documentos del numeral 3.7.1"
+    )
+    return _item(
+        key="accreditation_method",
+        label="Cómo acreditar",
+        value=display,
+        display_value=display,
+        source_document=source_document,
+        source_document_id=source_document_id,
+        evidence=_snippet(region, anchor.start(), anchor.start() + 200),
+        confidence=0.9,
+    )
+
+
+def _extract_financial_exemptions_item(
+    region: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+) -> Optional[RequirementItem]:
+    exemptions: list[str] = []
+    if re.search(r"no\s+tiene\s+pasivos\s+corrientes[^.]{0,120}habilitado[^.]{0,80}liquidez", region):
+        exemptions.append("Sin pasivos corrientes: habilitado en liquidez")
+    if re.search(
+        r"no\s+tiene\s+gastos\s+de\s+intereses[^.]{0,160}cobertura\s+de\s+intereses",
+        region,
+    ):
+        exemptions.append(
+            "Sin gastos por intereses: habilitado en cobertura de intereses (UO ≥ 0)"
+        )
+    if re.search(r"mipyme\s+domiciliada", region):
+        exemptions.append("Mipyme: indicadores según Matriz 2 (certificado RUP)")
+
+    if not exemptions:
+        return None
+
+    display = "; ".join(exemptions)
+    return _item(
+        key="financial_exemptions",
+        label="Excepciones y casos especiales",
+        value=exemptions,
+        display_value=display,
+        source_document=source_document,
+        source_document_id=source_document_id,
+        evidence=display,
+        confidence=0.86,
+    )
+
+
 def extract_indicadores_financieros(
     text: str,
     source_document: str,
@@ -722,70 +1542,110 @@ def extract_indicadores_financieros(
 
     items: list[RequirementItem] = []
     normalized = normalize_text(text)
-    indicator_patterns: tuple[tuple[str, str, str], ...] = (
-        (r"liquidez\s+corriente", "liquidez_corriente", "Índice de liquidez corriente"),
-        (r"capital\s+de\s+trabajo", "capital_trabajo", "Capital de trabajo"),
-        (r"endeudamiento", "endeudamiento", "Índice de endeudamiento"),
-        (r"razon\s+corriente", "razon_corriente", "Razón corriente"),
-        (r"solvencia", "solvencia", "Solvencia"),
-    )
 
-    for pattern, key, label in indicator_patterns:
-        for match in re.finditer(pattern, normalized):
-            region = normalized[max(0, match.start() - 40) : match.end() + 120]
-            threshold_match = re.search(
-                r"(?:>=?|mayor\s+o\s+igual\s+a|superior\s+a|minimo|mínimo)\s*([\d.,]+)",
-                region,
-            )
-            if threshold_match:
-                threshold = _parse_threshold(threshold_match.group(1))
-                if threshold is None:
-                    display = label
-                    value = {"indicator": key}
-                else:
-                    display = f"{label} ≥ {threshold:g}"
-                    value = {"indicator": key, "operator": ">=", "threshold": threshold}
-            else:
-                display = label
-                value = {"indicator": key}
-
-            if any(item["key"] == key for item in items):
-                continue
-
+    for label, stop_labels in (
+        (
+            "solvencia economica y financiera",
+            ("experiencia general", "requisitos legales", "capitulo iv"),
+        ),
+        (
+            "capacidad financiera",
+            ("capital de trabajo", "experiencia general", "capitulo iv"),
+        ),
+        (
+            "indicadores financieros",
+            ("experiencia general", "requisitos legales"),
+        ),
+    ):
+        financial_block = _extract_labeled_block(normalized, label, stop_labels)
+        if financial_block and len(financial_block) > 40:
             items.append(
                 _item(
-                    key=key,
-                    label=label,
-                    value=value,
-                    display_value=display,
+                    key="financial_summary",
+                    label="Resumen",
+                    value=financial_block,
+                    display_value=_clean_requirement_text(financial_block, max_len=320),
                     source_document=source_document,
                     source_document_id=source_document_id,
-                    evidence=_snippet(normalized, match.start(), match.end() + 100),
-                    confidence=0.8 if threshold_match else 0.7,
+                    evidence=financial_block[:220],
+                    confidence=0.88,
                 )
             )
+            break
 
-    score_match = re.search(
-        r"(?:puntaje|puntuaci[oó]n|calificaci[oó]n)[^.\n]{0,80}"
-        r"(\d{1,3}(?:[.,]\d+)?)\s*(?:puntos?|%|por ciento)",
-        normalized,
+    regions = _region_near_marker(text, FINANCIAL_REGION_MARKERS)
+    financial_region = _financial_pliego_region(normalized)
+    if not regions:
+        regions = [financial_region[:8000]] if financial_region else [normalized[:8000]]
+
+    matriz_2_referenced = bool(
+        re.search(r"matriz\s*2\b", financial_region or normalized[:60_000])
     )
-    if score_match:
-        score = float(score_match.group(1).replace(",", "."))
+
+    for region in regions:
+        if (
+            "experiencia general" in region[:220]
+            and "solvencia" not in region[:400]
+            and "capacidad financiera" not in region[:400]
+        ):
+            continue
+
+        if not any(item["key"] == "accreditation_method" for item in items):
+            accreditation_match = re.search(
+                r"(?:formato\s*4|matriz\s*2|registro\s+unico\s+de\s+proponentes|\brup\b)",
+                region,
+            )
+            if accreditation_match:
+                display = (
+                    "Información del RUP vigente y en firme"
+                    if "rup" in accreditation_match.group(0)
+                    else accreditation_match.group(0).title()
+                )
+                items.append(
+                    _item(
+                        key="accreditation_method",
+                        label="Cómo acreditar",
+                        value=display,
+                        display_value=display,
+                        source_document=source_document,
+                        source_document_id=source_document_id,
+                        evidence=_snippet(
+                            region,
+                            accreditation_match.start(),
+                            accreditation_match.end() + 80,
+                        ),
+                        confidence=0.85,
+                    )
+                )
+
+    if not any(item["key"] == "financial_summary" for item in items):
+        summary = (
+            "Acreditar indicadores de capacidad financiera y organizacional según "
+            "Matriz 2 y numeral 3.7.1 del pliego."
+            if matriz_2_referenced
+            else "Acreditar los indicadores financieros de habilitación definidos en el pliego."
+        )
+        evidence_region = financial_region or (regions[0] if regions else normalized)
         items.append(
             _item(
-                key="qualification_score",
-                label="Puntaje / calificación",
-                value=score,
-                display_value=f"{score:g}",
+                key="financial_summary",
+                label="Resumen",
+                value=summary,
+                display_value=summary,
                 source_document=source_document,
                 source_document_id=source_document_id,
-                evidence=_snippet(normalized, score_match.start(), score_match.end() + 40),
-                confidence=0.72,
+                evidence=_snippet(evidence_region, 0, min(220, len(evidence_region))),
+                confidence=0.9,
             )
         )
 
-    return items
+    return _append_financial_supplements(
+        items,
+        financial_region,
+        normalized,
+        source_document,
+        source_document_id,
+    )
 
 
 def extract_requisitos_legales(
