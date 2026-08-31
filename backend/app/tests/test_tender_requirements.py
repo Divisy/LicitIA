@@ -8,6 +8,7 @@ from app.services.tender_requirements.regex_extraction import (
     extract_indicadores_financieros,
     extract_otros_requisitos,
     extract_requisitos_legales,
+    merge_financial_requirement_items,
     normalize_text,
 )
 from app.services.tender_requirements.service import build_tender_requirements
@@ -317,6 +318,79 @@ def test_extract_cce_interventoria_financial_indicators():
     capital = next(item for item in items if item["key"] == "capital_trabajo")
     assert capital["value"]["ctd_percentage"] == 25.0
     assert "CTd" in capital["display_value"]
+
+
+MATRIZ_2_INTERVENTORIA_SAMPLE = """
+MATRIZ 2 – INDICADORES FINANCIEROS Y ORGANIZACIONALES
+Índices de Capacidad Financiera y Organizacionales para Mipyme.
+Indicador Valor concertado Rango 1 Valor concertado Rango 2
+Índice de liquidez ≥1,1 ≥1,2
+Índice de endeudamiento ≤ 0,65 ≤ 0,70
+Razón de cobertura de intereses ≥1,5 ≥ 1
+Capital de trabajo Definido en el documento base Definido en el documento base
+Rentabilidad del patrimonio ≥ 0,02 ≥ 0,03
+Rentabilidad del activo ≥ 0,01 ≥ 0,02
+Índices de Capacidad Financiera y Organizacionales para los demás Proponentes.
+Los Proponentes que NO demuestren la condición de Mipyme acreditarán los siguientes indicadores:
+Indicador Valor concertado Rango 1 Valor concertado Rango 2
+Índice de liquidez ≥1,2 ≥1,3
+Índice de endeudamiento ≤ 0,65 ≤ 0,70
+Razón de cobertura de intereses ≥1,5 ≥ 1
+Capital de trabajo Definido en los Pliegos Tipo Definido en los Pliegos Tipo
+Rentabilidad del patrimonio ≥ 0,03 ≥ 0,04
+Rentabilidad del activo ≥ 0,02 ≥ 0,03
+"""
+
+
+def test_extract_matriz_2_indicadores_document_thresholds():
+    items = extract_indicadores_financieros(
+        MATRIZ_2_INTERVENTORIA_SAMPLE,
+        "indicadores_financieros",
+        None,
+    )
+    keys = {item["key"] for item in items}
+    assert "liquidez_corriente" in keys
+    assert "endeudamiento" in keys
+    assert "rentabilidad_patrimonio" in keys
+    assert "matriz_2_reference" not in keys
+
+    liquidez = next(item for item in items if item["key"] == "liquidez_corriente")
+    assert liquidez["value"]["threshold"] == 1.2
+    assert liquidez["value"]["threshold_by_range"]["rango_2"]["threshold"] == 1.3
+    assert "(R1)" in liquidez["display_value"]
+    assert "(R2)" in liquidez["display_value"]
+    assert liquidez["source_document"] == "indicadores_financieros"
+
+    endeudamiento = next(item for item in items if item["key"] == "endeudamiento")
+    assert endeudamiento["value"]["threshold"] == 0.65
+
+
+def test_merge_matriz_with_pliego_financial_items():
+    matriz_items = extract_indicadores_financieros(
+        MATRIZ_2_INTERVENTORIA_SAMPLE,
+        "indicadores_financieros",
+        None,
+    )
+    pliego_items = extract_indicadores_financieros(
+        CCE_INTERVENTORIA_FINANCIAL,
+        "pliego_condiciones",
+        None,
+    )
+    merged = merge_financial_requirement_items(
+        matriz_items,
+        pliego_items,
+        has_matriz_document=True,
+    )
+    keys = {item["key"] for item in merged}
+    assert "matriz_2_reference" not in keys
+    assert "capital_trabajo" in keys
+
+    liquidez = next(item for item in merged if item["key"] == "liquidez_corriente")
+    assert liquidez["value"]["threshold"] == 1.2
+    assert "Umbrales según Matriz 2" not in liquidez["display_value"]
+
+    capital = next(item for item in merged if item["key"] == "capital_trabajo")
+    assert capital["value"]["ctd_percentage"] == 25.0
 
 
 def test_extract_requisitos_legales_rup():

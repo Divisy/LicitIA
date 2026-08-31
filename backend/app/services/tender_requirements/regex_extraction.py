@@ -1189,6 +1189,7 @@ def _build_financial_indicator_item(
     evidence: str,
     confidence: float,
     extras: Optional[dict[str, Any]] = None,
+    display_value_override: Optional[str] = None,
 ) -> RequirementItem:
     value: dict[str, Any] = {
         "indicator": key,
@@ -1205,26 +1206,25 @@ def _build_financial_indicator_item(
         value["threshold_note"] = threshold_note
 
     min_cop = value.get("min_amount_cop")
+    resolved_display = formula
     if isinstance(min_cop, (int, float)) and min_cop > 0:
         cop_display = f"${int(min_cop):,}".replace(",", ".")
-        display_value = f"{formula} ≥ {cop_display}"
+        resolved_display = f"{formula} ≥ {cop_display}"
     elif operator and threshold is not None:
         if key == "endeudamiento" and threshold <= 1:
-            display_value = f"{formula} {_format_threshold_display(operator, threshold * 100)}%"
+            resolved_display = f"{formula} {_format_threshold_display(operator, threshold * 100)}%"
             if operator == "<=":
-                display_value = f"{formula} ≤ {threshold * 100:g}%"
+                resolved_display = f"{formula} ≤ {threshold * 100:g}%"
         else:
-            display_value = f"{formula} {_format_threshold_display(operator, threshold)}"
+            resolved_display = f"{formula} {_format_threshold_display(operator, threshold)}"
     elif threshold_note:
-        display_value = f"{formula} — {threshold_note}"
-    else:
-        display_value = formula
+        resolved_display = f"{formula} — {threshold_note}"
 
     return _item(
         key=key,
         label=label,
         value=value,
-        display_value=display_value,
+        display_value=display_value_override or resolved_display,
         source_document=source_document,
         source_document_id=source_document_id,
         evidence=evidence,
@@ -1559,6 +1559,266 @@ def _extract_financial_exemptions_item(
     )
 
 
+_MATRIZ_INDICATOR_ROW_PATTERNS: dict[str, re.Pattern[str]] = {
+    "liquidez_corriente": re.compile(
+        r"indice de liquidez\s*(>=?|≥)\s*([0-9]+(?:[.,][0-9]+)?)\s*(>=?|≥)\s*([0-9]+(?:[.,][0-9]+)?)"
+    ),
+    "endeudamiento": re.compile(
+        r"indice de endeudamiento\s*(<=?|≤)\s*([0-9]+(?:[.,][0-9]+)?)\s*(<=?|≤)\s*([0-9]+(?:[.,][0-9]+)?)"
+    ),
+    "cobertura_intereses": re.compile(
+        r"razon de cobertura de intereses\s*(>=?|≥)\s*([0-9]+(?:[.,][0-9]+)?)\s*(>=?|≥)\s*([0-9]+(?:[.,][0-9]+)?)"
+    ),
+    "rentabilidad_patrimonio": re.compile(
+        r"rentabilidad del patrimonio\s*(>=?|≥)\s*([0-9]+(?:[.,][0-9]+)?)\s*(>=?|≥)\s*([0-9]+(?:[.,][0-9]+)?)"
+    ),
+    "rentabilidad_activo": re.compile(
+        r"rentabilidad del activo\s*(>=?|≥)\s*([0-9]+(?:[.,][0-9]+)?)\s*(>=?|≥)\s*([0-9]+(?:[.,][0-9]+)?)"
+    ),
+}
+
+_FINANCIAL_METRIC_KEYS = frozenset(
+    {
+        "liquidez_corriente",
+        "endeudamiento",
+        "cobertura_intereses",
+        "patrimonio_minimo",
+        "rentabilidad_patrimonio",
+        "rentabilidad_activo",
+    }
+)
+
+_PLIEGO_FINANCIAL_PRIORITY_KEYS = frozenset(
+    {
+        "capital_trabajo",
+        "accreditation_method",
+        "financial_exemptions",
+        "financial_summary",
+        "qualification_score",
+    }
+)
+
+_FINANCIAL_ITEM_ORDER: tuple[str, ...] = (
+    "financial_summary",
+    "liquidez_corriente",
+    "endeudamiento",
+    "cobertura_intereses",
+    "capital_trabajo",
+    "patrimonio_minimo",
+    "rentabilidad_patrimonio",
+    "rentabilidad_activo",
+    "matriz_2_reference",
+    "accreditation_method",
+    "financial_exemptions",
+    "qualification_score",
+)
+
+
+def _is_matriz_indicadores_document(source_document: str, normalized: str) -> bool:
+    if source_document == "indicadores_financieros":
+        return True
+    return bool(
+        re.search(r"matriz\s*2\b", normalized[:400])
+        and "valor concertado" in normalized
+        and "rango 1" in normalized
+        and "indice de liquidez" in normalized
+    )
+
+
+def _matriz_table_section(normalized: str, *, demas_proponentes: bool) -> str:
+    if demas_proponentes:
+        start_match = re.search(r"demas proponentes", normalized)
+        if not start_match:
+            return ""
+        start = start_match.start()
+        end_match = re.search(
+            r"indicadores de capacidad financiera y organizacional para el rango",
+            normalized[start:],
+        )
+        end = start + end_match.start() if end_match else len(normalized)
+        return normalized[start:end]
+
+    start_match = re.search(
+        r"indices de capacidad financiera y organizacionales para mipyme",
+        normalized,
+    )
+    if not start_match:
+        return ""
+    start = start_match.start()
+    end_match = re.search(r"demas proponentes", normalized[start:])
+    end = start + end_match.start() if end_match else len(normalized)
+    return normalized[start:end]
+
+
+def _operator_from_matriz_symbol(symbol: str) -> str:
+    return "<=" if "≤" in symbol or "<=" in symbol else ">="
+
+
+def _format_matriz_dual_threshold(
+    key: str,
+    operator_1: str,
+    threshold_1: float,
+    operator_2: str,
+    threshold_2: float,
+) -> str:
+    if key == "endeudamiento":
+        return (
+            f"≤ {threshold_1 * 100:g}% (R1) · "
+            f"≤ {threshold_2 * 100:g}% (R2)"
+        )
+    symbol_1 = "≥" if operator_1 == ">=" else "≤"
+    symbol_2 = "≥" if operator_2 == ">=" else "≤"
+    return f"{symbol_1} {threshold_1:g} (R1) · {symbol_2} {threshold_2:g} (R2)"
+
+
+def _extract_matriz_2_indicators(
+    normalized: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+) -> list[RequirementItem]:
+    """Parse Matriz 2 table rows (Rango 1 / Rango 2) from the indicadores document."""
+    items: list[RequirementItem] = []
+    spec_by_key = {str(spec["key"]): spec for spec in _FINANCIAL_INDICATOR_SPECS}
+
+    demas_section = _matriz_table_section(normalized, demas_proponentes=True)
+    mipyme_section = _matriz_table_section(normalized, demas_proponentes=False)
+    primary_section = demas_section or mipyme_section or normalized
+
+    summary = (
+        "Indicadores de capacidad financiera y organizacional según Matriz 2, "
+        "con umbrales por rango de presupuesto (Rango 1 / Rango 2 en SMMLV)."
+    )
+    items.append(
+        _item(
+            key="financial_summary",
+            label="Resumen",
+            value=summary,
+            display_value=summary,
+            source_document=source_document,
+            source_document_id=source_document_id,
+            evidence=_snippet(primary_section, 0, min(220, len(primary_section))),
+            confidence=0.93,
+        )
+    )
+
+    for key, pattern in _MATRIZ_INDICATOR_ROW_PATTERNS.items():
+        match = pattern.search(primary_section) or pattern.search(mipyme_section)
+        if not match:
+            continue
+
+        spec = spec_by_key[key]
+        operator_1 = _operator_from_matriz_symbol(match.group(1))
+        threshold_1 = _parse_threshold(match.group(2))
+        operator_2 = _operator_from_matriz_symbol(match.group(3))
+        threshold_2 = _parse_threshold(match.group(4))
+        if threshold_1 is None or threshold_2 is None:
+            continue
+
+        dual_display = _format_matriz_dual_threshold(
+            key,
+            operator_1,
+            threshold_1,
+            operator_2,
+            threshold_2,
+        )
+        items.append(
+            _build_financial_indicator_item(
+                key=key,
+                label=str(spec["label"]),
+                formula=str(spec["formula"]),
+                operator=operator_1,
+                threshold=threshold_1,
+                threshold_note=None,
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence=match.group(0)[:220],
+                confidence=0.94,
+                extras={
+                    "threshold_by_range": {
+                        "rango_1": {"operator": operator_1, "threshold": threshold_1},
+                        "rango_2": {"operator": operator_2, "threshold": threshold_2},
+                    }
+                },
+                display_value_override=f"{spec['formula']} {dual_display}",
+            )
+        )
+
+    if re.search(r"registro\s+unico\s+de\s+proponentes|\brup\b", normalized):
+        items.append(
+            _item(
+                key="accreditation_method",
+                label="Cómo acreditar",
+                value="Registro Único de Proponentes (RUP) vigente y en firme",
+                display_value="RUP vigente y en firme",
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence="Registro Único de Proponentes",
+                confidence=0.88,
+            )
+        )
+
+    if re.search(r"\bmipyme\b", normalized):
+        exemptions = _extract_financial_exemptions_item(
+            normalized, source_document, source_document_id
+        )
+        if exemptions:
+            items.append(exemptions)
+
+    return items
+
+
+def _financial_item_has_numeric_threshold(item: Optional[RequirementItem]) -> bool:
+    if not item:
+        return False
+    value = item.get("value")
+    if not isinstance(value, dict):
+        return False
+    return value.get("threshold") is not None or value.get("min_amount_cop") is not None
+
+
+def merge_financial_requirement_items(
+    matriz_items: list[RequirementItem],
+    pliego_items: list[RequirementItem],
+    *,
+    has_matriz_document: bool,
+) -> list[RequirementItem]:
+    """Combine Matriz 2 numeric indicators with pliego capital de trabajo and accreditation."""
+    matriz_by_key = {item["key"]: item for item in matriz_items}
+    pliego_by_key = {item["key"]: item for item in pliego_items}
+    merged: dict[str, RequirementItem] = {}
+
+    for key in _FINANCIAL_ITEM_ORDER:
+        chosen: Optional[RequirementItem] = None
+        if key == "matriz_2_reference":
+            if not has_matriz_document:
+                chosen = pliego_by_key.get(key)
+        elif key in _FINANCIAL_METRIC_KEYS:
+            matriz_item = matriz_by_key.get(key)
+            if _financial_item_has_numeric_threshold(matriz_item):
+                chosen = matriz_item
+            else:
+                chosen = pliego_by_key.get(key) or matriz_item
+        elif key in _PLIEGO_FINANCIAL_PRIORITY_KEYS:
+            chosen = pliego_by_key.get(key) or matriz_by_key.get(key)
+        else:
+            chosen = matriz_by_key.get(key) or pliego_by_key.get(key)
+        if chosen:
+            merged[key] = chosen
+
+    for item in matriz_items + pliego_items:
+        key = item["key"]
+        if has_matriz_document and key == "matriz_2_reference":
+            continue
+        if key not in merged:
+            merged[key] = item
+
+    return [merged[key] for key in _FINANCIAL_ITEM_ORDER if key in merged] + [
+        merged[key]
+        for key in merged
+        if key not in _FINANCIAL_ITEM_ORDER
+    ]
+
+
 def extract_indicadores_financieros(
     text: str,
     source_document: str,
@@ -1567,8 +1827,11 @@ def extract_indicadores_financieros(
     if not text.strip():
         return []
 
-    items: list[RequirementItem] = []
     normalized = normalize_text(text)
+    if _is_matriz_indicadores_document(source_document, normalized):
+        return _extract_matriz_2_indicators(normalized, source_document, source_document_id)
+
+    items: list[RequirementItem] = []
 
     for label, stop_labels in (
         (

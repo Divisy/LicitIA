@@ -116,6 +116,13 @@ type FinancialIndicatorValue = {
   operator?: string
   threshold?: number
   threshold_note?: string
+  threshold_by_range?: Record<
+    string,
+    {
+      operator?: string
+      threshold?: number
+    }
+  >
   compare_to?: string
   min_amount_cop?: number
   ctd_percentage?: number
@@ -228,13 +235,40 @@ const parseFinancialIndicator = (item: TenderRequirementItem): FinancialIndicato
   return item.value as FinancialIndicatorValue
 }
 
+const formatRangeThreshold = (
+  key: string | undefined,
+  operator: string | undefined,
+  threshold: number | undefined
+): string | null => {
+  if (!operator || threshold == null) {
+    return null
+  }
+  const symbol = operator === '<=' ? '≤' : '≥'
+  if (key === 'endeudamiento' && threshold <= 1) {
+    return `${symbol} ${threshold * 100}%`
+  }
+  return `${symbol} ${threshold}`
+}
+
 const formatFinancialThreshold = (indicator: FinancialIndicatorValue): string | null => {
-  if (indicator.operator && indicator.threshold != null) {
-    const symbol = indicator.operator === '<=' ? '≤' : '≥'
-    if (indicator.indicator === 'endeudamiento' && indicator.threshold <= 1) {
-      return `${symbol} ${indicator.threshold * 100}%`
+  const byRange = indicator.threshold_by_range
+  if (byRange?.rango_1 && byRange?.rango_2) {
+    const r1 = formatRangeThreshold(
+      indicator.indicator,
+      byRange.rango_1.operator,
+      byRange.rango_1.threshold
+    )
+    const r2 = formatRangeThreshold(
+      indicator.indicator,
+      byRange.rango_2.operator,
+      byRange.rango_2.threshold
+    )
+    if (r1 && r2) {
+      return `${r1} (R1) · ${r2} (R2)`
     }
-    return `${symbol} ${indicator.threshold}`
+  }
+  if (indicator.operator && indicator.threshold != null) {
+    return formatRangeThreshold(indicator.indicator, indicator.operator, indicator.threshold)
   }
   return indicator.threshold_note || null
 }

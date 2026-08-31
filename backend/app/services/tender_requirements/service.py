@@ -22,7 +22,7 @@ from app.services.tender_requirements.llm_extraction import (
     enrich_requirements_with_llm,
     sanitize_experiencia_especifica_items,
 )
-from app.services.tender_requirements.regex_extraction import EXTRACTORS, SECTION_DEFINITIONS, _merge_items
+from app.services.tender_requirements.regex_extraction import EXTRACTORS, SECTION_DEFINITIONS, _merge_items, merge_financial_requirement_items
 from app.services.tender_requirements.pdf_pages import extract_pdf_pages, join_pages
 from app.services.tender_requirements.text_selection import (
     prepare_pliego_requirement_text,
@@ -33,7 +33,7 @@ from app.services.tender_requirements.text_selection import (
 from app.services.document_text import extract_document_text
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.6.6"
+EXTRACTION_VERSION = "1.6.7"
 
 _SECTION_SOURCE = {key: source for key, _, source in SECTION_DEFINITIONS}
 _SECTION_TITLE = {key: title for key, title, _ in SECTION_DEFINITIONS}
@@ -165,9 +165,28 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
             continue
 
         if section_key == "indicadores_financieros":
-            document = indicadores or pliego
-            text = indicadores_raw or indicadores_text or pliego_raw or pliego_text
-        elif section_key == "otros":
+            matriz_items: list[dict[str, Any]] = []
+            pliego_items: list[dict[str, Any]] = []
+            if indicadores and (indicadores_raw or indicadores_text):
+                matriz_items = EXTRACTORS[section_key](
+                    indicadores_raw or indicadores_text,
+                    "indicadores_financieros",
+                    indicadores.id,
+                )
+            if pliego and (pliego_raw or pliego_text):
+                pliego_items = EXTRACTORS[section_key](
+                    pliego_raw or pliego_text,
+                    pliego.document_type,
+                    pliego.id,
+                )
+            extracted_by_section[section_key] = merge_financial_requirement_items(
+                matriz_items,
+                pliego_items,
+                has_matriz_document=indicadores is not None,
+            )
+            continue
+
+        if section_key == "otros":
             document = pliego or anexo
             text = pliego_text or anexo_text
         else:
