@@ -34,6 +34,8 @@ ARCHIVE_CONTAINER_KEYWORDS: tuple[str, ...] = (
     "pliego",
     "pliegos",
     "presupuesto",
+    "indicadores",
+    "indicadores financieros",
     "ppto",
     "formato",
     "formatos",

@@ -32,6 +32,7 @@ _FINANCIAL_REGEX_PRIORITY_KEYS: frozenset[str] = frozenset(
         "rentabilidad_patrimonio",
         "rentabilidad_activo",
         "capital_trabajo",
+        "patrimonio_minimo",
         "matriz_2_reference",
         "qualification_score",
     }

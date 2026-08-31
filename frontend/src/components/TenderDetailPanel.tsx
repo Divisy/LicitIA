@@ -58,6 +58,7 @@ const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
     'endeudamiento',
     'cobertura_intereses',
     'capital_trabajo',
+    'patrimonio_minimo',
     'rentabilidad_patrimonio',
     'rentabilidad_activo',
     'qualification_score',
@@ -128,6 +129,7 @@ const FINANCIAL_INDICATOR_KEYS = new Set([
   'endeudamiento',
   'cobertura_intereses',
   'capital_trabajo',
+  'patrimonio_minimo',
   'rentabilidad_patrimonio',
   'rentabilidad_activo',
 ])
@@ -308,12 +310,14 @@ const DOCUMENT_TYPE_ORDER = [
   'pliego_condiciones',
   'anexo_tecnico',
   'presupuesto',
+  'indicadores_financieros',
 ] as const
 
 const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   pliego_condiciones: 'Pliego de condiciones',
   anexo_tecnico: 'Anexo técnico',
   presupuesto: 'Presupuesto',
+  indicadores_financieros: 'Indicadores financieros',
 }
 
 const ACCEPTED_DOCUMENT_EXTENSIONS = '.pdf,.xlsx,.xls,.xlsm'
@@ -361,6 +365,7 @@ const REQUIREMENT_STATUS_LABELS: Record<string, string> = {
 const REQUIREMENT_SOURCE_LABELS: Record<string, string> = {
   pliego_condiciones: 'Pliego',
   anexo_tecnico: 'Anexo técnico',
+  indicadores_financieros: 'Indicadores financieros',
 }
 
 const SUMMARY_FIELD_LABELS: Record<string, string> = {

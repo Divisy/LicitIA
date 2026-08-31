@@ -12,6 +12,7 @@ def test_validate_document_type_accepts_key_types():
     assert validate_document_type("presupuesto") == DocumentType.PRESUPUESTO
     assert validate_document_type("pliego_condiciones") == DocumentType.PLIEGO_CONDICIONES
     assert validate_document_type("anexo_tecnico") == DocumentType.ANEXO_TECNICO
+    assert validate_document_type("indicadores_financieros") == DocumentType.INDICADORES_FINANCIEROS
 
 
 def test_validate_document_type_rejects_unknown():

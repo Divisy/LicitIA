@@ -11,7 +11,7 @@ RequirementItem = dict[str, Any]
 SECTION_DEFINITIONS: tuple[tuple[str, str, str], ...] = (
     ("experiencia_general", "Experiencia general", "pliego_condiciones"),
     ("experiencia_especifica", "Experiencia específica", "anexo_tecnico"),
-    ("indicadores_financieros", "Indicadores financieros y solvencia", "pliego_condiciones"),
+    ("indicadores_financieros", "Indicadores financieros y solvencia", "indicadores_financieros"),
     ("requisitos_legales", "Requisitos legales y habilitación", "pliego_condiciones"),
     ("otros", "Otros requisitos relevantes", "pliego_condiciones"),
 )
@@ -858,6 +858,9 @@ def _financial_cluster_region(normalized: str) -> str:
         "endeudamiento",
         "cobertura de intereses",
         "capital de trabajo",
+        "patrimonio minimo",
+        "patrimonio activo total",
+        "patrimonio liquido",
         "capacidad financiera",
         "solvencia economica",
         "rentabilidad del patrimonio",
@@ -892,6 +895,8 @@ FINANCIAL_REGION_MARKERS: tuple[str, ...] = (
     "matriz 2 - indicadores",
     "indice de liquidez",
     "liquidez corriente",
+    "patrimonio minimo",
+    "patrimonio activo total",
 )
 
 
@@ -1018,6 +1023,11 @@ _FINANCIAL_BLOCK_MARKERS: tuple[tuple[str, str], ...] = (
         r"cobertura\s+de\s+intereses|razon\s+de\s+cobertura\s+de\s+intereses",
     ),
     ("capital_trabajo", r"capital\s+de\s+trabajo"),
+    (
+        "patrimonio_minimo",
+        r"patrimonio\s+minimo|patrimonio\s+liquido|patrimonio\s+neto|"
+        r"patrimonio\s*\(\s*activo\s+total|patrimonio\s+activo\s+total\s*[-–]",
+    ),
     ("rentabilidad_patrimonio", r"rentabilidad\s+del\s+patrimonio|rentabilidad\s+sobre\s+patrimonio"),
     ("rentabilidad_activo", r"rentabilidad\s+del\s+activo"),
 )
@@ -1058,7 +1068,7 @@ def _parse_indicator_threshold(
 ) -> tuple[Optional[str], Optional[float], dict[str, Any]]:
     extras: dict[str, Any] = {}
 
-    if key == "capital_trabajo":
+    if key in {"capital_trabajo", "patrimonio_minimo"}:
         cop_match = re.search(
             r"(?:mayor\s+o\s+igual\s+a|>=)\s*\$?\s*([\d]{1,3}(?:\.\d{3})+|\d{6,})",
             block,
@@ -1249,6 +1259,19 @@ _FINANCIAL_INDICATOR_SPECS: tuple[dict[str, Any], ...] = (
         ),
     },
     {
+        "key": "patrimonio_minimo",
+        "label": "Patrimonio mínimo",
+        "formula": "AT − PT",
+        "default_operator": ">=",
+        "patterns": (
+            r"patrimonio\s+minimo",
+            r"patrimonio\s+liquido",
+            r"patrimonio\s+neto",
+            r"patrimonio\s*\(\s*activo\s+total",
+            r"patrimonio\s+activo\s+total\s*[-–]",
+        ),
+    },
+    {
         "key": "rentabilidad_patrimonio",
         "label": "Rentabilidad del patrimonio (ROE)",
         "formula": "UO / Patrimonio",
@@ -1302,6 +1325,10 @@ def _extract_financial_indicator_items(
                     snippet = region[candidate.start() : candidate.end() + 40]
                     if re.search(r"\.{8,}", snippet):
                         continue
+                    if key == "patrimonio_minimo":
+                        prefix = region[max(0, candidate.start() - 30) : candidate.start()]
+                        if "rentabilidad" in prefix:
+                            continue
                     match = candidate
                     block = region[candidate.start() : min(len(region), candidate.end() + 400)]
                     break

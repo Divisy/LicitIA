@@ -243,6 +243,7 @@ export type TenderDocumentType =
   | 'pliego_condiciones'
   | 'anexo_tecnico'
   | 'presupuesto'
+  | 'indicadores_financieros'
 
 export async function uploadTenderDocument(
   tenderId: string,

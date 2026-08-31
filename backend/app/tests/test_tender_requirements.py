@@ -237,6 +237,7 @@ El indice de liquidez corriente (activo corriente / pasivo corriente) debera ser
 El endeudamiento (pasivo total / activo total) debera ser menor o igual a 70%.
 La cobertura de intereses (utilidad operacional / gastos por intereses) mayor o igual a 1.5.
 El capital de trabajo (activo corriente - pasivo corriente) mayor o igual a $ 116.000.000.
+El patrimonio (activo total - pasivo total) debera ser mayor o igual a $ 250.000.000.
 El proponente que no tiene pasivos corrientes esta habilitado respecto del indice de liquidez.
 El proponente que no tiene gastos de intereses esta habilitado respecto de la cobertura de intereses.
 Acreditacion mediante Registro Unico de Proponentes (RUP) vigente.
@@ -250,12 +251,14 @@ def test_extract_traditional_pliego_financial_without_liquidez_label():
     activo corriente / pasivo corriente mayor o igual a 1.2 endeudamiento pasivo total / activo total
     menor o igual a 70% cobertura de intereses utilidad operacional / gastos por intereses mayor o igual a 1.5
     capital de trabajo activo corriente - pasivo corriente mayor o igual a $ 116.000.000
+    patrimonio activo total - pasivo mayor o igual a $ 250.000.000
     """
     items = extract_indicadores_financieros(text, "pliego_condiciones", None)
     keys = {item["key"] for item in items}
     assert "liquidez_corriente" in keys
     assert "endeudamiento" in keys
     assert "capital_trabajo" in keys
+    assert "patrimonio_minimo" in keys
 
     liquidez = next(item for item in items if item["key"] == "liquidez_corriente")
     assert liquidez["value"]["threshold"] == 1.2
@@ -266,6 +269,9 @@ def test_extract_traditional_pliego_financial_without_liquidez_label():
     capital = next(item for item in items if item["key"] == "capital_trabajo")
     assert capital["value"]["min_amount_cop"] == 116_000_000
 
+    patrimonio = next(item for item in items if item["key"] == "patrimonio_minimo")
+    assert patrimonio["value"]["min_amount_cop"] == 250_000_000
+
 
 def test_extract_traditional_pliego_financial_indicators():
     items = extract_indicadores_financieros(TRADITIONAL_PLIEGO_FINANCIAL, "pliego_condiciones", None)
@@ -274,6 +280,7 @@ def test_extract_traditional_pliego_financial_indicators():
     assert "endeudamiento" in keys
     assert "cobertura_intereses" in keys
     assert "capital_trabajo" in keys
+    assert "patrimonio_minimo" in keys
     assert "financial_exemptions" in keys
 
     liquidez = next(item for item in items if item["key"] == "liquidez_corriente")
@@ -288,6 +295,9 @@ def test_extract_traditional_pliego_financial_indicators():
 
     capital = next(item for item in items if item["key"] == "capital_trabajo")
     assert capital["value"]["min_amount_cop"] == 116_000_000
+
+    patrimonio = next(item for item in items if item["key"] == "patrimonio_minimo")
+    assert patrimonio["value"]["min_amount_cop"] == 250_000_000
 
 
 def test_extract_cce_interventoria_financial_indicators():

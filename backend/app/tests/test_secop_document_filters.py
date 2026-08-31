@@ -92,4 +92,20 @@ def test_classify_otro():
 
 def test_is_key_document():
     assert is_key_document(DocumentType.PLIEGO_CONDICIONES) is True
+    assert is_key_document(DocumentType.INDICADORES_FINANCIEROS) is True
     assert is_key_document(DocumentType.OTRO) is False
+
+
+def test_classify_indicadores_financieros():
+    assert classify_document(
+        "Matriz 2 -Indicadores Financieros y Organizacionales - El Agrado.pdf"
+    ) == DocumentType.INDICADORES_FINANCIEROS
+    assert classify_document("INDICADORES FINANCIEROS H3 2026.pdf") == DocumentType.INDICADORES_FINANCIEROS
+    assert classify_document("3. SOLVENCIA ECONOMICA Y FINANCIERA.pdf") == DocumentType.INDICADORES_FINANCIEROS
+    assert classify_document("Matriz de Indicadores Financieros.xlsx") == DocumentType.INDICADORES_FINANCIEROS
+
+
+def test_classify_indicadores_financieros_wins_over_pliego_words():
+    assert classify_document(
+        "Anexo - Indicadores Financieros y Organizacionales - Proyecto Pliegos.pdf"
+    ) == DocumentType.INDICADORES_FINANCIEROS

@@ -10,6 +10,7 @@ class DocumentType(str, enum.Enum):
     PLIEGO_CONDICIONES = "pliego_condiciones"
     ANEXO_TECNICO = "anexo_tecnico"
     PRESUPUESTO = "presupuesto"
+    INDICADORES_FINANCIEROS = "indicadores_financieros"
     OTRO = "otro"
 
 
@@ -42,6 +43,21 @@ _KEYWORD_RULES: list[tuple[DocumentType, tuple[str, ...]]] = [
             "estudio del sector",
             "analisis del sector",
             "análisis del sector",
+        ),
+    ),
+    (
+        DocumentType.INDICADORES_FINANCIEROS,
+        (
+            "indicadores financieros y organizacionales",
+            "indicadores financieros",
+            "matriz de indicadores financieros",
+            "matriz indicadores financieros",
+            "matriz 2 indicadores",
+            "matriz 2 - indicadores",
+            "solvencia economica y financiera",
+            "solvencia economica",
+            "capacidad financiera y organizacional",
+            "formulario indicadores",
         ),
     ),
     (
@@ -81,6 +97,17 @@ _STRONG_PRESUPUESTO_KEYWORDS: tuple[str, ...] = (
     "oferta económica",
 )
 
+_STRONG_INDICADORES_FINANCIEROS_KEYWORDS: tuple[str, ...] = (
+    "indicadores financieros y organizacionales",
+    "indicadores financieros",
+    "matriz de indicadores financieros",
+    "matriz indicadores financieros",
+    "matriz 2 - indicadores",
+    "matriz 2 indicadores",
+    "solvencia economica y financiera",
+    "formulario indicadores financieros",
+)
+
 _STRONG_ANEXO_KEYWORDS: tuple[str, ...] = (
     "anexo tecnico",
     "anexo técnico",
@@ -106,6 +133,14 @@ _FALLBACK_RULES: list[tuple[DocumentType, tuple[re.Pattern[str], ...]]] = [
             re.compile(r"\banexos?\b"),
             re.compile(r"\btecnicos?\b"),
             re.compile(r"\btecnicas?\b"),
+        ),
+    ),
+    (
+        DocumentType.INDICADORES_FINANCIEROS,
+        (
+            re.compile(r"\bindicadores?\b.{0,40}\bfinancieros?\b"),
+            re.compile(r"\bmatriz\s*2\b.{0,40}\bindicadores?\b"),
+            re.compile(r"\bsolvencia\b.{0,30}\bfinancier"),
         ),
     ),
     (
@@ -143,6 +178,8 @@ def classify_document(filename: str, description: Optional[str] = None) -> Docum
         return DocumentType.PRESUPUESTO
     if any(keyword in haystack for keyword in _STRONG_ANEXO_KEYWORDS):
         return DocumentType.ANEXO_TECNICO
+    if any(keyword in haystack for keyword in _STRONG_INDICADORES_FINANCIEROS_KEYWORDS):
+        return DocumentType.INDICADORES_FINANCIEROS
 
     for doc_type, keywords in _KEYWORD_RULES:
         if any(keyword in haystack for keyword in keywords):
@@ -156,5 +193,5 @@ def classify_document(filename: str, description: Optional[str] = None) -> Docum
 
 
 def is_key_document(doc_type: DocumentType) -> bool:
-    """Return True for pliego, anexo técnico and presupuesto."""
+    """Return True for pliego, anexo técnico, presupuesto and indicadores financieros."""
     return doc_type != DocumentType.OTRO

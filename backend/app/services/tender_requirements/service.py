@@ -15,6 +15,7 @@ from app.services.document_storage import get_document_storage
 from app.services.secop_documents import is_archive_filename
 from app.services.tender_requirements.document_selection import (
     select_anexo_document,
+    select_indicadores_financieros_document,
     select_pliego_document,
 )
 from app.services.tender_requirements.llm_extraction import (
@@ -31,7 +32,7 @@ from app.services.tender_requirements.text_selection import (
 )
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.6.4"
+EXTRACTION_VERSION = "1.6.6"
 
 _SECTION_SOURCE = {key: source for key, _, source in SECTION_DEFINITIONS}
 _SECTION_TITLE = {key: title for key, title, _ in SECTION_DEFINITIONS}
@@ -84,12 +85,16 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
     documents = _visible_documents(tender)
     pliego = select_pliego_document(documents)
     anexo = select_anexo_document(documents)
+    indicadores = select_indicadores_financieros_document(documents)
     storage = get_document_storage()
 
     pliego_text = ""
     pliego_raw = ""
     anexo_text = ""
+    indicadores_text = ""
+    indicadores_raw = ""
     pliego_pages: list[tuple[int, str]] = []
+    indicadores_pages: list[tuple[int, str]] = []
     warnings: list[str] = []
 
     if pliego:
@@ -103,6 +108,19 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         warnings.extend(pliego_notes)
         if not pliego_text.strip():
             warnings.append(f"No se pudo extraer texto del pliego ({pliego.file_name})")
+    if indicadores:
+        extension = (indicadores.extension or "").lower()
+        if extension == "pdf":
+            indicadores_pages = extract_pdf_pages(indicadores, storage)
+            indicadores_raw = join_pages(indicadores_pages) or extract_pdf_text(indicadores, storage)
+        else:
+            indicadores_raw = extract_pdf_text(indicadores, storage)
+        if indicadores_raw.strip():
+            indicadores_text = _prepare_anexo_text(indicadores_raw)
+        else:
+            warnings.append(
+                f"No se pudo extraer texto de indicadores financieros ({indicadores.file_name})"
+            )
     if anexo:
         extension = (anexo.extension or "").lower()
         if extension == "docx":
@@ -144,8 +162,8 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
             continue
 
         if section_key == "indicadores_financieros":
-            document = pliego
-            text = pliego_raw or pliego_text
+            document = indicadores or pliego
+            text = indicadores_raw or indicadores_text or pliego_raw or pliego_text
         elif section_key == "otros":
             document = pliego or anexo
             text = pliego_text or anexo_text
@@ -169,8 +187,8 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS,
     )
     llm_financial_context = select_financial_text_for_llm(
-        pliego_pages or None,
-        pliego_raw or pliego_text,
+        indicadores_pages or pliego_pages or None,
+        indicadores_raw or pliego_raw or pliego_text,
         settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS,
     )
     extracted_by_section = enrich_requirements_with_llm(
@@ -190,6 +208,11 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         if section_key == "experiencia_especifica":
             has_source_document = pliego is not None or anexo is not None
             text_extracted = bool(pliego_text.strip() or anexo_text.strip())
+        elif section_key == "indicadores_financieros":
+            has_source_document = indicadores is not None or pliego is not None
+            text_extracted = bool(
+                (indicadores_raw or indicadores_text or pliego_raw or pliego_text).strip()
+            )
         elif section_key == "otros":
             has_source_document = pliego is not None or anexo is not None
             text_extracted = bool((pliego_text or anexo_text).strip())

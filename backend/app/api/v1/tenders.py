@@ -310,7 +310,9 @@ async def download_tender_document(
 )
 async def upload_tender_document(
     tender_id: UUID,
-    document_type: str = Form(..., description="pliego_condiciones | anexo_tecnico | presupuesto"),
+    document_type: str = Form(
+        ..., description="pliego_condiciones | anexo_tecnico | presupuesto | indicadores_financieros"
+    ),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):

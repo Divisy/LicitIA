@@ -260,6 +260,8 @@ _FINANCIAL_MARKERS: tuple[str, ...] = (
     "indice de endeudamiento",
     "cobertura de intereses",
     "capital de trabajo disponible",
+    "patrimonio minimo",
+    "patrimonio activo total",
 )
 
 

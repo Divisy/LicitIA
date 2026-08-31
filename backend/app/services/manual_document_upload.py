@@ -22,6 +22,7 @@ MANUAL_DOCUMENT_TYPES: frozenset[str] = frozenset(
         DocumentType.PLIEGO_CONDICIONES.value,
         DocumentType.ANEXO_TECNICO.value,
         DocumentType.PRESUPUESTO.value,
+        DocumentType.INDICADORES_FINANCIEROS.value,
     }
 )
 
@@ -34,7 +35,7 @@ def validate_document_type(document_type: str) -> DocumentType:
     normalized = (document_type or "").strip().lower()
     if normalized not in MANUAL_DOCUMENT_TYPES:
         raise ValueError(
-            "document_type must be one of: pliego_condiciones, anexo_tecnico, presupuesto"
+            "document_type must be one of: pliego_condiciones, anexo_tecnico, presupuesto, indicadores_financieros"
         )
     return DocumentType(normalized)
 
