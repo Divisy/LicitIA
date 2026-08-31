@@ -324,6 +324,13 @@ const ACCEPTED_DOCUMENT_EXTENSIONS = '.pdf,.xlsx,.xls,.xlsm'
 
 const ACCEPTED_DOCUMENT_MIME_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.xlsm']
 
+const ACCEPTED_INDICADORES_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.xlsm', '.docx', '.doc']
+
+const uploadExtensionsHint = (documentType: string) =>
+  documentType === 'indicadores_financieros'
+    ? 'PDF, XLSX, XLS, DOCX'
+    : 'PDF, XLSX, XLS'
+
 const SUMMARY_FIELD_KEYS_BY_KIND: Record<string, readonly string[]> = {
   ejecucion_obra: [
     'aiu_percentage',
@@ -604,17 +611,25 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     doc.external_document_id.startsWith('manual-') ||
     (doc.description || '').toLowerCase().includes('manual')
 
-  const isAcceptedUploadFile = (file: File) => {
+  const isAcceptedUploadFile = (file: File, documentType: TenderDocumentType) => {
     const extension = `.${file.name.split('.').pop()?.toLowerCase() || ''}`
-    return ACCEPTED_DOCUMENT_MIME_EXTENSIONS.includes(extension)
+    const allowed =
+      documentType === 'indicadores_financieros'
+        ? ACCEPTED_INDICADORES_EXTENSIONS
+        : ACCEPTED_DOCUMENT_MIME_EXTENSIONS
+    return allowed.includes(extension)
   }
 
   const uploadDocumentFile = async (documentType: TenderDocumentType, file: File) => {
     if (!tender) {
       return
     }
-    if (!isAcceptedUploadFile(file)) {
-      setUploadError('Solo se permiten archivos PDF, XLSX, XLS o XLSM')
+    if (!isAcceptedUploadFile(file, documentType)) {
+      setUploadError(
+        documentType === 'indicadores_financieros'
+          ? 'Solo se permiten archivos PDF, XLSX, XLS o DOCX'
+          : 'Solo se permiten archivos PDF, XLSX, XLS o XLSM'
+      )
       return
     }
 
@@ -1460,7 +1475,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                                 Arrastra el archivo aquí
                               </p>
                               <p className="tender-detail-panel__dropzone-hint">
-                                o haz clic para seleccionar · PDF, XLSX, XLS
+                                o haz clic para seleccionar · {uploadExtensionsHint(type)}
                               </p>
                             </>
                           )}

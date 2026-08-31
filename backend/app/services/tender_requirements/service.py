@@ -30,6 +30,7 @@ from app.services.tender_requirements.text_selection import (
     select_financial_text_for_llm,
     select_requirement_relevant_text,
 )
+from app.services.document_text import extract_document_text
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
 EXTRACTION_VERSION = "1.6.6"
@@ -112,9 +113,11 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         extension = (indicadores.extension or "").lower()
         if extension == "pdf":
             indicadores_pages = extract_pdf_pages(indicadores, storage)
-            indicadores_raw = join_pages(indicadores_pages) or extract_pdf_text(indicadores, storage)
+            indicadores_raw = join_pages(indicadores_pages) or extract_document_text(
+                indicadores, storage
+            )
         else:
-            indicadores_raw = extract_pdf_text(indicadores, storage)
+            indicadores_raw = extract_document_text(indicadores, storage)
         if indicadores_raw.strip():
             indicadores_text = _prepare_anexo_text(indicadores_raw)
         else:

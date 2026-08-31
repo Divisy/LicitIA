@@ -20,6 +20,7 @@ from app.services.secop_documents import (
     download_document_file,
     fetch_archive_candidates_for_portfolio,
     fetch_loose_key_documents_for_portfolio,
+    is_archive_filename,
 )
 from app.services.archive_extraction import extract_archives_for_tender
 from app.services.document_content_classification import (
@@ -190,6 +191,7 @@ def _upsert_document_record(
     duplicate = _find_duplicate_by_filename(db, tender, document)
     if duplicate:
         duplicate.external_document_id = document.external_document_id
+        duplicate.document_type = document.document_type.value
         duplicate.file_name = document.file_name
         duplicate.file_path = relative_path
         duplicate.download_url = document.download_url
@@ -348,6 +350,78 @@ def extract_documents_for_tender(db: Session, tender: Tender) -> TenderExtractio
         outcome=outcome,
         download_failures=download_failures,
     )
+
+
+def ensure_missing_key_documents_for_tender(db: Session, tender: Tender) -> int:
+    """
+    Download SECOP key documents whose type is not yet stored for this tender.
+
+    Used when classifier improvements add new key types (e.g. indicadores_financieros)
+    so already-processed tenders pick up files without a manual resync batch.
+    """
+    if not settings.DOCUMENT_EXTRACTION_ENABLED:
+        return 0
+
+    portfolio_id = tender.portfolio_id
+    if not portfolio_id:
+        portfolio_id = fetch_portfolio_id_for_external_id(tender.external_id)
+        if not portfolio_id:
+            return 0
+        tender.portfolio_id = portfolio_id
+        db.flush()
+
+    existing_types = {
+        doc.document_type
+        for doc in tender.documents
+        if not is_archive_filename(doc.file_name)
+    }
+    missing_documents = [
+        document
+        for document in fetch_loose_key_documents_for_portfolio(portfolio_id)
+        if document.document_type.value not in existing_types
+    ]
+    if not missing_documents:
+        return 0
+
+    storage = get_document_storage()
+    synced = 0
+    for document in missing_documents:
+        object_key = build_document_object_key(
+            tender.external_id,
+            document.document_type,
+            document.file_name,
+            document.external_document_id,
+        )
+        destination = build_document_storage_path(
+            tender.external_id,
+            document.document_type,
+            document.file_name,
+            document.external_document_id,
+        )
+        if not download_document_file(document, destination):
+            continue
+        try:
+            storage.persist_local_file(destination, object_key)
+        except Exception as exc:
+            logger.error(
+                "Failed to persist missing document %s for tender %s: %s",
+                object_key,
+                tender.external_id,
+                exc,
+                exc_info=True,
+            )
+            continue
+
+        _upsert_document_record(db, tender, document, object_key)
+        synced += 1
+
+    if synced:
+        logger.info(
+            "Synced %s missing key document(s) for tender %s",
+            synced,
+            tender.external_id,
+        )
+    return synced
 
 
 @dataclass

@@ -40,13 +40,18 @@ def validate_document_type(document_type: str) -> DocumentType:
     return DocumentType(normalized)
 
 
-def validate_upload_filename(file_name: str) -> str:
+def validate_upload_filename(file_name: str, document_type: DocumentType | None = None) -> str:
     name = Path(file_name or "").name.strip()
     if not name:
         raise ValueError("file name is required")
     extension = Path(name).suffix.lower()
-    if extension not in ALLOWED_EXTENSIONS:
-        raise ValueError("allowed file types: PDF, XLSX, XLS, XLSM")
+    allowed = set(ALLOWED_EXTENSIONS)
+    if document_type == DocumentType.INDICADORES_FINANCIEROS:
+        allowed.update({".docx", ".doc"})
+    if extension not in allowed:
+        raise ValueError("allowed file types: PDF, XLSX, XLS, XLSM" + (
+            ", DOCX" if document_type == DocumentType.INDICADORES_FINANCIEROS else ""
+        ))
     return name
 
 
@@ -61,7 +66,7 @@ async def save_manual_tender_document(
     if not settings.MANUAL_DOCUMENT_UPLOAD_ENABLED:
         raise ValueError("manual document upload is disabled")
 
-    file_name = validate_upload_filename(upload_file.filename or "")
+    file_name = validate_upload_filename(upload_file.filename or "", document_type)
     file_bytes = await upload_file.read()
     if not file_bytes:
         raise ValueError("uploaded file is empty")

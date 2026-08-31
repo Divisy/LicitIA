@@ -18,13 +18,14 @@ _ANEXO_HINTS = (
 )
 
 _INDICADORES_HINTS = (
+    "matriz 2 - indicadores financieros",
+    "matriz 2 indicadores",
     "indicadores financieros y organizacionales",
     "indicadores financieros",
-    "matriz 2",
     "matriz de indicadores",
     "solvencia economica",
-    "capacidad financiera",
     "formulario indicadores",
+    "capacidad financiera y organizacional",
 )
 
 

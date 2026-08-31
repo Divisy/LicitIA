@@ -11,7 +11,10 @@ from app.models.tender import Tender
 from app.models.tender_document import TenderDocument
 from app.models.company_experience import CompanyExperience
 from app.services.document_storage import get_document_storage
-from app.services.document_extraction import deduplicate_visible_documents
+from app.services.document_extraction import (
+    deduplicate_visible_documents,
+    ensure_missing_key_documents_for_tender,
+)
 from app.services.secop_documents import is_archive_filename
 from app.schemas.tender import (
     TenderResponse,
@@ -250,6 +253,17 @@ async def list_tender_documents(
     ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found")
+
+    try:
+        if ensure_missing_key_documents_for_tender(db, tender):
+            db.commit()
+    except Exception as exc:
+        logger.warning(
+            "Missing key document sync failed for tender %s: %s",
+            tender.external_id,
+            exc,
+        )
+        db.rollback()
 
     documents = (
         db.query(TenderDocument)

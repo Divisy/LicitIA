@@ -22,5 +22,14 @@ def test_validate_document_type_rejects_unknown():
 
 def test_validate_upload_filename():
     assert validate_upload_filename("Presupuesto Oficial.xlsx") == "Presupuesto Oficial.xlsx"
+    assert (
+        validate_upload_filename(
+            "Matriz 2.docx",
+            DocumentType.INDICADORES_FINANCIEROS,
+        )
+        == "Matriz 2.docx"
+    )
     with pytest.raises(ValueError):
         validate_upload_filename("archivo.zip")
+    with pytest.raises(ValueError):
+        validate_upload_filename("matriz.docx")
