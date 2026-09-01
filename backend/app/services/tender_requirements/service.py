@@ -34,7 +34,7 @@ from app.services.tender_requirements.text_selection import (
 from app.services.document_text import extract_document_text
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.7.3"
+EXTRACTION_VERSION = "1.7.4"
 
 _SECTION_SOURCE = {key: source for key, _, source in SECTION_DEFINITIONS}
 _SECTION_TITLE = {key: title for key, title, _ in SECTION_DEFINITIONS}
@@ -187,12 +187,8 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
             )
             continue
 
-        if section_key == "otros":
-            document = pliego or anexo
-            text = pliego_text or anexo_text
-        else:
-            document = pliego
-            text = pliego_text
+        document = pliego
+        text = pliego_text
 
         extractor = EXTRACTORS[section_key]
         source_document_id = document.id if document else None
@@ -242,9 +238,6 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
             text_extracted = bool(
                 (indicadores_raw or indicadores_text or pliego_raw or pliego_text).strip()
             )
-        elif section_key == "otros":
-            has_source_document = pliego is not None or anexo is not None
-            text_extracted = bool((pliego_text or anexo_text).strip())
         else:
             has_source_document = pliego is not None
             text_extracted = bool(pliego_text.strip())

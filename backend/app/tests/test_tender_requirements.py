@@ -7,7 +7,6 @@ from app.services.tender_requirements.regex_extraction import (
     extract_experiencia_especifica,
     extract_experiencia_general,
     extract_indicadores_financieros,
-    extract_otros_requisitos,
     extract_requisitos_legales,
     merge_financial_requirement_items,
     normalize_text,
@@ -554,26 +553,6 @@ def test_invias_pliego_extracts_general_and_specific_experience():
     assert any(item["value"] == 70 for item in specific if item["key"] == "specific_min_percentage")
 
 
-def test_extract_otros_requisitos_pyme():
-    text = (
-        "2.3 LIMITACION A MIPYME. Los interesados manifestaran su intencion de limitar "
-        "las convocatorias a Mipyme Nacional y diligenciaran el Formato 14 – Acreditacion de Mipyme."
-    )
-    items = extract_otros_requisitos(text, "pliego_condiciones", None)
-    keys = {item["key"] for item in items}
-    assert "pyme" in keys
-    assert "mujer" not in keys
-
-
-def test_extract_otros_ignores_scoring_noise():
-    text = (
-        "Empresas de mujeres 0,25 MiPyme 0,25 total 100. "
-        "La calidad de Mipyme se acredita en indicadores financieros mediante el RUP."
-    )
-    items = extract_otros_requisitos(text, "pliego_condiciones", None)
-    assert items == []
-
-
 def test_build_tender_requirements_without_documents():
     tender = Tender(
         id=uuid4(),
@@ -591,7 +570,6 @@ def test_build_tender_requirements_without_documents():
     assert all(
         section["status"] == "documento_no_disponible"
         for section in payload["sections"]
-        if section["key"] != "otros"
     )
 
 
@@ -614,5 +592,4 @@ def test_build_tender_requirements_section_keys():
         "experiencia_especifica",
         "indicadores_financieros",
         "requisitos_legales",
-        "otros",
     ]

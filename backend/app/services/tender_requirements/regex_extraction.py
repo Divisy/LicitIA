@@ -13,7 +13,6 @@ SECTION_DEFINITIONS: tuple[tuple[str, str, str], ...] = (
     ("experiencia_especifica", "Experiencia específica", "anexo_tecnico"),
     ("indicadores_financieros", "Indicadores financieros y solvencia", "indicadores_financieros"),
     ("requisitos_legales", "Requisitos legales y habilitación", "pliego_condiciones"),
-    ("otros", "Otros requisitos relevantes", "pliego_condiciones"),
 )
 
 
@@ -2657,138 +2656,9 @@ def extract_requisitos_legales(
     return _dedupe_legal_requirement_items(items)
 
 
-_OTROS_NOISE_MARKERS: tuple[str, ...] = (
-    "indicadores financieros",
-    "matriz 2",
-    "rango 1",
-    "rango 2",
-    "capacidad financiera",
-    "experiencia solicitada",
-    "contratos adicionales",
-)
-
-
-def _otros_match_context(normalized: str, start: int, end: int, *, window: int = 220) -> str:
-    context_start = max(0, start - window)
-    context_end = min(len(normalized), end + window)
-    return normalized[context_start:context_end]
-
-
-def _is_otros_noise_context(context: str) -> bool:
-    if any(marker in context for marker in _OTROS_NOISE_MARKERS):
-        return True
-    if "total 100" in context and re.search(r"0[.,]25", context):
-        return True
-    return False
-
-
-def _append_otros_item(
-    items: list[RequirementItem],
-    seen_keys: set[str],
-    *,
-    key: str,
-    label: str,
-    display_value: str,
-    source_document: str,
-    source_document_id: Optional[UUID],
-    evidence: str = "",
-) -> None:
-    if key in seen_keys or not display_value.strip():
-        return
-    seen_keys.add(key)
-    items.append(
-        _item(
-            key=key,
-            label=label,
-            value=display_value,
-            display_value=display_value,
-            source_document=source_document,
-            source_document_id=source_document_id,
-            evidence=evidence[:220] if evidence and evidence.strip() != display_value.strip() else "",
-            confidence=0.82,
-        )
-    )
-
-
-def extract_otros_requisitos(
-    text: str,
-    source_document: str,
-    source_document_id: Optional[UUID],
-) -> list[RequirementItem]:
-    """Optional participation benefits (MiPyme, desempate, etc.), not scoring noise."""
-    if not text.strip():
-        return []
-
-    items: list[RequirementItem] = []
-    seen_keys: set[str] = set()
-    normalized = normalize_text(text)
-
-    optional_specs: tuple[tuple[str, str, str, str], ...] = (
-        (
-            "pyme",
-            "Limitación o beneficio MiPyme",
-            r"limitacion.{0,80}mipyme|formato\s*14",
-            "Opción de limitar la convocatoria a MiPyme Nacional (Formato 14 o acreditación por RUP), si el proceso lo permite.",
-        ),
-        (
-            "mujer",
-            "Empresa de mujeres (desempate)",
-            r"formato\s*13|empresa\s+de\s+mujeres",
-            "Puede acreditarse como empresa de mujeres para factor de desempate, si aplica.",
-        ),
-        (
-            "emprendimiento",
-            "Emprendimiento / empresa emergente",
-            r"empresa\s+emergente.{0,120}(?:desempate|acreditar|certificado)|emprendimiento.{0,80}desempate",
-            "Puede acreditarse emprendimiento o empresa emergente para desempate, si aplica.",
-        ),
-        (
-            "mocho",
-            "Requisito especial (mocho)",
-            r"\bmocho\b",
-            "El pliego menciona condición especial «mocho»; revisar documento.",
-        ),
-    )
-
-    for key, label, pattern, default_display in optional_specs:
-        match = re.search(pattern, normalized, flags=re.IGNORECASE | re.DOTALL)
-        if not match:
-            continue
-        context = _otros_match_context(normalized, match.start(), match.end())
-        if _is_otros_noise_context(context):
-            continue
-        if key in {"mujer", "emprendimiento"} and "desempate" not in _otros_match_context(
-            normalized, match.start(), match.end(), window=500
-        ):
-            continue
-        wide_context = _otros_match_context(normalized, match.start(), match.end(), window=500)
-        sentence_match = re.search(
-            r"[^.]{0,60}(?:limitacion|formato\s*14|formato\s*13|empresa\s+emergente|mocho)[^.]{0,200}\.",
-            wide_context,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-        display = _clean_requirement_text(
-            sentence_match.group(0) if sentence_match else default_display,
-            max_len=220,
-        )
-        _append_otros_item(
-            items,
-            seen_keys,
-            key=key,
-            label=label,
-            display_value=display,
-            source_document=source_document,
-            source_document_id=source_document_id,
-            evidence=context[:220],
-        )
-
-    return items
-
-
 EXTRACTORS = {
     "experiencia_general": extract_experiencia_general,
     "experiencia_especifica": extract_experiencia_especifica,
     "indicadores_financieros": extract_indicadores_financieros,
     "requisitos_legales": extract_requisitos_legales,
-    "otros": extract_otros_requisitos,
 }
