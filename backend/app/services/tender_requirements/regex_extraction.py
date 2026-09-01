@@ -1671,6 +1671,199 @@ def _format_matriz_dual_threshold(
     return f"{symbol_1} {threshold_1:g} (R1) · {symbol_2} {threshold_2:g} (R2)"
 
 
+_MATRIZ_PROSE_FINANCIAL_HEAD = re.compile(
+    r"indice de liquidez mayor o igual a\s*([\d.,]+)\s*"
+    r"indice de endeudamiento menor o igual a\s*([\d.,]+)\s*%?\s*"
+    r"razon(?: de)? cobertura de intereses mayor o igual a\s*([\d.,]+)",
+    re.IGNORECASE,
+)
+
+
+def _parse_matriz_prose_percentage_threshold(raw: str) -> Optional[float]:
+    threshold = _parse_threshold(raw)
+    if threshold is None:
+        return None
+    if threshold >= 1:
+        return threshold / 100
+    return threshold
+
+
+def _parse_matriz_prose_rentabilidad(segment: str) -> dict[str, tuple[str, float]]:
+    parsed: dict[str, tuple[str, float]] = {}
+    roe_match = re.search(
+        r"rentabilidad del patrimonio mayor o igual a\s*([\d.,]+)\s*%",
+        segment,
+    )
+    if roe_match:
+        threshold = _parse_matriz_prose_percentage_threshold(roe_match.group(1))
+        if threshold is not None:
+            parsed["rentabilidad_patrimonio"] = (">=", threshold)
+    roa_match = re.search(
+        r"rentabilidad del activo mayor o igual a\s*([\d.,]+)\s*%",
+        segment,
+    )
+    if roa_match:
+        threshold = _parse_matriz_prose_percentage_threshold(roa_match.group(1))
+        if threshold is not None:
+            parsed["rentabilidad_activo"] = (">=", threshold)
+    return parsed
+
+
+def _parse_matriz_prose_financial_blocks(normalized: str) -> list[dict[str, Any]]:
+    """
+    Parse entity-specific Matriz 2 PDFs that list thresholds in prose instead of tables.
+
+  Example: "índice de liquidez mayor o igual a 1,1 índice de endeudamiento menor o igual a 70% ..."
+    """
+    matches = list(_MATRIZ_PROSE_FINANCIAL_HEAD.finditer(normalized))
+    if not matches:
+        return []
+
+    blocks: list[dict[str, Any]] = []
+    for index, match in enumerate(matches):
+        chunk = normalized[match.start() : match.start() + 450]
+        block: dict[str, Any] = {
+            "liquidez_corriente": (">=", _parse_threshold(match.group(1))),
+            "endeudamiento": ("<=", _parse_matriz_prose_percentage_threshold(match.group(2))),
+            "cobertura_intereses": (">=", _parse_threshold(match.group(3))),
+        }
+
+        capital_match = re.search(
+            r"capital de trabajo(?:\s+grupo)? mayor o igual a\s*\$?\s*([\d]{1,3}(?:\.\d{3})+)",
+            chunk,
+        )
+        if capital_match:
+            amount = _parse_cop_amount(capital_match.group(1))
+            if amount:
+                block["capital_trabajo"] = (">=", float(amount))
+
+        if index + 1 < len(matches):
+            between = normalized[match.end() : matches[index + 1].start()]
+            if index == 0:
+                block.update(_parse_matriz_prose_rentabilidad(between))
+        else:
+            tail = normalized[match.end() : match.end() + 500]
+            block.update(_parse_matriz_prose_rentabilidad(tail))
+
+        blocks.append(block)
+
+    return blocks
+
+
+def _build_matriz_item_from_ranges(
+    *,
+    key: str,
+    spec: dict[str, Any],
+    ranges: list[tuple[str, float, dict[str, Any]]],
+    source_document: str,
+    source_document_id: Optional[UUID],
+    evidence: str,
+) -> RequirementItem:
+    operator_1, threshold_1, extras_1 = ranges[0]
+    extras: dict[str, Any] = dict(extras_1)
+    display_override: Optional[str] = None
+
+    if len(ranges) > 1:
+        operator_2, threshold_2, extras_2 = ranges[1]
+        if threshold_1 != threshold_2 or operator_1 != operator_2:
+            dual_display = _format_matriz_dual_threshold(
+                key,
+                operator_1,
+                threshold_1,
+                operator_2,
+                threshold_2,
+            )
+            display_override = f"{spec['formula']} {dual_display}"
+            extras["threshold_by_range"] = {
+                "rango_1": {"operator": operator_1, "threshold": threshold_1},
+                "rango_2": {"operator": operator_2, "threshold": threshold_2},
+            }
+
+    if key == "capital_trabajo" and extras.get("min_amount_cop"):
+        display_override = None
+
+    return _build_financial_indicator_item(
+        key=key,
+        label=str(spec["label"]),
+        formula=str(spec["formula"]),
+        operator=operator_1,
+        threshold=threshold_1,
+        threshold_note=None,
+        source_document=source_document,
+        source_document_id=source_document_id,
+        evidence=evidence[:220],
+        confidence=0.92,
+        extras=extras,
+        display_value_override=display_override,
+    )
+
+
+def _append_matriz_prose_indicator_items(
+    items: list[RequirementItem],
+    normalized: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+    spec_by_key: dict[str, dict[str, Any]],
+) -> list[RequirementItem]:
+    prose_blocks = _parse_matriz_prose_financial_blocks(normalized)
+    if not prose_blocks:
+        return items
+
+    metric_keys = (
+        "liquidez_corriente",
+        "endeudamiento",
+        "cobertura_intereses",
+        "capital_trabajo",
+        "rentabilidad_patrimonio",
+        "rentabilidad_activo",
+    )
+
+    for key in metric_keys:
+        if any(item["key"] == key for item in items):
+            continue
+        spec = spec_by_key.get(key)
+        if not spec and key == "capital_trabajo":
+            spec = {
+                "key": "capital_trabajo",
+                "label": "Capital de trabajo",
+                "formula": "CT = AC − PC",
+            }
+        if not spec:
+            continue
+
+        ranges: list[tuple[str, float, dict[str, Any]]] = []
+        for block in prose_blocks:
+            entry = block.get(key)
+            if not entry:
+                continue
+            operator, threshold = entry
+            if threshold is None:
+                continue
+            extras: dict[str, Any] = {}
+            if key == "capital_trabajo":
+                extras["min_amount_cop"] = int(threshold)
+                extras["compare_to"] = "mínimo exigido"
+            ranges.append((operator, threshold, extras))
+
+        if not ranges:
+            continue
+
+        evidence_match = _MATRIZ_PROSE_FINANCIAL_HEAD.search(normalized)
+        evidence = evidence_match.group(0) if evidence_match else normalized[:220]
+        items.append(
+            _build_matriz_item_from_ranges(
+                key=key,
+                spec=spec,
+                ranges=ranges,
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence=evidence,
+            )
+        )
+
+    return items
+
+
 def _extract_matriz_2_indicators(
     normalized: str,
     source_document: str,
@@ -1688,6 +1881,11 @@ def _extract_matriz_2_indicators(
         "Indicadores de capacidad financiera y organizacional según Matriz 2, "
         "con umbrales por rango de presupuesto (Rango 1 / Rango 2 en SMMLV)."
     )
+    if _parse_matriz_prose_financial_blocks(normalized):
+        summary = (
+            "Indicadores de capacidad financiera y organizacional según el análisis "
+            "financiero del proceso (Matriz 2), con umbrales para Mipyme y demás proponentes."
+        )
     items.append(
         _item(
             key="financial_summary",
@@ -1764,6 +1962,15 @@ def _extract_matriz_2_indicators(
         if exemptions:
             items.append(exemptions)
 
+    if not any(item["key"] in _FINANCIAL_METRIC_KEYS for item in items):
+        items = _append_matriz_prose_indicator_items(
+            items,
+            normalized,
+            source_document,
+            source_document_id,
+            spec_by_key,
+        )
+
     return items
 
 
@@ -1799,7 +2006,16 @@ def merge_financial_requirement_items(
             else:
                 chosen = pliego_by_key.get(key) or matriz_item
         elif key in _PLIEGO_FINANCIAL_PRIORITY_KEYS:
-            chosen = pliego_by_key.get(key) or matriz_by_key.get(key)
+            matriz_item = matriz_by_key.get(key)
+            pliego_item = pliego_by_key.get(key)
+            if key == "capital_trabajo":
+                matriz_value = matriz_item.get("value") if matriz_item else None
+                if isinstance(matriz_value, dict) and matriz_value.get("min_amount_cop"):
+                    chosen = matriz_item
+                else:
+                    chosen = pliego_item or matriz_item
+            else:
+                chosen = pliego_item or matriz_item
         else:
             chosen = matriz_by_key.get(key) or pliego_by_key.get(key)
         if chosen:

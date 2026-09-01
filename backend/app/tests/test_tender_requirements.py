@@ -394,6 +394,37 @@ def test_merge_matriz_with_pliego_financial_items():
     assert capital["value"]["ctd_percentage"] == 25.0
 
 
+IDRD_MATRIZ_PROSE_SAMPLE = """
+indice de liquidez mayor o igual a 1,1 indice de endeudamiento menor o igual a 70%
+razon cobertura de intereses mayor o igual a 1,0 capital de trabajo mayor o igual a $ 990.000.000
+rentabilidad del patrimonio mayor o igual a 2% rentabilidad del activo mayor o igual a 1%
+indice de liquidez mayor o igual a 1,2 indice de endeudamiento menor o igual a 70%
+razon cobertura de intereses mayor o igual a 1,0 capital de trabajo grupo mayor o igual a $ 990.000.000
+rentabilidad del patrimonio mayor o igual a 4% rentabilidad del activo mayor o igual a 2%
+"""
+
+
+def test_extract_matriz_prose_indicadores_idrd_style():
+    items = extract_indicadores_financieros(
+        IDRD_MATRIZ_PROSE_SAMPLE,
+        "indicadores_financieros",
+        None,
+    )
+    liquidez = next(item for item in items if item["key"] == "liquidez_corriente")
+    assert liquidez["value"]["threshold"] == 1.1
+    assert liquidez["value"]["threshold_by_range"]["rango_2"]["threshold"] == 1.2
+    assert liquidez["source_document"] == "indicadores_financieros"
+
+    endeudamiento = next(item for item in items if item["key"] == "endeudamiento")
+    assert endeudamiento["value"]["threshold"] == 0.7
+
+    capital = next(item for item in items if item["key"] == "capital_trabajo")
+    assert capital["value"]["min_amount_cop"] == 990_000_000
+
+    roe = next(item for item in items if item["key"] == "rentabilidad_patrimonio")
+    assert roe["value"]["threshold_by_range"]["rango_2"]["threshold"] == 0.04
+
+
 def test_requirements_cache_is_stale_when_matriz_exists_but_placeholders_remain():
     tender = Tender(
         id=uuid4(),
