@@ -34,7 +34,7 @@ from app.services.tender_requirements.text_selection import (
 from app.services.document_text import extract_document_text
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.7.1"
+EXTRACTION_VERSION = "1.7.2"
 
 _SECTION_SOURCE = {key: source for key, _, source in SECTION_DEFINITIONS}
 _SECTION_TITLE = {key: title for key, title, _ in SECTION_DEFINITIONS}

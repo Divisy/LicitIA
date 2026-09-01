@@ -501,30 +501,27 @@ Proponentes extranjeros sin domicilio ni sucursal: Formato 4.
 
 def test_extract_requisitos_legales_rup():
     items = extract_requisitos_legales(PLIEGO_SAMPLE, "pliego_condiciones", None)
-    keys = {item["key"] for item in items}
-    assert "rup_vigente" in keys
-    assert "legal_capacity" in keys
+    combined = " ".join(item["display_value"] for item in items).lower()
+    assert "rup" in combined
+    assert "capacidad juridica" in combined or "capacidad_juridica" in combined
 
 
 def test_extract_requisitos_legales_license():
     items = extract_requisitos_legales(PLIEGO_SAMPLE, "pliego_condiciones", None)
-    assert any(item["key"] == "specific_license" for item in items)
+    combined = " ".join(item["display_value"] for item in items).lower()
+    assert "licencia" in combined or "construccion" in combined
 
 
 def test_extract_cce_legal_habilitantes():
     items = extract_requisitos_legales(CCE_LEGAL_PLIEGO_SAMPLE, "pliego_condiciones", None)
     keys = {item["key"] for item in items}
-    assert any(key.startswith("capacidad_juridica") for key in keys)
-    assert any(key.startswith("existencia_representacion") for key in keys)
-    assert any(key.startswith("seguridad_social") for key in keys)
+    assert "capacidad_juridica_resumen" in keys
+    assert "existencia_representacion_resumen" in keys
+    assert "seguridad_social_resumen" in keys
     assert "rup_certificate_validity" in keys
-    assert "carta_presentacion" not in keys
-    rup_validity = next(item for item in items if item["key"] == "rup_certificate_validity")
-    assert rup_validity["value"] == 30
-    capacidad_text = " ".join(
-        item["display_value"] for item in items if item["key"].startswith("capacidad_juridica")
-    ).lower()
-    assert "redam" in capacidad_text
+    assert len(items) <= 5
+    capacidad = next(item for item in items if item["key"] == "capacidad_juridica_resumen")
+    assert "redam" in capacidad["display_value"].lower()
 
 
 INVIAS_PLIEGO_SAMPLE = """

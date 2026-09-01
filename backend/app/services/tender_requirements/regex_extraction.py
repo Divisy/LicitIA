@@ -2168,43 +2168,33 @@ _LEGAL_TOPIC_STOP_MARKERS: tuple[str, ...] = (
 
 _LEGAL_TOPIC_SPECS: tuple[dict[str, Any], ...] = (
     {
-        "key_prefix": "habilitantes_generales",
-        "label": "Requisitos habilitantes generales",
-        "start_markers": (
-            "requisitos habilitantes y su verificacion",
-            "requisitos habilitantes",
-            "requisitos de participacion",
-            "generalidades",
-        ),
-        "stop_markers": (
-            "capacidad juridica",
-            "existencia y representacion legal",
-            "seguridad social",
-            "capacidad financiera",
-            "experiencia general",
-        ),
-    },
-    {
         "key_prefix": "capacidad_juridica",
         "label": "Capacidad jurídica",
         "start_markers": (
+            "3.2 capacidad juridica",
             "capacidad juridica",
             "requisitos legales",
             "habilitacion juridica",
         ),
-        "stop_markers": _LEGAL_TOPIC_STOP_MARKERS,
+        "stop_markers": _LEGAL_TOPIC_STOP_MARKERS + ("3.3",),
         "lettered_debe_phrase": "los proponentes deben",
+        "prefer_phrases": ("los proponentes deben", "no estar incursos"),
     },
     {
         "key_prefix": "existencia_representacion",
         "label": "Existencia y representación legal",
-        "start_markers": ("existencia y representacion legal",),
+        "start_markers": (
+            "3.3 existencia y representacion legal",
+            "existencia y representacion legal",
+        ),
         "stop_markers": (
             "seguridad social",
             "capacidad financiera",
             "experiencia general",
             "solvencia economica",
+            "3.4",
         ),
+        "prefer_phrases": ("3.3.1 personas naturales", "deben presentar"),
         "subsection_markers": (
             ("personas naturales", "personas_naturales", "Personas naturales"),
             ("personas juridicas", "personas_juridicas", "Personas jurídicas"),
@@ -2216,6 +2206,7 @@ _LEGAL_TOPIC_SPECS: tuple[dict[str, Any], ...] = (
         "key_prefix": "seguridad_social",
         "label": "Seguridad social y aportes legales",
         "start_markers": (
+            "3.4 certificacion de pagos al sistema de seguridad social",
             "seguridad social y aportes legales",
             "certificacion de pagos al sistema de seguridad social",
             "seguridad social",
@@ -2226,7 +2217,9 @@ _LEGAL_TOPIC_SPECS: tuple[dict[str, Any], ...] = (
             "experiencia general",
             "capital de trabajo",
             "indicadores financieros",
+            "3.5",
         ),
+        "prefer_phrases": ("3.4.1 personas juridicas", "formato 5"),
         "subsection_markers": (
             ("personas juridicas", "personas_juridicas", "Personas jurídicas"),
             ("personas naturales", "personas_naturales", "Personas naturales"),
@@ -2265,8 +2258,9 @@ def _find_topic_section(
     stop_markers: tuple[str, ...],
     *,
     max_window: int = 8_000,
+    prefer_phrases: tuple[str, ...] = (),
 ) -> str:
-    candidates: list[str] = []
+    candidates: list[tuple[str, int]] = []
     for marker in start_markers:
         search_from = 0
         while True:
@@ -2284,10 +2278,16 @@ def _find_topic_section(
                     end = min(end, stop_idx)
             body = _clean_pliego_section_body(fragment[:end])
             if len(body) > 50:
-                candidates.append(body)
+                score = len(body)
+                for phrase in prefer_phrases:
+                    if phrase.lower() in body.lower():
+                        score += 10_000
+                candidates.append((body, score))
             search_from = index + len(marker)
 
-    return max(candidates, key=len) if candidates else ""
+    if not candidates:
+        return ""
+    return max(candidates, key=lambda item: item[1])[0]
 
 
 def _extract_lettered_requirements(
@@ -2349,6 +2349,20 @@ def _extract_subsection_by_marker(
     return ""
 
 
+def _concise_legal_bullet(text: str, max_len: int = 160) -> str:
+    cleaned = _clean_requirement_text(text, max_len=900)
+    for delimiter in (". ", "; "):
+        if delimiter in cleaned:
+            first = cleaned.split(delimiter, 1)[0].strip()
+            if len(first) >= 24:
+                cleaned = first
+                break
+    if len(cleaned) > max_len:
+        trimmed = cleaned[: max_len - 3].rsplit(" ", 1)[0]
+        cleaned = f"{trimmed}..."
+    return cleaned
+
+
 def _append_legal_section_item(
     items: list[RequirementItem],
     seen_keys: set[str],
@@ -2358,12 +2372,14 @@ def _append_legal_section_item(
     display_value: str,
     source_document: str,
     source_document_id: Optional[UUID],
-    evidence: str,
+    evidence: str = "",
     confidence: float = 0.9,
 ) -> None:
     if key in seen_keys or not display_value.strip():
         return
     seen_keys.add(key)
+    normalized_evidence = evidence.strip()
+    normalized_display = display_value.strip()
     items.append(
         _item(
             key=key,
@@ -2372,10 +2388,33 @@ def _append_legal_section_item(
             display_value=display_value,
             source_document=source_document,
             source_document_id=source_document_id,
-            evidence=evidence[:220],
+            evidence=normalized_evidence[:220]
+            if normalized_evidence and normalized_evidence != normalized_display
+            else "",
             confidence=confidence,
         )
     )
+
+
+def _extract_requirement_sentences(section_body: str, max_bullets: int = 6) -> list[str]:
+    bullets: list[str] = []
+    for sentence in re.split(r"(?<=[.;])\s+", section_body):
+        normalized = normalize_text(sentence)
+        if len(normalized) < 30:
+            continue
+        if "modalidades" in normalized and not re.search(r"\bdebe(?:r|n)?\b", normalized):
+            continue
+        if not re.search(
+            r"\bdebe(?:r|n)?\b|acreditar|presentar|certificado|no estar|no debera|informar",
+            normalized,
+        ):
+            continue
+        bullet = _concise_legal_bullet(sentence)
+        if bullet and bullet not in bullets:
+            bullets.append(bullet)
+        if len(bullets) >= max_bullets:
+            break
+    return bullets
 
 
 def _extract_topic_requirements(
@@ -2384,35 +2423,42 @@ def _extract_topic_requirements(
 ) -> list[tuple[str, str, str]]:
     key_prefix = str(spec["key_prefix"])
     label = str(spec["label"])
-    extracted: list[tuple[str, str, str]] = []
+    bullets: list[str] = []
 
     debe_phrase = spec.get("lettered_debe_phrase")
-    letter_region = section_body
     if debe_phrase:
         debe_idx = section_body.lower().find(str(debe_phrase).lower())
         if debe_idx >= 0:
             letter_region = section_body[debe_idx:]
-
-    lettered = _extract_lettered_requirements(
-        letter_region,
-        key_prefix=key_prefix,
-        label_prefix=label,
-    )
-    if lettered:
-        extracted.extend(lettered)
-    else:
-        summary = _clean_pliego_section_body(section_body, max_len=420)
-        if len(summary) > 40:
-            extracted.append((f"{key_prefix}_resumen", label, summary))
+            stop_idx = letter_region.lower().find("la entidad debe consultar")
+            if stop_idx > 0:
+                letter_region = letter_region[:stop_idx]
+            for match in re.finditer(
+                r"\b([a-f])\.\s+(.+?)(?=\s+[a-f]\.\s+|\Z)",
+                letter_region,
+                flags=re.IGNORECASE | re.DOTALL,
+            ):
+                bullet = _concise_legal_bullet(match.group(2))
+                if len(bullet) >= 20:
+                    bullets.append(bullet)
 
     subsection_markers = spec.get("subsection_markers") or ()
-    subsection_stops = tuple(
-        marker for marker, _, _ in subsection_markers
-    ) + ("capacidad financiera", "experiencia general")
-    for marker, sub_key, sub_label in subsection_markers:
+    subsection_stops = tuple(marker for marker, _, _ in subsection_markers) + (
+        "capacidad financiera",
+        "experiencia general",
+    )
+    for marker, _sub_key, sub_label in subsection_markers:
         body = _extract_subsection_by_marker(section_body, marker, subsection_stops)
         if body:
-            extracted.append((f"{key_prefix}_{sub_key}", f"{label} — {sub_label}", body))
+            bullets.append(f"{sub_label}: {_concise_legal_bullet(body, max_len=140)}")
+
+    if not bullets:
+        bullets.extend(_extract_requirement_sentences(section_body))
+
+    if not bullets and key_prefix == "capacidad_juridica":
+        for _key, _label, display in _extract_simple_legal_clauses(section_body):
+            if display not in bullets:
+                bullets.append(display)
 
     antecedentes_match = re.search(
         r"la entidad debe consultar los antecedentes.+",
@@ -2420,16 +2466,22 @@ def _extract_topic_requirements(
         flags=re.IGNORECASE | re.DOTALL,
     )
     if antecedentes_match and key_prefix == "capacidad_juridica":
-        antecedentes = _clean_pliego_section_body(antecedentes_match.group(0), max_len=420)
-        extracted.append(
-            (
-                "capacidad_juridica_antecedentes",
-                f"{label} — Verificación de antecedentes",
-                antecedentes,
-            )
-        )
+        bullets.append(_concise_legal_bullet(antecedentes_match.group(0), max_len=160))
 
-    return extracted
+    if not bullets:
+        return []
+
+    unique_bullets: list[str] = []
+    seen_bullets: set[str] = set()
+    for bullet in bullets:
+        normalized = normalize_text(bullet)
+        if normalized in seen_bullets:
+            continue
+        seen_bullets.add(normalized)
+        unique_bullets.append(bullet)
+
+    display = "\n".join(f"• {bullet}" for bullet in unique_bullets[:6])
+    return [(f"{key_prefix}_resumen", label, display)]
 
 
 def _extract_simple_legal_clauses(
@@ -2502,6 +2554,36 @@ def _append_rup_validity_if_present(
     )
 
 
+_LEGAL_ITEM_ORDER: tuple[str, ...] = (
+    "rup_certificate_validity",
+    "rup_vigente",
+    "capacidad_juridica_resumen",
+    "existencia_representacion_resumen",
+    "seguridad_social_resumen",
+    "requisitos_legales_resumen",
+    "legal_capacity",
+    "specific_license",
+)
+
+
+def _dedupe_legal_requirement_items(items: list[RequirementItem]) -> list[RequirementItem]:
+    filtered = [
+        item
+        for item in items
+        if not re.search(r"_(a|b|c|d|e|f)$", item["key"])
+        and not item["key"].endswith("_antecedentes")
+    ]
+    by_key = {item["key"]: item for item in filtered}
+    if by_key.get("rup_certificate_validity"):
+        by_key.pop("rup_vigente", None)
+
+    ordered = [by_key[key] for key in _LEGAL_ITEM_ORDER if key in by_key]
+    for key, item in by_key.items():
+        if key not in _LEGAL_ITEM_ORDER:
+            ordered.append(item)
+    return ordered[:5]
+
+
 def extract_requisitos_legales(
     text: str,
     source_document: str,
@@ -2519,6 +2601,7 @@ def extract_requisitos_legales(
             normalized,
             tuple(spec["start_markers"]),
             tuple(spec["stop_markers"]),
+            prefer_phrases=tuple(spec.get("prefer_phrases", ())),
         )
         if not section_body:
             continue
@@ -2532,21 +2615,7 @@ def extract_requisitos_legales(
                 display_value=display,
                 source_document=source_document,
                 source_document_id=source_document_id,
-                evidence=display,
             )
-
-        if spec["key_prefix"] == "capacidad_juridica":
-            for key, label, display in _extract_simple_legal_clauses(section_body):
-                _append_legal_section_item(
-                    items,
-                    seen_keys,
-                    key=key,
-                    label=label,
-                    display_value=display,
-                    source_document=source_document,
-                    source_document_id=source_document_id,
-                    evidence=display,
-                )
 
     if not items:
         fallback_body = _find_topic_section(
@@ -2564,7 +2633,6 @@ def extract_requisitos_legales(
                     display_value=display,
                     source_document=source_document,
                     source_document_id=source_document_id,
-                    evidence=display,
                 )
             if not items:
                 summary = _clean_pliego_section_body(fallback_body, max_len=420)
@@ -2576,7 +2644,6 @@ def extract_requisitos_legales(
                     display_value=summary,
                     source_document=source_document,
                     source_document_id=source_document_id,
-                    evidence=summary[:220],
                 )
 
     _append_rup_validity_if_present(
@@ -2587,7 +2654,7 @@ def extract_requisitos_legales(
         source_document_id,
     )
 
-    return items
+    return _dedupe_legal_requirement_items(items)
 
 
 def extract_otros_requisitos(

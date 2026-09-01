@@ -19,7 +19,7 @@ LLM_EXPERIENCE_SECTIONS: tuple[str, ...] = (
 
 LLM_FINANCIAL_SECTIONS: tuple[str, ...] = ("indicadores_financieros",)
 
-LLM_LEGAL_SECTIONS: tuple[str, ...] = ("requisitos_legales",)
+LLM_LEGAL_SECTIONS: tuple[str, ...] = ()
 
 LLM_ENRICHED_SECTIONS: tuple[str, ...] = (
     LLM_EXPERIENCE_SECTIONS + LLM_FINANCIAL_SECTIONS + LLM_LEGAL_SECTIONS

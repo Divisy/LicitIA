@@ -489,6 +489,18 @@
   white-space: pre-wrap;
 }
 
+.tender-detail-panel__legal-bullets {
+  @include type-style('body-01');
+  color: var(--cds-text-primary);
+  margin: 0;
+  padding-left: $spacing-05;
+  line-height: 1.5;
+
+  li + li {
+    margin-top: $spacing-02;
+  }
+}
+
 .tender-detail-panel__experience-citations {
   margin-top: $spacing-03;
   @include type-style('label-01');

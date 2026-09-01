@@ -33,6 +33,7 @@ import './TenderDetailPanel.scss'
 
 const EXPERIENCE_SECTION_KEYS = new Set(['experiencia_general', 'experiencia_especifica'])
 const FINANCIAL_SECTION_KEYS = new Set(['indicadores_financieros'])
+const LEGAL_SECTION_KEYS = new Set(['requisitos_legales'])
 
 const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
   experiencia_general: [
@@ -67,28 +68,13 @@ const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
     'financial_exemptions',
   ],
   requisitos_legales: [
-    'habilitantes_generales_resumen',
     'rup_certificate_validity',
     'rup_vigente',
     'capacidad_juridica_resumen',
-    'capacidad_juridica_a',
-    'capacidad_juridica_b',
-    'capacidad_juridica_c',
-    'capacidad_juridica_d',
-    'capacidad_juridica_e',
-    'capacidad_juridica_f',
-    'capacidad_juridica_antecedentes',
-    'legal_capacity',
     'existencia_representacion_resumen',
-    'existencia_representacion_personas_naturales',
-    'existencia_representacion_personas_juridicas',
-    'existencia_representacion_proponentes_plurales',
     'seguridad_social_resumen',
-    'seguridad_social_personas_juridicas',
-    'seguridad_social_personas_naturales',
-    'seguridad_social_proponentes_plurales',
-    'seguridad_social_suscripcion_contrato',
     'requisitos_legales_resumen',
+    'legal_capacity',
     'specific_license',
   ],
 }
@@ -1319,6 +1305,79 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     )
   }
 
+  const renderLegalSection = (section: TenderRequirementSection) => {
+    const items = sortRequirementItems(section.key, section.items)
+    const sourceLabel = items[0]
+      ? REQUIREMENT_SOURCE_LABELS[items[0].source_document] || items[0].source_document
+      : null
+
+    const renderLegalValue = (value: string) => {
+      const lines = value
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+      if (lines.length <= 1) {
+        return <p className="tender-detail-panel__experience-prose">{value}</p>
+      }
+      return (
+        <ul className="tender-detail-panel__legal-bullets">
+          {lines.map((line, index) => (
+            <li key={`${section.key}-line-${index}`}>
+              {line.replace(/^[•\-]\s*/, '')}
+            </li>
+          ))}
+        </ul>
+      )
+    }
+
+    return (
+      <div key={section.key} className="tender-detail-panel__experience-card">
+        <div className="tender-detail-panel__requirements-group-header">
+          <h5 className="tender-detail-panel__requirements-group-title">{section.title}</h5>
+          <Tag type={requirementStatusTagType(section.status)} size="sm">
+            {REQUIREMENT_STATUS_LABELS[section.status] || section.status}
+          </Tag>
+        </div>
+
+        {sourceLabel && (
+          <p className="tender-detail-panel__experience-source">Fuente: {sourceLabel}</p>
+        )}
+
+        {items.length > 0 ? (
+          <>
+            {items.map((item) => (
+              <div key={`${section.key}-${item.key}`} className="tender-detail-panel__experience-block">
+                <h6 className="tender-detail-panel__experience-block-title">{item.label}</h6>
+                {item.display_value && renderLegalValue(item.display_value)}
+              </div>
+            ))}
+
+            {items.some((item) => item.evidence && !isRedundantEvidence(item)) && (
+              <details className="tender-detail-panel__experience-citations">
+                <summary>Ver texto original del documento</summary>
+                <ul>
+                  {items
+                    .filter((item) => item.evidence && !isRedundantEvidence(item))
+                    .map((item) => (
+                      <li key={`${section.key}-${item.key}-evidence`}>
+                        <strong>{item.label}:</strong> {item.evidence}
+                      </li>
+                    ))}
+                </ul>
+              </details>
+            )}
+          </>
+        ) : (
+          <p className="tender-detail-panel__requirements-empty">
+            {section.status === 'documento_no_disponible'
+              ? 'Sube el documento correspondiente para extraer esta sección.'
+              : 'No se encontraron requisitos en el documento analizado.'}
+          </p>
+        )}
+      </div>
+    )
+  }
+
   const renderRequirementSection = (section: TenderRequirementSection) => (
     <div key={section.key} className="tender-detail-panel__requirements-group">
       <div className="tender-detail-panel__requirements-group-header">
@@ -1611,10 +1670,14 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                     .filter((section) => FINANCIAL_SECTION_KEYS.has(section.key))
                     .map((section) => renderFinancialSection(section))}
                   {requirements.sections
+                    .filter((section) => LEGAL_SECTION_KEYS.has(section.key))
+                    .map((section) => renderLegalSection(section))}
+                  {requirements.sections
                     .filter(
                       (section) =>
                         !EXPERIENCE_SECTION_KEYS.has(section.key) &&
-                        !FINANCIAL_SECTION_KEYS.has(section.key)
+                        !FINANCIAL_SECTION_KEYS.has(section.key) &&
+                        !LEGAL_SECTION_KEYS.has(section.key)
                     )
                     .map((section) => renderRequirementSection(section))}
                 </div>
