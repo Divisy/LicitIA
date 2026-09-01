@@ -141,6 +141,12 @@ const FINANCIAL_INDICATOR_KEYS = new Set([
   'rentabilidad_activo',
 ])
 
+const REQUIREMENT_SOURCE_LABELS: Record<string, string> = {
+  pliego_condiciones: 'Pliego',
+  anexo_tecnico: 'Anexo técnico',
+  indicadores_financieros: 'Matriz de indicadores',
+}
+
 const parseSpecificAreaPhases = (item: TenderRequirementItem): SpecificAreaPhase[] => {
   if (!Array.isArray(item.value)) {
     return []
@@ -245,9 +251,130 @@ const formatRangeThreshold = (
   }
   const symbol = operator === '<=' ? '≤' : '≥'
   if (key === 'endeudamiento' && threshold <= 1) {
-    return `${symbol} ${threshold * 100}%`
+    return `${symbol} ${(threshold * 100).toLocaleString('es-CO', { maximumFractionDigits: 1 })}%`
   }
-  return `${symbol} ${threshold}`
+  if (
+    (key === 'rentabilidad_patrimonio' || key === 'rentabilidad_activo') &&
+    threshold > 0 &&
+    threshold <= 1
+  ) {
+    return `${symbol} ${(threshold * 100).toLocaleString('es-CO', { maximumFractionDigits: 1 })}%`
+  }
+  return `${symbol} ${threshold.toLocaleString('es-CO')}`
+}
+
+const BUDGET_RANGE_LABELS: Record<string, { title: string; detail: string }> = {
+  rango_1: {
+    title: 'Contrato pequeño',
+    detail: 'Presupuesto oficial menor a 4.000 SMMLV',
+  },
+  rango_2: {
+    title: 'Contrato grande',
+    detail: 'Presupuesto oficial de 4.000 SMMLV en adelante',
+  },
+}
+
+const FINANCIAL_INDICATOR_HINTS: Record<string, string> = {
+  liquidez_corriente: '¿Puede la empresa cubrir sus deudas a corto plazo?',
+  endeudamiento: '¿Qué tan endeudada está la empresa?',
+  cobertura_intereses: '¿La utilidad alcanza para pagar intereses?',
+  capital_trabajo: '¿Tiene recursos para operar durante el contrato?',
+  patrimonio_minimo: 'Patrimonio neto mínimo exigido',
+  rentabilidad_patrimonio: 'Rentabilidad sobre el patrimonio (ROE)',
+  rentabilidad_activo: 'Rentabilidad sobre los activos totales (ROA)',
+}
+
+const FINANCIAL_FORMULA_PLAIN: Record<string, string> = {
+  liquidez_corriente: 'Activo corriente ÷ Pasivo corriente',
+  endeudamiento: 'Pasivo total ÷ Activo total',
+  cobertura_intereses: 'Utilidad operacional ÷ Gastos por intereses',
+  capital_trabajo: 'Activo corriente − Pasivo corriente',
+  patrimonio_minimo: 'Activo total − Pasivo total',
+  rentabilidad_patrimonio: 'Utilidad operacional ÷ Patrimonio',
+  rentabilidad_activo: 'Utilidad operacional ÷ Activo total',
+}
+
+type FinancialThresholdRow = {
+  rangeKey?: string
+  label: string
+  value: string
+}
+
+const buildFinancialThresholdRows = (
+  itemKey: string,
+  indicator: FinancialIndicatorValue
+): FinancialThresholdRow[] => {
+  const byRange = indicator.threshold_by_range
+  if (byRange?.rango_1 && byRange?.rango_2) {
+    const rows: FinancialThresholdRow[] = []
+    for (const rangeKey of ['rango_1', 'rango_2'] as const) {
+      const range = byRange[rangeKey]
+      const formatted = formatRangeThreshold(itemKey, range?.operator, range?.threshold)
+      if (!formatted) {
+        continue
+      }
+      const rangeMeta = BUDGET_RANGE_LABELS[rangeKey]
+      rows.push({
+        rangeKey,
+        label: rangeMeta?.title || rangeKey,
+        value: formatted,
+      })
+    }
+    return rows
+  }
+
+  const single = formatFinancialThreshold(indicator)
+  if (!single) {
+    return []
+  }
+  return [{ label: 'Mínimo exigido', value: single }]
+}
+
+const hasDualBudgetRanges = (items: TenderRequirementItem[]): boolean =>
+  items.some((item) => {
+    const indicator = parseFinancialIndicator(item)
+    return Boolean(indicator?.threshold_by_range?.rango_1 && indicator?.threshold_by_range?.rango_2)
+  })
+
+const formatFinancialSources = (items: TenderRequirementItem[]): string | null => {
+  const labels = [
+    ...new Set(
+      items
+        .map((item) => REQUIREMENT_SOURCE_LABELS[item.source_document] || item.source_document)
+        .filter(Boolean)
+    ),
+  ]
+  if (labels.length === 0) {
+    return null
+  }
+  return labels.join(' y ')
+}
+
+const isFinancialCitationNoise = (item: TenderRequirementItem): boolean => {
+  if (!FINANCIAL_INDICATOR_KEYS.has(item.key)) {
+    return isRedundantEvidence(item)
+  }
+  if (!item.evidence) {
+    return true
+  }
+  const evidence = normalizeComparableText(item.evidence)
+  if (evidence.length < 120) {
+    return true
+  }
+  if (/indice de liquidez|indice de endeudamiento|rentabilidad del/.test(evidence)) {
+    return true
+  }
+  return isRedundantEvidence(item)
+}
+
+const formatAccreditationText = (value: string): string => {
+  if (/^rup\b/i.test(value.trim())) {
+    return 'Registro Único de Proponentes (RUP), vigente y en firme al momento de presentar la oferta.'
+  }
+  if (value.toLowerCase().includes('rup') && !value.toLowerCase().includes('registro único')) {
+    return value.replace(/\bRUP\b/gi, 'Registro Único de Proponentes (RUP)')
+  }
+  return value
 }
 
 const formatFinancialThreshold = (indicator: FinancialIndicatorValue): string | null => {
@@ -264,7 +391,7 @@ const formatFinancialThreshold = (indicator: FinancialIndicatorValue): string | 
       byRange.rango_2.threshold
     )
     if (r1 && r2) {
-      return `${r1} (R1) · ${r2} (R2)`
+      return `${r1} · ${r2}`
     }
   }
   if (indicator.operator && indicator.threshold != null) {
@@ -401,12 +528,6 @@ const REQUIREMENT_STATUS_LABELS: Record<string, string> = {
   revisar: 'Revisar',
   documento_no_disponible: 'Documento no disponible',
   no_extraible: 'No extraíble',
-}
-
-const REQUIREMENT_SOURCE_LABELS: Record<string, string> = {
-  pliego_condiciones: 'Pliego',
-  anexo_tecnico: 'Anexo técnico',
-  indicadores_financieros: 'Indicadores financieros',
 }
 
 const SUMMARY_FIELD_LABELS: Record<string, string> = {
@@ -973,17 +1094,14 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     const items = sortRequirementItems(section.key, section.items)
     const officialBudgetTotal = resolveSecopBudgetAmount(tender?.amount)
     const advancePaymentPercentage = parseAdvancePaymentPercentage(summary)
-    const summaryItem = findRequirementItem(items, 'financial_summary')
     const accreditationItem = findRequirementItem(items, 'accreditation_method')
     const exemptionsItem = findRequirementItem(items, 'financial_exemptions')
-    const matrizItem = findRequirementItem(items, 'matriz_2_reference')
     const scoreItem = findRequirementItem(items, 'qualification_score')
     const indicatorItems = items.filter(
       (item) => FINANCIAL_INDICATOR_KEYS.has(item.key) && Boolean(item.display_value)
     )
-    const sourceLabel = items[0]
-      ? REQUIREMENT_SOURCE_LABELS[items[0].source_document] || items[0].source_document
-      : null
+    const dualBudgetRanges = hasDualBudgetRanges(indicatorItems)
+    const sourceLabel = formatFinancialSources(items)
 
     return (
       <div key={section.key} className="tender-detail-panel__experience-card">
@@ -995,20 +1113,43 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
         </div>
 
         {sourceLabel && (
-          <p className="tender-detail-panel__experience-source">Fuente: {sourceLabel}</p>
+          <p className="tender-detail-panel__experience-source">
+            Información extraída de: {sourceLabel}
+          </p>
         )}
 
         {items.length > 0 ? (
           <>
-            {summaryItem?.display_value && (
-              <p className="tender-detail-panel__experience-prose">{summaryItem.display_value}</p>
+            <p className="tender-detail-panel__financial-intro">
+              {dualBudgetRanges
+                ? 'Tu empresa debe cumplir estos indicadores financieros para poder participar. Los valores dependen del tamaño del contrato según su presupuesto oficial.'
+                : 'Tu empresa debe cumplir estos indicadores financieros para poder participar en la licitación.'}
+            </p>
+
+            {dualBudgetRanges && (
+              <div className="tender-detail-panel__financial-range-note" role="note">
+                <p>
+                  <strong>¿Cómo leer los dos valores?</strong> En esta licitación hay dos rangos de
+                  presupuesto. Usa la fila que corresponda al presupuesto oficial del contrato:
+                </p>
+                <ul>
+                  <li>
+                    <strong>{BUDGET_RANGE_LABELS.rango_1.title}:</strong>{' '}
+                    {BUDGET_RANGE_LABELS.rango_1.detail}
+                  </li>
+                  <li>
+                    <strong>{BUDGET_RANGE_LABELS.rango_2.title}:</strong>{' '}
+                    {BUDGET_RANGE_LABELS.rango_2.detail}
+                  </li>
+                </ul>
+              </div>
             )}
 
             {indicatorItems.length > 0 && (
-              <div className="tender-detail-panel__experience-metrics">
+              <div className="tender-detail-panel__experience-metrics tender-detail-panel__experience-metrics--financial">
                 {indicatorItems.map((item) => {
                   const indicator = parseFinancialIndicator(item)
-                  const thresholdLabel = indicator ? formatFinancialThreshold(indicator) : null
+                  const thresholdRows = indicator ? buildFinancialThresholdRows(item.key, indicator) : []
                   const ctdMinimum =
                     item.key === 'capital_trabajo' && indicator?.ctd_percentage != null
                       ? computeCtdMinimumAmount(
@@ -1017,53 +1158,93 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                           indicator.ctd_percentage
                         )
                       : null
+                  const formulaHint = FINANCIAL_FORMULA_PLAIN[item.key]
+                  const descriptionHint = FINANCIAL_INDICATOR_HINTS[item.key]
 
                   return (
                     <div
                       key={`${section.key}-${item.key}`}
-                      className="tender-detail-panel__experience-metric"
+                      className="tender-detail-panel__experience-metric tender-detail-panel__experience-metric--financial"
                     >
                       <span className="tender-detail-panel__experience-metric-label">
                         {item.label}
                       </span>
-                      <span className="tender-detail-panel__experience-metric-value">
-                        {item.display_value || indicator?.formula || '—'}
-                      </span>
-                      {thresholdLabel && (
-                        <span className="tender-detail-panel__experience-metric-amount">
-                          Umbral: {thresholdLabel}
+                      {descriptionHint && (
+                        <span className="tender-detail-panel__financial-metric-hint">
+                          {descriptionHint}
                         </span>
                       )}
-                      {indicator?.min_amount_cop != null && (
-                        <span className="tender-detail-panel__experience-metric-amount">
-                          Mínimo: {formatCopCurrency(indicator.min_amount_cop)}
+
+                      {item.key === 'capital_trabajo' ? (
+                        <div className="tender-detail-panel__financial-capital">
+                          {ctdMinimum != null ? (
+                            <span className="tender-detail-panel__experience-metric-value">
+                              Mínimo exigido: {formatCopCurrency(ctdMinimum)}
+                            </span>
+                          ) : indicator?.min_amount_cop != null ? (
+                            <span className="tender-detail-panel__experience-metric-value">
+                              Mínimo exigido: {formatCopCurrency(indicator.min_amount_cop)}
+                            </span>
+                          ) : (
+                            <span className="tender-detail-panel__experience-metric-value">
+                              Definido en el pliego según el presupuesto del contrato
+                            </span>
+                          )}
+                          {indicator?.ctd_percentage != null && (
+                            <span className="tender-detail-panel__experience-metric-amount">
+                              Se calcula como el {indicator.ctd_percentage}% del presupuesto oficial
+                              {advancePaymentPercentage != null
+                                ? ` menos el anticipo (${advancePaymentPercentage}%)`
+                                : ' menos el anticipo'}
+                              .
+                            </span>
+                          )}
+                          {indicator?.ctd_condition && (
+                            <span className="tender-detail-panel__experience-metric-amount">
+                              {indicator.ctd_condition.replace(
+                                'Plazo de ejecución < 12 meses',
+                                'Solo aplica si el contrato dura menos de 12 meses'
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      ) : thresholdRows.length > 0 ? (
+                        <div className="tender-detail-panel__financial-thresholds">
+                          {thresholdRows.map((row) => (
+                            <div
+                              key={`${item.key}-${row.rangeKey || row.label}`}
+                              className="tender-detail-panel__financial-threshold-row"
+                            >
+                              {dualBudgetRanges && row.rangeKey && (
+                                <span className="tender-detail-panel__financial-threshold-range">
+                                  {row.label}
+                                </span>
+                              )}
+                              <span className="tender-detail-panel__experience-metric-value">
+                                {row.value}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="tender-detail-panel__experience-metric-value">
+                          {indicator ? formatFinancialThreshold(indicator) : item.display_value}
                         </span>
                       )}
-                      {item.key === 'capital_trabajo' && indicator?.ctd_formula && (
-                        <span className="tender-detail-panel__experience-metric-amount">
-                          {indicator.ctd_formula}
+
+                      {formulaHint && item.key !== 'capital_trabajo' && (
+                        <span className="tender-detail-panel__financial-formula">
+                          Cálculo: {formulaHint}
                         </span>
                       )}
-                      {ctdMinimum != null && (
+                      {indicator?.min_amount_cop != null && item.key !== 'capital_trabajo' && (
                         <span className="tender-detail-panel__experience-metric-amount">
-                          CTd mínimo: {formatCopCurrency(ctdMinimum)}
-                        </span>
-                      )}
-                      {item.key === 'capital_trabajo' && indicator?.ctd_condition && (
-                        <span className="tender-detail-panel__experience-metric-amount">
-                          {indicator.ctd_condition}
+                          Monto mínimo: {formatCopCurrency(indicator.min_amount_cop)}
                         </span>
                       )}
                     </div>
                   )
                 })}
-              </div>
-            )}
-
-            {matrizItem?.display_value && (
-              <div className="tender-detail-panel__experience-block">
-                <h6 className="tender-detail-panel__experience-block-title">Matriz 2</h6>
-                <p className="tender-detail-panel__experience-prose">{matrizItem.display_value}</p>
               </div>
             )}
 
@@ -1076,9 +1257,9 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
 
             {accreditationItem?.display_value && (
               <div className="tender-detail-panel__experience-block">
-                <h6 className="tender-detail-panel__experience-block-title">Cómo acreditar</h6>
+                <h6 className="tender-detail-panel__experience-block-title">Cómo demostrarlo</h6>
                 <p className="tender-detail-panel__experience-prose">
-                  {accreditationItem.display_value}
+                  {formatAccreditationText(accreditationItem.display_value)}
                 </p>
               </div>
             )}
@@ -1086,18 +1267,18 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
             {exemptionsItem?.display_value && (
               <div className="tender-detail-panel__experience-block">
                 <h6 className="tender-detail-panel__experience-block-title">
-                  Excepciones y casos especiales
+                  Casos especiales
                 </h6>
                 <p className="tender-detail-panel__experience-prose">{exemptionsItem.display_value}</p>
               </div>
             )}
 
-            {items.some((item) => item.evidence && !isRedundantEvidence(item)) && (
+            {items.some((item) => item.evidence && !isFinancialCitationNoise(item)) && (
               <details className="tender-detail-panel__experience-citations">
-                <summary>Ver citas del pliego</summary>
+                <summary>Ver texto original del documento</summary>
                 <ul>
                   {items
-                    .filter((item) => item.evidence && !isRedundantEvidence(item))
+                    .filter((item) => item.evidence && !isFinancialCitationNoise(item))
                     .map((item) => (
                       <li key={`${section.key}-${item.key}-evidence`}>
                         <strong>{item.label}:</strong> {item.evidence}

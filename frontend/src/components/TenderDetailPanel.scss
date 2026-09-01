@@ -324,6 +324,41 @@
   grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
   gap: $spacing-03;
   margin-bottom: $spacing-04;
+
+  &--financial {
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  }
+}
+
+.tender-detail-panel__financial-intro {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  margin: 0 0 $spacing-04;
+  line-height: 1.45;
+}
+
+.tender-detail-panel__financial-range-note {
+  @include type-style('body-compact-01');
+  margin: 0 0 $spacing-04;
+  padding: $spacing-04;
+  border-radius: $spacing-02;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  color: var(--cds-text-secondary);
+  line-height: 1.45;
+
+  p {
+    margin: 0 0 $spacing-03;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: $spacing-05;
+  }
+
+  li + li {
+    margin-top: $spacing-02;
+  }
 }
 
 .tender-detail-panel__experience-metric {
@@ -351,6 +386,46 @@
   @include type-style('label-01');
   color: var(--cds-text-secondary);
   line-height: 1.35;
+}
+
+.tender-detail-panel__experience-metric--financial {
+  gap: $spacing-03;
+}
+
+.tender-detail-panel__financial-metric-hint {
+  @include type-style('label-01');
+  color: var(--cds-text-helper);
+  line-height: 1.35;
+}
+
+.tender-detail-panel__financial-thresholds {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+}
+
+.tender-detail-panel__financial-threshold-row {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-01;
+}
+
+.tender-detail-panel__financial-threshold-range {
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+  font-weight: 600;
+}
+
+.tender-detail-panel__financial-formula {
+  @include type-style('label-01');
+  color: var(--cds-text-helper);
+  line-height: 1.35;
+}
+
+.tender-detail-panel__financial-capital {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-02;
 }
 
 .tender-detail-panel__experience-tiers {
