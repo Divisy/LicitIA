@@ -11,6 +11,7 @@ from app.services.tender_requirements.regex_extraction import (
     merge_financial_requirement_items,
     normalize_text,
 )
+from app.services.tender_requirements.scoring_extraction import extract_sistema_puntos
 from app.services.tender_requirements.service import build_tender_requirements, requirements_cache_is_stale
 
 
@@ -592,4 +593,75 @@ def test_build_tender_requirements_section_keys():
         "experiencia_especifica",
         "indicadores_financieros",
         "requisitos_legales",
+        "sistema_puntos",
     ]
+
+
+CCE_SCORING_PLIEGO_SAMPLE = """
+CAPITULO IV. CRITERIOS DE EVALUACION Y ASIGNACION DE PUNTAJE
+
+4.1 FORMA DE VERIFICACION Y ASIGNACION DE PUNTAJE POR LA EXPERIENCIA
+El puntaje maximo asignado a la experiencia del proponente sera de cuarenta (40) puntos.
+La experiencia se evaluara conforme a la Matriz 1 - Experiencia del proponente.
+
+4.2 CAPACIDAD FINANCIERA
+El puntaje maximo por capacidad financiera sera de veinticinco (25) puntos.
+Los indicadores se evaluaran segun la Matriz 2 - Indicadores financieros y organizacionales.
+
+4.3 CAPACIDAD ORGANIZACIONAL
+El puntaje maximo por capacidad organizacional sera de quince (15) puntos.
+
+El puntaje total de la evaluacion habilitante sera de cien (100) puntos.
+
+CAPITULO V. PRESENTACION DE LAS OFERTAS
+"""
+
+
+def test_extract_sistema_puntos_cce_chapter_iv():
+    items = extract_sistema_puntos(CCE_SCORING_PLIEGO_SAMPLE, "pliego_condiciones", None)
+    keys = {item["key"] for item in items}
+    assert "experiencia" in keys
+    assert "capacidad_financiera" in keys
+    assert "capacidad_organizacional" in keys
+    assert "total_points" in keys
+
+    experiencia = next(item for item in items if item["key"] == "experiencia")
+    assert experiencia["value"]["max_points"] == 40
+    assert experiencia["display_value"] == "40 puntos"
+
+    total = next(item for item in items if item["key"] == "total_points")
+    assert total["value"] == 100
+
+
+def test_extract_sistema_puntos_ignores_desempate_noise():
+    text = CCE_SCORING_PLIEGO_SAMPLE + """
+4.4 FACTORES DE DESEMPATE
+Empresas de mujeres 0,25 MiPyme 0,25 total 100 puntos de desempate.
+"""
+    items = extract_sistema_puntos(text, "pliego_condiciones", None)
+    assert not any(item["key"] == "otros_criterios" for item in items)
+    assert any(item["key"] == "total_points" for item in items)
+
+
+def test_extract_sistema_puntos_empty_without_chapter_iv():
+    items = extract_sistema_puntos(PLIEGO_SAMPLE, "pliego_condiciones", None)
+    assert any(item["key"] == "solvencia_economica" for item in items)
+    solvencia = next(item for item in items if item["key"] == "solvencia_economica")
+    assert solvencia["value"]["max_points"] == 20
+
+
+def test_extract_sistema_puntos_chapter_iii_solvencia_only():
+    text = """
+3.3 SOLVENCIA ECONOMICA Y FINANCIERA
+El indice de liquidez corriente debera ser mayor o igual a 1.2.
+La calificacion por solvencia tendra un puntaje de veinte (20) puntos.
+"""
+    items = extract_sistema_puntos(text, "pliego_condiciones", None)
+    assert len(items) == 1
+    assert items[0]["key"] == "solvencia_economica"
+    assert items[0]["value"]["max_points"] == 20
+
+
+def test_extract_sistema_puntos_no_signals_returns_empty():
+    text = "3.2 CAPACIDAD JURIDICA. El proponente debera acreditar capacidad juridica."
+    assert extract_sistema_puntos(text, "pliego_condiciones", None) == []

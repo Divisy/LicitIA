@@ -34,6 +34,7 @@ import './TenderDetailPanel.scss'
 const EXPERIENCE_SECTION_KEYS = new Set(['experiencia_general', 'experiencia_especifica'])
 const FINANCIAL_SECTION_KEYS = new Set(['indicadores_financieros'])
 const LEGAL_SECTION_KEYS = new Set(['requisitos_legales'])
+const SCORING_SECTION_KEYS = new Set(['sistema_puntos'])
 
 const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
   experiencia_general: [
@@ -76,6 +77,15 @@ const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
     'requisitos_legales_resumen',
     'legal_capacity',
     'specific_license',
+  ],
+  sistema_puntos: [
+    'experiencia',
+    'solvencia_economica',
+    'capacidad_financiera',
+    'capacidad_organizacional',
+    'formacion_academica',
+    'otros_criterios',
+    'total_points',
   ],
 }
 
@@ -1305,6 +1315,91 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     )
   }
 
+  const renderScoringSection = (section: TenderRequirementSection) => {
+    const criteria = section.items.filter((item) => item.key !== 'total_points')
+    const totalItem = section.items.find((item) => item.key === 'total_points')
+    const sortedCriteria = sortRequirementItems(section.key, criteria)
+    const sourceLabel = section.items[0]
+      ? REQUIREMENT_SOURCE_LABELS[section.items[0].source_document] ||
+        section.items[0].source_document
+      : null
+
+    return (
+      <div
+        key={section.key}
+        className="tender-detail-panel__experience-card tender-detail-panel__experience-card--scoring"
+      >
+        <div className="tender-detail-panel__requirements-group-header">
+          <h5 className="tender-detail-panel__requirements-group-title">{section.title}</h5>
+          <Tag type={requirementStatusTagType(section.status)} size="sm">
+            {REQUIREMENT_STATUS_LABELS[section.status] || section.status}
+          </Tag>
+        </div>
+
+        {sourceLabel && (
+          <p className="tender-detail-panel__experience-source">Fuente: {sourceLabel}</p>
+        )}
+
+        <p className="tender-detail-panel__scoring-intro">
+          Ponderación de la evaluación habilitante según el pliego. Indica cuántos puntos puede
+          valer cada criterio; no implica que tu empresa ya los cumpla.
+        </p>
+
+        {sortedCriteria.length > 0 ? (
+          <div className="tender-detail-panel__scoring-table-wrap">
+            <table className="tender-detail-panel__scoring-table">
+              <thead>
+                <tr>
+                  <th scope="col">Criterio</th>
+                  <th scope="col">Puntos máx.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedCriteria.map((item) => {
+                  const value =
+                    item.value && typeof item.value === 'object' && !Array.isArray(item.value)
+                      ? (item.value as { max_points?: number; assignment_rule?: string })
+                      : null
+                  const assignmentRule = value?.assignment_rule?.trim()
+
+                  return (
+                    <tr key={`${section.key}-${item.key}`}>
+                      <td>
+                        <span className="tender-detail-panel__scoring-criterion">{item.label}</span>
+                        {assignmentRule && (
+                          <p className="tender-detail-panel__scoring-rule">{assignmentRule}</p>
+                        )}
+                      </td>
+                      <td className="tender-detail-panel__scoring-points">
+                        {item.display_value || '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+                {totalItem && (
+                  <tr className="tender-detail-panel__scoring-total-row">
+                    <td>
+                      <strong>{totalItem.label}</strong>
+                    </td>
+                    <td className="tender-detail-panel__scoring-points">
+                      <strong>{totalItem.display_value || '—'}</strong>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="tender-detail-panel__requirements-empty">
+            {section.status === 'documento_no_disponible'
+              ? 'Sube el pliego para extraer el sistema de puntos.'
+              : 'No se detectó un sistema de puntos en el pliego analizado.'}
+          </p>
+        )}
+      </div>
+    )
+  }
+
   const renderLegalSection = (section: TenderRequirementSection) => {
     const items = sortRequirementItems(section.key, section.items)
     const sourceLabel = items[0]
@@ -1670,6 +1765,9 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                     .filter((section) => FINANCIAL_SECTION_KEYS.has(section.key))
                     .map((section) => renderFinancialSection(section))}
                   {requirements.sections
+                    .filter((section) => SCORING_SECTION_KEYS.has(section.key))
+                    .map((section) => renderScoringSection(section))}
+                  {requirements.sections
                     .filter((section) => LEGAL_SECTION_KEYS.has(section.key))
                     .map((section) => renderLegalSection(section))}
                   {requirements.sections
@@ -1677,7 +1775,8 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                       (section) =>
                         !EXPERIENCE_SECTION_KEYS.has(section.key) &&
                         !FINANCIAL_SECTION_KEYS.has(section.key) &&
-                        !LEGAL_SECTION_KEYS.has(section.key)
+                        !LEGAL_SECTION_KEYS.has(section.key) &&
+                        !SCORING_SECTION_KEYS.has(section.key)
                     )
                     .map((section) => renderRequirementSection(section))}
                 </div>

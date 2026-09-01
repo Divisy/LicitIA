@@ -428,6 +428,67 @@
   gap: $spacing-02;
 }
 
+.tender-detail-panel__experience-card--scoring {
+  margin-top: $spacing-05;
+}
+
+.tender-detail-panel__scoring-intro {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  margin: 0 0 $spacing-04;
+}
+
+.tender-detail-panel__scoring-table-wrap {
+  overflow-x: auto;
+}
+
+.tender-detail-panel__scoring-table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th,
+  td {
+    padding: $spacing-04;
+    border-bottom: 1px solid var(--cds-border-subtle);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    @include type-style('label-01');
+    color: var(--cds-text-secondary);
+    font-weight: 600;
+    background: var(--cds-layer-01);
+  }
+
+  td.tender-detail-panel__scoring-points {
+    width: 8rem;
+    white-space: nowrap;
+    @include type-style('heading-compact-01');
+    color: var(--cds-text-primary);
+  }
+}
+
+.tender-detail-panel__scoring-criterion {
+  @include type-style('body-compact-01');
+  font-weight: 600;
+  color: var(--cds-text-primary);
+}
+
+.tender-detail-panel__scoring-rule {
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin: $spacing-02 0 0;
+  line-height: 1.4;
+}
+
+.tender-detail-panel__scoring-total-row {
+  td {
+    border-top: 2px solid var(--cds-border-strong);
+    background: var(--cds-layer-accent);
+  }
+}
+
 .tender-detail-panel__experience-tiers {
   margin-bottom: $spacing-04;
 }

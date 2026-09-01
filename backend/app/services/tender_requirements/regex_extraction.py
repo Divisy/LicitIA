@@ -13,6 +13,7 @@ SECTION_DEFINITIONS: tuple[tuple[str, str, str], ...] = (
     ("experiencia_especifica", "Experiencia específica", "anexo_tecnico"),
     ("indicadores_financieros", "Indicadores financieros y solvencia", "indicadores_financieros"),
     ("requisitos_legales", "Requisitos legales y habilitación", "pliego_condiciones"),
+    ("sistema_puntos", "Sistema de puntos", "pliego_condiciones"),
 )
 
 
@@ -2656,9 +2657,13 @@ def extract_requisitos_legales(
     return _dedupe_legal_requirement_items(items)
 
 
+from app.services.tender_requirements.scoring_extraction import extract_sistema_puntos  # noqa: E402
+
+
 EXTRACTORS = {
     "experiencia_general": extract_experiencia_general,
     "experiencia_especifica": extract_experiencia_especifica,
     "indicadores_financieros": extract_indicadores_financieros,
     "requisitos_legales": extract_requisitos_legales,
+    "sistema_puntos": extract_sistema_puntos,
 }
