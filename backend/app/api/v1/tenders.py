@@ -35,6 +35,7 @@ from app.services.tender_requirements.service import (
     EXTRACTION_VERSION,
     build_tender_requirements,
     persist_tender_requirements,
+    requirements_cache_is_stale,
 )
 from app.services.experience_matching import match_tender_against_experiences, MIN_MATCH_THRESHOLD
 from app.services.tender_lifecycle import filter_active_dashboard_tenders
@@ -470,6 +471,18 @@ async def get_tender_requirements(
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found")
 
+    try:
+        if ensure_missing_key_documents_for_tender(db, tender):
+            db.commit()
+            db.refresh(tender)
+    except Exception as exc:
+        logger.warning(
+            "Missing key document sync failed before requirements for tender %s: %s",
+            tender.external_id,
+            exc,
+        )
+        db.rollback()
+
     cached = (
         None
         if refresh
@@ -479,8 +492,10 @@ async def get_tender_requirements(
         cached_version = cached.extraction_version or cached.requirements_json.get(
             "extraction_version"
         )
-        if cached_version == EXTRACTION_VERSION:
-            payload = cached.requirements_json
+        payload = cached.requirements_json
+        if cached_version == EXTRACTION_VERSION and not requirements_cache_is_stale(
+            tender, payload
+        ):
             return _requirements_response_from_payload(
                 tender,
                 payload,

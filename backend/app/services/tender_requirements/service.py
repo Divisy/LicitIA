@@ -33,7 +33,7 @@ from app.services.tender_requirements.text_selection import (
 from app.services.document_text import extract_document_text
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.6.7"
+EXTRACTION_VERSION = "1.6.8"
 
 _SECTION_SOURCE = {key: source for key, _, source in SECTION_DEFINITIONS}
 _SECTION_TITLE = {key: title for key, title, _ in SECTION_DEFINITIONS}
@@ -119,7 +119,7 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         else:
             indicadores_raw = extract_document_text(indicadores, storage)
         if indicadores_raw.strip():
-            indicadores_text = _prepare_anexo_text(indicadores_raw)
+            indicadores_text = indicadores_raw
         else:
             warnings.append(
                 f"No se pudo extraer texto de indicadores financieros ({indicadores.file_name})"
@@ -167,9 +167,9 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         if section_key == "indicadores_financieros":
             matriz_items: list[dict[str, Any]] = []
             pliego_items: list[dict[str, Any]] = []
-            if indicadores and (indicadores_raw or indicadores_text):
+            if indicadores and indicadores_raw.strip():
                 matriz_items = EXTRACTORS[section_key](
-                    indicadores_raw or indicadores_text,
+                    indicadores_raw,
                     "indicadores_financieros",
                     indicadores.id,
                 )
@@ -264,6 +264,51 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         "sections": sections,
         "warnings": warnings,
     }
+
+
+_FINANCIAL_METRIC_ITEM_KEYS = frozenset(
+    {
+        "liquidez_corriente",
+        "endeudamiento",
+        "cobertura_intereses",
+        "rentabilidad_patrimonio",
+        "rentabilidad_activo",
+        "patrimonio_minimo",
+    }
+)
+
+
+def requirements_cache_is_stale(tender: Tender, cached_payload: dict[str, Any]) -> bool:
+    """Invalidate cached financial requirements when Matriz 2 exists but was not applied."""
+    indicadores = select_indicadores_financieros_document(_visible_documents(tender))
+    if not indicadores:
+        return False
+
+    financial_section = next(
+        (
+            section
+            for section in cached_payload.get("sections", [])
+            if section.get("key") == "indicadores_financieros"
+        ),
+        None,
+    )
+    if not financial_section:
+        return True
+
+    items = financial_section.get("items", [])
+    uses_matriz = any(
+        item.get("source_document") == "indicadores_financieros"
+        and item.get("key") in _FINANCIAL_METRIC_ITEM_KEYS
+        for item in items
+    )
+    has_placeholder = any(
+        "umbrales segun matriz 2" in (item.get("display_value") or "").lower().replace("á", "a")
+        or "umbrales segun matriz 2"
+        in str((item.get("value") or {}).get("threshold_note") or "").lower().replace("á", "a")
+        for item in items
+        if item.get("key") in _FINANCIAL_METRIC_ITEM_KEYS
+    )
+    return has_placeholder or not uses_matriz
 
 
 def persist_tender_requirements(

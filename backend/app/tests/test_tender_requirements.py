@@ -2,6 +2,7 @@
 from uuid import uuid4
 
 from app.models.tender import Tender, TenderSource
+from app.models.tender_document import TenderDocument
 from app.services.tender_requirements.regex_extraction import (
     extract_experiencia_especifica,
     extract_experiencia_general,
@@ -11,7 +12,7 @@ from app.services.tender_requirements.regex_extraction import (
     merge_financial_requirement_items,
     normalize_text,
 )
-from app.services.tender_requirements.service import build_tender_requirements
+from app.services.tender_requirements.service import build_tender_requirements, requirements_cache_is_stale
 
 
 PLIEGO_SAMPLE = """
@@ -391,6 +392,47 @@ def test_merge_matriz_with_pliego_financial_items():
 
     capital = next(item for item in merged if item["key"] == "capital_trabajo")
     assert capital["value"]["ctd_percentage"] == 25.0
+
+
+def test_requirements_cache_is_stale_when_matriz_exists_but_placeholders_remain():
+    tender = Tender(
+        id=uuid4(),
+        external_id="CO1.REQ.TEST",
+        reference="IDRD-SG-LP-020-2026",
+        source="secop_ii",
+        entity_name="Entity",
+        object_text="Test",
+        state="Publicado",
+        process_url="https://example.com",
+    )
+    tender.documents = [
+        TenderDocument(
+            id=uuid4(),
+            tender_id=tender.id,
+            external_document_id="matriz-1",
+            document_type="indicadores_financieros",
+            file_name="Matriz 2 - Indicadores Financieros y Organizacionales.docx",
+            file_path="path/matriz.docx",
+            extension="docx",
+            download_url="https://example.com",
+        )
+    ]
+    cached_payload = {
+        "sections": [
+            {
+                "key": "indicadores_financieros",
+                "items": [
+                    {
+                        "key": "liquidez_corriente",
+                        "source_document": "pliego_condiciones",
+                        "display_value": "AC / PC — Umbrales según Matriz 2 (ver anexo del proceso)",
+                        "value": {"threshold_note": "Umbrales según Matriz 2 (ver anexo del proceso)"},
+                    }
+                ],
+            }
+        ]
+    }
+    assert requirements_cache_is_stale(tender, cached_payload) is True
 
 
 def test_extract_requisitos_legales_rup():

@@ -109,3 +109,12 @@ def test_classify_indicadores_financieros_wins_over_pliego_words():
     assert classify_document(
         "Anexo - Indicadores Financieros y Organizacionales - Proyecto Pliegos.pdf"
     ) == DocumentType.INDICADORES_FINANCIEROS
+
+
+def test_classify_formato_4_template_is_otro():
+    assert classify_document(
+        "Formato 4- capacidad financiera y organizacional para personas extranjeras interventoria V3.docx"
+    ) == DocumentType.OTRO
+    assert classify_document(
+        "Formato 4 - Capacidad financiera y organizacional.pdf"
+    ) == DocumentType.OTRO

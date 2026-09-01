@@ -688,21 +688,16 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     }
 
     let cancelled = false
-    const loadDocuments = async () => {
+    const loadPanelData = async () => {
       await reloadDocuments(tender.id)
+      if (cancelled) return
+      await Promise.all([
+        reloadSummary(tender.id),
+        reloadRequirements(tender.id, true),
+      ])
     }
 
-    const loadSummary = async () => {
-      await reloadSummary(tender.id)
-    }
-
-    const loadRequirements = async () => {
-      await reloadRequirements(tender.id, false)
-    }
-
-    loadDocuments()
-    loadSummary()
-    loadRequirements()
+    loadPanelData()
     return () => {
       cancelled = true
     }

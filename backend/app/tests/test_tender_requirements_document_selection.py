@@ -19,7 +19,7 @@ def _doc(file_name: str, document_type: str, file_size: int = 1000) -> TenderDoc
     )
 
 
-def test_select_indicadores_financieros_prefers_pdf_with_best_hint():
+def test_select_indicadores_financieros_prefers_matriz_over_generic_pdf():
     generic = _doc("indicadores.pdf", "indicadores_financieros", 500)
     matriz = _doc(
         "Matriz 2 - Indicadores Financieros y Organizacionales.pdf",
@@ -27,6 +27,42 @@ def test_select_indicadores_financieros_prefers_pdf_with_best_hint():
         400,
     )
     selected = select_indicadores_financieros_document([generic, matriz])
+    assert selected is not None
+    assert "Matriz 2" in selected.file_name
+
+
+def test_select_indicadores_financieros_prefers_matriz_docx_over_formato_pdf():
+    formato = _doc(
+        "Formato 4- capacidad financiera y organizacional interventoria V3.pdf",
+        "indicadores_financieros",
+        60_000,
+    )
+    matriz = _doc(
+        "Matriz 2 - Indicadores Financieros y Organizacionales v3.docx",
+        "indicadores_financieros",
+        800_000,
+    )
+    selected = select_indicadores_financieros_document([formato, matriz])
+    assert selected is not None
+    assert "Matriz 2" in selected.file_name
+
+
+def test_select_indicadores_financieros_skips_formato_template():
+    formato = _doc(
+        "Formato 4- capacidad financiera y organizacional interventoria V3.pdf",
+        "indicadores_financieros",
+        60_000,
+    )
+    assert select_indicadores_financieros_document([formato]) is None
+
+
+def test_select_indicadores_financieros_finds_matriz_stored_as_otro():
+    matriz = _doc(
+        "Matriz 2 - Indicadores Financieros y Organizacionales v3.docx",
+        "otro",
+        800_000,
+    )
+    selected = select_indicadores_financieros_document([matriz])
     assert selected is not None
     assert "Matriz 2" in selected.file_name
 

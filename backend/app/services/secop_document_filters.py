@@ -56,7 +56,6 @@ _KEYWORD_RULES: list[tuple[DocumentType, tuple[str, ...]]] = [
             "matriz 2 - indicadores",
             "solvencia economica y financiera",
             "solvencia economica",
-            "capacidad financiera y organizacional",
             "formulario indicadores",
         ),
     ),
@@ -170,9 +169,27 @@ def normalize_document_filename(file_name: str) -> str:
     return _normalize_text(file_name)
 
 
+def _is_indicadores_form_template(haystack: str) -> bool:
+    """Blank SECOP forms (Formato 4, etc.) are not the Matriz 2 threshold source."""
+    if "matriz 2" in haystack and "indicadores" in haystack:
+        return False
+    if re.search(r"\bformato\s*\d+\b", haystack):
+        return True
+    if "formulario indicadores" in haystack and "matriz" not in haystack:
+        return True
+    return False
+
+
+def is_indicadores_form_template_filename(file_name: str, description: Optional[str] = None) -> bool:
+    return _is_indicadores_form_template(_normalize_text(f"{file_name} {description or ''}"))
+
+
 def classify_document(filename: str, description: Optional[str] = None) -> DocumentType:
     """Classify a SECOP document by filename and optional description."""
     haystack = _normalize_text(f"{filename} {description or ''}")
+
+    if _is_indicadores_form_template(haystack):
+        return DocumentType.OTRO
 
     if any(keyword in haystack for keyword in _STRONG_PRESUPUESTO_KEYWORDS):
         return DocumentType.PRESUPUESTO
