@@ -19,7 +19,11 @@ LLM_EXPERIENCE_SECTIONS: tuple[str, ...] = (
 
 LLM_FINANCIAL_SECTIONS: tuple[str, ...] = ("indicadores_financieros",)
 
-LLM_ENRICHED_SECTIONS: tuple[str, ...] = LLM_EXPERIENCE_SECTIONS + LLM_FINANCIAL_SECTIONS
+LLM_LEGAL_SECTIONS: tuple[str, ...] = ("requisitos_legales",)
+
+LLM_ENRICHED_SECTIONS: tuple[str, ...] = (
+    LLM_EXPERIENCE_SECTIONS + LLM_FINANCIAL_SECTIONS + LLM_LEGAL_SECTIONS
+)
 
 _FINANCIAL_LLM_ALLOWED_KEYS: frozenset[str] = frozenset(
     {"financial_summary", "accreditation_method", "financial_exemptions"}
@@ -63,9 +67,28 @@ _FINANCIAL_FIELD_GUIDE: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
+_LEGAL_FIELD_GUIDE: dict[str, list[tuple[str, str]]] = {
+    "requisitos_legales": [
+        ("legal_summary", "Resumen de habilitación jurídica (2–4 oraciones claras)"),
+        ("rup_vigente", "Inscripción y certificado RUP vigente"),
+        ("legal_capacity", "Capacidad jurídica e inhabilidades"),
+        ("existence_representation", "Existencia y representación legal"),
+        ("redam", "Certificado REDAM"),
+        ("fiscal_responsibility", "Responsables fiscales / Contraloría"),
+        ("social_security", "Seguridad social y aportes legales"),
+        ("plural_proponent", "Proponente plural (UT/consorcio)"),
+        ("carta_presentacion", "Carta de presentación (Formato 1)"),
+        ("professional_license", "Matrícula profesional si aplica"),
+        ("garantia_seriedad", "Garantía de seriedad de la oferta"),
+        ("power_of_attorney", "Requisitos del apoderado"),
+        ("accreditation_method", "Formatos y documentos para acreditar habilitantes"),
+    ],
+}
+
 _FIELD_GUIDE: dict[str, list[tuple[str, str]]] = {
     **_EXPERIENCE_FIELD_GUIDE,
     **_FINANCIAL_FIELD_GUIDE,
+    **_LEGAL_FIELD_GUIDE,
 }
 
 _openai_client: Optional[OpenAI] = None
@@ -102,6 +125,7 @@ def _build_prompt(
     object_text: str,
     experience_excerpt: str,
     financial_excerpt: str,
+    legal_excerpt: str,
     regex_hints: str,
 ) -> str:
     field_lines: list[str] = []
@@ -123,6 +147,8 @@ def _build_prompt(
         context_parts.append(f"Experiencia:\n{experience_excerpt}")
     if financial_excerpt.strip():
         context_parts.append(f"Solvencia financiera:\n{financial_excerpt}")
+    if legal_excerpt.strip():
+        context_parts.append(f"Habilitación jurídica:\n{legal_excerpt}")
     context_block = "\n\n".join(context_parts) if context_parts else "(sin extracto)"
 
     return (
@@ -146,6 +172,9 @@ def _build_prompt(
         "Si la específica exige área en m² o % del área del proyecto, usa specific_area_phases.\n"
         "- indicadores_financieros: NO inventes umbrales numéricos (liquidez, endeudamiento, etc.); "
         "solo redacta financial_summary, accreditation_method y financial_exemptions.\n"
+        "- requisitos_legales: lista cada habilitante jurídico explícito del pliego "
+        "(RUP, capacidad jurídica, existencia/representación, REDAM, seguridad social, "
+        "Formato 1/2/5, garantía de seriedad, etc.). NO inventes requisitos no mencionados.\n"
         "- Si el borrador previo tiene un dato correcto pero mal redactado, mejóralo en display_value."
     )
 
@@ -262,25 +291,31 @@ def enrich_requirements_with_llm(
     object_text: str,
     context_excerpt: str,
     financial_context_excerpt: str = "",
+    legal_context_excerpt: str = "",
     existing_sections: dict[str, list[dict[str, Any]]],
 ) -> dict[str, list[dict[str, Any]]]:
-    """Refine experience and financial requirements with gpt-4o-mini."""
+    """Refine experience, financial and legal requirements with gpt-4o-mini."""
     if not settings.TENDER_REQUIREMENTS_USE_LLM or not _openai_client:
         return existing_sections
 
     experience_excerpt = (context_excerpt or "").strip()
     financial_excerpt = (financial_context_excerpt or "").strip()
-    if not experience_excerpt and not financial_excerpt:
+    legal_excerpt = (legal_context_excerpt or "").strip()
+    if not experience_excerpt and not financial_excerpt and not legal_excerpt:
         return existing_sections
 
     max_chars = settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS
-    budget = max_chars // 2 if experience_excerpt and financial_excerpt else max_chars
+    active_excerpts = sum(
+        1 for excerpt in (experience_excerpt, financial_excerpt, legal_excerpt) if excerpt
+    )
+    budget = max_chars // active_excerpts if active_excerpts > 1 else max_chars
     regex_hints = _serialize_regex_hints(existing_sections)
     prompt = _build_prompt(
         tender_external_id=tender_external_id,
         object_text=object_text or "",
         experience_excerpt=experience_excerpt[:budget],
         financial_excerpt=financial_excerpt[:budget],
+        legal_excerpt=legal_excerpt[:budget],
         regex_hints=regex_hints,
     )
 
@@ -329,5 +364,14 @@ def enrich_requirements_with_llm(
         )
         regex_items = existing_sections.get(section_key, [])
         merged[section_key] = _merge_financial_with_regex_priority(accepted, regex_items)
+
+    for section_key in LLM_LEGAL_SECTIONS:
+        accepted = _accept_llm_items(
+            section_key,
+            llm_sections.get(section_key, []),
+            min_confidence=min_confidence,
+        )
+        regex_items = existing_sections.get(section_key, [])
+        merged[section_key] = _merge_with_regex_fallback(accepted, regex_items)
 
     return merged

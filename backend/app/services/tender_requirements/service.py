@@ -28,12 +28,13 @@ from app.services.tender_requirements.text_selection import (
     prepare_pliego_requirement_text,
     select_experience_text_for_llm,
     select_financial_text_for_llm,
+    select_legal_text_for_llm,
     select_requirement_relevant_text,
 )
 from app.services.document_text import extract_document_text
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.6.9"
+EXTRACTION_VERSION = "1.7.1"
 
 _SECTION_SOURCE = {key: source for key, _, source in SECTION_DEFINITIONS}
 _SECTION_TITLE = {key: title for key, title, _ in SECTION_DEFINITIONS}
@@ -213,11 +214,17 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         indicadores_raw or pliego_raw or pliego_text,
         settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS,
     )
+    llm_legal_context = select_legal_text_for_llm(
+        pliego_pages or None,
+        pliego_raw or pliego_text,
+        settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS,
+    )
     extracted_by_section = enrich_requirements_with_llm(
         tender_external_id=tender.external_id,
         object_text=tender.object_text or "",
         context_excerpt=llm_experience_context,
         financial_context_excerpt=llm_financial_context,
+        legal_context_excerpt=llm_legal_context,
         existing_sections=extracted_by_section,
     )
     if extracted_by_section.get("experiencia_especifica"):

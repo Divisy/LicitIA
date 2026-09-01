@@ -29,8 +29,15 @@ FINANCIAL_TOC_KEYWORDS: tuple[str, ...] = (
 LEGAL_TOC_KEYWORDS: tuple[str, ...] = (
     "capacidad juridica",
     "requisitos legales",
+    "requisitos de participacion",
     "habilitacion",
+    "existencia y representacion legal",
+    "seguridad social",
     "registro unico de proponentes",
+    "carta de presentacion",
+    "3.2 capacidad juridica",
+    "3.3 existencia",
+    "3.4 seguridad",
 )
 
 TOC_LINE_PATTERNS: tuple[re.Pattern[str], ...] = (

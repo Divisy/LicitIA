@@ -2154,6 +2154,354 @@ def extract_indicadores_financieros(
     )
 
 
+_LEGAL_TOPIC_STOP_MARKERS: tuple[str, ...] = (
+    "existencia y representacion legal",
+    "seguridad social",
+    "solvencia economica",
+    "capacidad financiera",
+    "indicadores financieros",
+    "experiencia general",
+    "exigencias minimas de la experiencia",
+    "capitulo iv",
+    "carta de presentacion",
+)
+
+_LEGAL_TOPIC_SPECS: tuple[dict[str, Any], ...] = (
+    {
+        "key_prefix": "habilitantes_generales",
+        "label": "Requisitos habilitantes generales",
+        "start_markers": (
+            "requisitos habilitantes y su verificacion",
+            "requisitos habilitantes",
+            "requisitos de participacion",
+            "generalidades",
+        ),
+        "stop_markers": (
+            "capacidad juridica",
+            "existencia y representacion legal",
+            "seguridad social",
+            "capacidad financiera",
+            "experiencia general",
+        ),
+    },
+    {
+        "key_prefix": "capacidad_juridica",
+        "label": "Capacidad jurídica",
+        "start_markers": (
+            "capacidad juridica",
+            "requisitos legales",
+            "habilitacion juridica",
+        ),
+        "stop_markers": _LEGAL_TOPIC_STOP_MARKERS,
+        "lettered_debe_phrase": "los proponentes deben",
+    },
+    {
+        "key_prefix": "existencia_representacion",
+        "label": "Existencia y representación legal",
+        "start_markers": ("existencia y representacion legal",),
+        "stop_markers": (
+            "seguridad social",
+            "capacidad financiera",
+            "experiencia general",
+            "solvencia economica",
+        ),
+        "subsection_markers": (
+            ("personas naturales", "personas_naturales", "Personas naturales"),
+            ("personas juridicas", "personas_juridicas", "Personas jurídicas"),
+            ("proponentes plurales", "proponentes_plurales", "Proponentes plurales"),
+            ("entidades estatales", "entidades_estatales", "Entidades estatales"),
+        ),
+    },
+    {
+        "key_prefix": "seguridad_social",
+        "label": "Seguridad social y aportes legales",
+        "start_markers": (
+            "seguridad social y aportes legales",
+            "certificacion de pagos al sistema de seguridad social",
+            "seguridad social",
+        ),
+        "stop_markers": (
+            "capacidad financiera",
+            "solvencia economica",
+            "experiencia general",
+            "capital de trabajo",
+            "indicadores financieros",
+        ),
+        "subsection_markers": (
+            ("personas juridicas", "personas_juridicas", "Personas jurídicas"),
+            ("personas naturales", "personas_naturales", "Personas naturales"),
+            ("proponentes plurales", "proponentes_plurales", "Proponentes plurales"),
+            (
+                "seguridad social para la suscripcion del contrato",
+                "suscripcion_contrato",
+                "Para la suscripción del contrato",
+            ),
+        ),
+    },
+)
+
+
+def _clean_pliego_section_body(text: str, *, max_len: int = 4_000) -> str:
+    cleaned = re.sub(
+        r"documento base.{0,160}?version\s+no\.?\s*\d+",
+        " ",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    cleaned = re.sub(r"codigo cce-[a-z0-9-]+.{0,60}", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"pagina\s+\d+\s+de\s+\d+", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"interventoria de obra publica.{0,80}", " ", cleaned, flags=re.IGNORECASE)
+    return _clean_requirement_text(cleaned, max_len=max_len)
+
+
+def _is_toc_occurrence(normalized: str, index: int, marker_len: int) -> bool:
+    after = normalized[index + marker_len : index + marker_len + 16]
+    return bool(re.match(r"\s*\.{4,}", after))
+
+
+def _find_topic_section(
+    normalized: str,
+    start_markers: tuple[str, ...],
+    stop_markers: tuple[str, ...],
+    *,
+    max_window: int = 8_000,
+) -> str:
+    candidates: list[str] = []
+    for marker in start_markers:
+        search_from = 0
+        while True:
+            index = normalized.find(marker, search_from)
+            if index < 0:
+                break
+            if _is_toc_occurrence(normalized, index, len(marker)):
+                search_from = index + len(marker)
+                continue
+            fragment = normalized[index + len(marker) :]
+            end = min(max_window, len(fragment))
+            for stop in stop_markers:
+                stop_idx = fragment.lower().find(stop.lower())
+                if stop_idx >= 0:
+                    end = min(end, stop_idx)
+            body = _clean_pliego_section_body(fragment[:end])
+            if len(body) > 50:
+                candidates.append(body)
+            search_from = index + len(marker)
+
+    return max(candidates, key=len) if candidates else ""
+
+
+def _extract_lettered_requirements(
+    section_body: str,
+    *,
+    key_prefix: str,
+    label_prefix: str,
+    stop_phrase: str = "la entidad",
+) -> list[tuple[str, str, str]]:
+    items: list[tuple[str, str, str]] = []
+    region = section_body
+    stop_idx = region.lower().find(stop_phrase)
+    if stop_idx >= 0:
+        region = region[:stop_idx]
+
+    for match in re.finditer(
+        r"\b([a-f])\.\s+(.+?)(?=\s+[a-f]\.\s+|\Z)",
+        region,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        letter = match.group(1).lower()
+        text = _clean_requirement_text(match.group(2), max_len=420)
+        if len(text) < 20:
+            continue
+        items.append(
+            (
+                f"{key_prefix}_{letter}",
+                f"{label_prefix} ({letter.upper()})",
+                text,
+            )
+        )
+    return items
+
+
+def _extract_subsection_by_marker(
+    section_body: str,
+    marker: str,
+    stop_markers: tuple[str, ...],
+) -> str:
+    search_from = 0
+    while True:
+        index = section_body.lower().find(marker.lower(), search_from)
+        if index < 0:
+            return ""
+        after = section_body[index + len(marker) : index + len(marker) + 10]
+        if re.match(r"\s*\.{4,}", after):
+            search_from = index + len(marker)
+            continue
+        fragment = section_body[index + len(marker) :]
+        end = len(fragment)
+        for stop in stop_markers:
+            stop_idx = fragment.lower().find(stop.lower())
+            if stop_idx >= 0:
+                end = min(end, stop_idx)
+        body = _clean_pliego_section_body(fragment[:end], max_len=1_200)
+        if len(body) > 40:
+            return body
+        search_from = index + len(marker)
+    return ""
+
+
+def _append_legal_section_item(
+    items: list[RequirementItem],
+    seen_keys: set[str],
+    *,
+    key: str,
+    label: str,
+    display_value: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+    evidence: str,
+    confidence: float = 0.9,
+) -> None:
+    if key in seen_keys or not display_value.strip():
+        return
+    seen_keys.add(key)
+    items.append(
+        _item(
+            key=key,
+            label=label,
+            value=display_value,
+            display_value=display_value,
+            source_document=source_document,
+            source_document_id=source_document_id,
+            evidence=evidence[:220],
+            confidence=confidence,
+        )
+    )
+
+
+def _extract_topic_requirements(
+    section_body: str,
+    spec: dict[str, Any],
+) -> list[tuple[str, str, str]]:
+    key_prefix = str(spec["key_prefix"])
+    label = str(spec["label"])
+    extracted: list[tuple[str, str, str]] = []
+
+    debe_phrase = spec.get("lettered_debe_phrase")
+    letter_region = section_body
+    if debe_phrase:
+        debe_idx = section_body.lower().find(str(debe_phrase).lower())
+        if debe_idx >= 0:
+            letter_region = section_body[debe_idx:]
+
+    lettered = _extract_lettered_requirements(
+        letter_region,
+        key_prefix=key_prefix,
+        label_prefix=label,
+    )
+    if lettered:
+        extracted.extend(lettered)
+    else:
+        summary = _clean_pliego_section_body(section_body, max_len=420)
+        if len(summary) > 40:
+            extracted.append((f"{key_prefix}_resumen", label, summary))
+
+    subsection_markers = spec.get("subsection_markers") or ()
+    subsection_stops = tuple(
+        marker for marker, _, _ in subsection_markers
+    ) + ("capacidad financiera", "experiencia general")
+    for marker, sub_key, sub_label in subsection_markers:
+        body = _extract_subsection_by_marker(section_body, marker, subsection_stops)
+        if body:
+            extracted.append((f"{key_prefix}_{sub_key}", f"{label} — {sub_label}", body))
+
+    antecedentes_match = re.search(
+        r"la entidad debe consultar los antecedentes.+",
+        section_body,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if antecedentes_match and key_prefix == "capacidad_juridica":
+        antecedentes = _clean_pliego_section_body(antecedentes_match.group(0), max_len=420)
+        extracted.append(
+            (
+                "capacidad_juridica_antecedentes",
+                f"{label} — Verificación de antecedentes",
+                antecedentes,
+            )
+        )
+
+    return extracted
+
+
+def _extract_simple_legal_clauses(
+    section_body: str,
+) -> list[tuple[str, str, str]]:
+    clauses: list[tuple[str, str, str]] = []
+    normalized_body = normalize_text(section_body)
+
+    if re.search(r"registro\s+unico\s+de\s+proponentes|\binscrip\w+\s+en\s+el\s+rup\b|\brup\b", normalized_body):
+        match = re.search(
+            r"[^.]{0,40}(?:registro\s+unico\s+de\s+proponentes|\brup\b)[^.]{0,180}\.",
+            section_body,
+            flags=re.IGNORECASE,
+        )
+        text = _clean_requirement_text(match.group(0) if match else section_body[:200], max_len=280)
+        clauses.append(("rup_vigente", "Inscripción vigente en el RUP", text))
+
+    if re.search(r"capacidad\s+juridica|personeria\s+juridica", normalized_body):
+        match = re.search(
+            r"[^.]{0,20}capacidad\s+juridica[^.]{0,180}\.",
+            section_body,
+            flags=re.IGNORECASE,
+        )
+        text = _clean_requirement_text(match.group(0) if match else "Acreditar capacidad jurídica", max_len=280)
+        clauses.append(("legal_capacity", "Capacidad jurídica", text))
+
+    license_match = re.search(
+        r"licencia\s+de\s+construccion|registro\s+nacional\s+de\s+contratistas|\brnc\b",
+        normalized_body,
+    )
+    if license_match:
+        match = re.search(
+            r"[^.]{0,20}(?:licencia\s+de\s+construccion|registro\s+nacional\s+de\s+contratistas|\brnc\b)[^.]{0,120}\.",
+            section_body,
+            flags=re.IGNORECASE,
+        )
+        text = _clean_requirement_text(match.group(0) if match else license_match.group(0), max_len=280)
+        clauses.append(("specific_license", "Habilitación específica para contratar", text))
+
+    return clauses
+
+
+def _append_rup_validity_if_present(
+    items: list[RequirementItem],
+    seen_keys: set[str],
+    normalized: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+) -> None:
+    rup_match = re.search(
+        r"(?:certificado|registro\s+unico\s+de\s+proponentes|\brup\b).{0,220}?(\d{1,3})\s*\)?\s*dias",
+        normalized,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not rup_match or "rup_certificate_validity" in seen_keys:
+        return
+    days = int(rup_match.group(1))
+    seen_keys.add("rup_certificate_validity")
+    items.append(
+        _item(
+            key="rup_certificate_validity",
+            label="Vigencia del certificado RUP",
+            value=days,
+            display_value=f"Certificado RUP expedido máximo {days} días antes del cierre",
+            source_document=source_document,
+            source_document_id=source_document_id,
+            evidence=_snippet(normalized, rup_match.start(), rup_match.end() + 60),
+            confidence=0.9,
+        )
+    )
+
+
 def extract_requisitos_legales(
     text: str,
     source_document: str,
@@ -2163,55 +2511,81 @@ def extract_requisitos_legales(
         return []
 
     items: list[RequirementItem] = []
+    seen_keys: set[str] = set()
     normalized = normalize_text(text)
 
-    if re.search(r"registro\s+unico\s+de\s+proponentes|\brup\b", normalized):
-        match = re.search(r"registro\s+unico\s+de\s+proponentes|\brup\b", normalized)
-        items.append(
-            _item(
-                key="rup_vigente",
-                label="Inscripción vigente en el RUP",
-                value=True,
-                display_value="Requerido",
+    for spec in _LEGAL_TOPIC_SPECS:
+        section_body = _find_topic_section(
+            normalized,
+            tuple(spec["start_markers"]),
+            tuple(spec["stop_markers"]),
+        )
+        if not section_body:
+            continue
+
+        for key, label, display in _extract_topic_requirements(section_body, spec):
+            _append_legal_section_item(
+                items,
+                seen_keys,
+                key=key,
+                label=label,
+                display_value=display,
                 source_document=source_document,
                 source_document_id=source_document_id,
-                evidence=_snippet(normalized, match.start(), match.end() + 80) if match else "",
-                confidence=0.9,
+                evidence=display,
             )
-        )
 
-    if re.search(r"capacidad\s+juridica|personeria\s+juridica", normalized):
-        match = re.search(r"capacidad\s+juridica|personeria\s+juridica", normalized)
-        items.append(
-            _item(
-                key="legal_capacity",
-                label="Capacidad jurídica",
-                value=True,
-                display_value="Requerido",
-                source_document=source_document,
-                source_document_id=source_document_id,
-                evidence=_snippet(normalized, match.start(), match.end() + 80) if match else "",
-                confidence=0.85,
-            )
-        )
+        if spec["key_prefix"] == "capacidad_juridica":
+            for key, label, display in _extract_simple_legal_clauses(section_body):
+                _append_legal_section_item(
+                    items,
+                    seen_keys,
+                    key=key,
+                    label=label,
+                    display_value=display,
+                    source_document=source_document,
+                    source_document_id=source_document_id,
+                    evidence=display,
+                )
 
-    license_match = re.search(
-        r"(licencia\s+de\s+construccion|registro\s+nacional\s+de\s+contratistas|\brnc\b)",
+    if not items:
+        fallback_body = _find_topic_section(
+            normalized,
+            ("requisitos legales", "habilitacion", "capacidad juridica"),
+            _LEGAL_TOPIC_STOP_MARKERS,
+        )
+        if fallback_body:
+            for key, label, display in _extract_simple_legal_clauses(fallback_body):
+                _append_legal_section_item(
+                    items,
+                    seen_keys,
+                    key=key,
+                    label=label,
+                    display_value=display,
+                    source_document=source_document,
+                    source_document_id=source_document_id,
+                    evidence=display,
+                )
+            if not items:
+                summary = _clean_pliego_section_body(fallback_body, max_len=420)
+                _append_legal_section_item(
+                    items,
+                    seen_keys,
+                    key="requisitos_legales_resumen",
+                    label="Requisitos legales y habilitación",
+                    display_value=summary,
+                    source_document=source_document,
+                    source_document_id=source_document_id,
+                    evidence=summary[:220],
+                )
+
+    _append_rup_validity_if_present(
+        items,
+        seen_keys,
         normalized,
+        source_document,
+        source_document_id,
     )
-    if license_match:
-        items.append(
-            _item(
-                key="specific_license",
-                label="Habilitación específica para contratar",
-                value=license_match.group(1),
-                display_value=license_match.group(1).title(),
-                source_document=source_document,
-                source_document_id=source_document_id,
-                evidence=_snippet(normalized, license_match.start(), license_match.end() + 60),
-                confidence=0.82,
-            )
-        )
 
     return items
 

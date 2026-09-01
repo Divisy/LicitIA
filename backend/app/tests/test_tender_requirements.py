@@ -466,6 +466,39 @@ def test_requirements_cache_is_stale_when_matriz_exists_but_placeholders_remain(
     assert requirements_cache_is_stale(tender, cached_payload) is True
 
 
+CCE_LEGAL_PLIEGO_SAMPLE = """
+CAPITULO III REQUISITOS DE PARTICIPACION
+3.2 CAPACIDAD JURIDICA
+Los interesados podran participar como proponentes bajo alguna de las siguientes modalidades.
+El Proponente debera acreditar capacidad juridica y no estar en inhabilidad, incompatibilidad
+ni conflicto de interes. No debera figurar en el boletin de responsables fiscales de la Contraloria.
+Debera presentar certificado REDAM de no estar inhabilitado por deudas alimentarias.
+Las personas juridicas deberan informar sociedades controlantes y contraladas (Decreto 1600 de 2024).
+La Entidad consultara antecedentes judiciales, fiscales, disciplinarios y RNMC.
+
+3.3 EXISTENCIA Y REPRESENTACION LEGAL
+Persona natural: cedula de ciudadania, cedula de extranjeria o pasaporte.
+Persona juridica: certificado de existencia y representacion legal expedido por Camaras de Comercio
+con vigencia no mayor a treinta (30) dias calendario anteriores a la fecha de cierre.
+El objeto social debera ser compatible con el objeto del contrato.
+Proponente Plural: diligenciara Formato 2 y registrara la UT o consorcio en SECOP II.
+
+3.4 SEGURIDAD SOCIAL Y APORTES LEGALES
+Persona juridica: Formato 5 - Declaracion de pagos al Sistema de Seguridad Social.
+Persona natural: afiliacion a los sistemas de seguridad social en salud y pensiones.
+
+2.1 CARTA DE PRESENTACION DE LA OFERTA
+Formato 1 - Carta de presentacion de la oferta firmada por el representante legal.
+Matricula profesional vigente expedida por el COPNIA segun Ley 842 de 2003.
+Los proponentes podran actuar mediante apoderado con poder otorgado en legal forma.
+
+El certificado del Registro Unico de Proponentes (RUP) debera tener fecha de expedición
+no mayor a treinta (30) dias calendario anteriores a la fecha de cierre.
+Garantia de seriedad de la oferta junto con la propuesta.
+Proponentes extranjeros sin domicilio ni sucursal: Formato 4.
+"""
+
+
 def test_extract_requisitos_legales_rup():
     items = extract_requisitos_legales(PLIEGO_SAMPLE, "pliego_condiciones", None)
     keys = {item["key"] for item in items}
@@ -476,6 +509,22 @@ def test_extract_requisitos_legales_rup():
 def test_extract_requisitos_legales_license():
     items = extract_requisitos_legales(PLIEGO_SAMPLE, "pliego_condiciones", None)
     assert any(item["key"] == "specific_license" for item in items)
+
+
+def test_extract_cce_legal_habilitantes():
+    items = extract_requisitos_legales(CCE_LEGAL_PLIEGO_SAMPLE, "pliego_condiciones", None)
+    keys = {item["key"] for item in items}
+    assert any(key.startswith("capacidad_juridica") for key in keys)
+    assert any(key.startswith("existencia_representacion") for key in keys)
+    assert any(key.startswith("seguridad_social") for key in keys)
+    assert "rup_certificate_validity" in keys
+    assert "carta_presentacion" not in keys
+    rup_validity = next(item for item in items if item["key"] == "rup_certificate_validity")
+    assert rup_validity["value"] == 30
+    capacidad_text = " ".join(
+        item["display_value"] for item in items if item["key"].startswith("capacidad_juridica")
+    ).lower()
+    assert "redam" in capacidad_text
 
 
 INVIAS_PLIEGO_SAMPLE = """
