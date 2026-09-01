@@ -597,6 +597,66 @@ def test_build_tender_requirements_section_keys():
     ]
 
 
+CMA_SCORING_TABLE_SAMPLE = """
+CAPITULO IV. CRITERIOS DE EVALUACION, ASIGNACION DE PUNTAJE Y CRITERIOS DE DESEMPATE
+La Entidad calificara las ofertas que hayan cumplido los requisitos habilitantes con los siguientes
+criterios de evaluacion y puntaje:
+Concepto
+Puntaje maximo
+Experiencia del Proponente
+67,50
+Equipo de trabajo (Personal Clave Evaluable)
+10
+Factor de sostenibilidad
+1
+Apoyo a la industria nacional
+20
+Vinculacion de personas con discapacidad
+1
+Emprendimientos y empresas de mujeres
+0,25
+Mipyme
+0,25
+Total
+100
+Las Entidades deben consultar y analizar las anotaciones vigentes en el Registro Nacional de Obras
+Civiles Inconclusas. En el evento que cuenten con alguna anotacion vigente se descontara un (1) punto.
+Asimismo, las Entidades deberan reducir durante la evaluacion de las ofertas dos (2) puntos a los
+Proponentes que se les haya impuesto una o mas multas.
+4.1 FORMA DE VERIFICACION Y ASIGNACION DE PUNTAJE POR LA EXPERIENCIA DEL PROPONENTE
+Para la asignacion de puntaje, se tomara el promedio de los contratos validos aportados.
+4.2 EQUIPO DE TRABAJO (Personal Clave Evaluable)
+La asignacion de puntaje relacionada con el Equipo de trabajo se realizara de la siguiente manera.
+4.3 FACTOR DE SOSTENIBILIDAD
+La Entidad asignara un (1) punto al Proponente que se comprometa con el Formato 12.
+CRITERIOS DE DESEMPATE
+En caso de empate en el puntaje total de dos o mas ofertas deberan aplicarse las siguientes reglas:
+a. Preferir la propuesta presentada por el oferente que acredite la vinculacion en mayor numero de
+personas en condicion de discapacidad.
+b. Preferir la propuesta de la empresa de mujeres o emprendimiento.
+CAPITULO V. PRESENTACION DE LAS OFERTAS
+"""
+
+
+def test_extract_sistema_puntos_cma_summary_table():
+    items = extract_sistema_puntos(CMA_SCORING_TABLE_SAMPLE, "pliego_condiciones", None)
+    keys = {item["key"] for item in items}
+    assert "experiencia" in keys
+    assert "equipo_trabajo" in keys
+    assert "industria_nacional" in keys
+    assert "total_points" in keys
+    assert "ajuste_obras_inconclusas" in keys
+    assert "ajuste_multas" in keys
+    assert any(item["key"].startswith("desempate") for item in items)
+
+    experiencia = next(item for item in items if item["key"] == "experiencia")
+    assert experiencia["value"]["max_points"] == 67.5
+    assert experiencia["value"]["criterion_type"] == "evaluacion"
+
+    total = next(item for item in items if item["key"] == "total_points")
+    assert total["value"]["max_points"] == 100
+
+
 CCE_SCORING_PLIEGO_SAMPLE = """
 CAPITULO IV. CRITERIOS DE EVALUACION Y ASIGNACION DE PUNTAJE
 
@@ -630,7 +690,7 @@ def test_extract_sistema_puntos_cce_chapter_iv():
     assert experiencia["display_value"] == "40 puntos"
 
     total = next(item for item in items if item["key"] == "total_points")
-    assert total["value"] == 100
+    assert total["value"]["max_points"] == 100
 
 
 def test_extract_sistema_puntos_ignores_desempate_noise():

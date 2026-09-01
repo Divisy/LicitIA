@@ -40,6 +40,17 @@ LEGAL_TOC_KEYWORDS: tuple[str, ...] = (
     "3.4 seguridad",
 )
 
+SCORING_TOC_KEYWORDS: tuple[str, ...] = (
+    "criterios de evaluacion",
+    "asignacion de puntaje",
+    "puntaje por la experiencia",
+    "criterios de desempate",
+    "capitulo iv",
+    "equipo de trabajo",
+    "factor de sostenibilidad",
+    "apoyo a la industria nacional",
+)
+
 TOC_LINE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
         r"((?:\d+\.)+\d*)\s+(.{8,160}?)\s+\.{3,}\s*(\d{1,3})\b",
@@ -135,6 +146,7 @@ def locate_pages_from_toc(
         ("experiencia", EXPERIENCE_TOC_KEYWORDS),
         ("financiero", FINANCIAL_TOC_KEYWORDS),
         ("legal", LEGAL_TOC_KEYWORDS),
+        ("puntaje", SCORING_TOC_KEYWORDS),
     ):
         ranked = rank_toc_entries(entries, keywords)
         if not ranked:

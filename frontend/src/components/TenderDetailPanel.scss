@@ -482,6 +482,12 @@
   line-height: 1.4;
 }
 
+.tender-detail-panel__scoring-subtitle {
+  @include type-style('heading-compact-01');
+  color: var(--cds-text-primary);
+  margin: $spacing-05 0 $spacing-03;
+}
+
 .tender-detail-panel__scoring-total-row {
   td {
     border-top: 2px solid var(--cds-border-strong);
