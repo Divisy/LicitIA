@@ -597,6 +597,75 @@ def test_build_tender_requirements_section_keys():
     ]
 
 
+LP_INFRA_SCORING_TABLE_SAMPLE = """
+CAPITULO IV. CRITERIOS DE EVALUACION, ASIGNACION DE PUNTAJE Y CRITERIOS DE DESEMPATE
+La Entidad calificara las ofertas con los siguientes puntajes:
+Concepto
+Oferta economica
+Puntaje maximo
+48,5
+Factor de calidad
+30
+Apoyo a la industria nacional
+20
+Vinculacion de personas con discapacidad
+1
+Emprendimientos y empresas de mujeres
+0,25
+Mipyme
+0,25
+Total
+100
+Las Entidades deberan reducir durante la evaluacion de las ofertas dos (2) puntos a los
+Proponentes que se les haya impuesto una o mas multas.
+4.1 OFERTA ECONOMICA
+Para calificar este factor se tendra en cuenta el valor total indicado en la propuesta economica.
+4.2 FACTOR DE CALIDAD
+La Entidad asignara el puntaje de factor de calidad como sigue.
+CRITERIOS DE DESEMPATE
+En caso de empate en el puntaje total deberan aplicarse las siguientes reglas:
+a. Preferir la propuesta con mayor puntaje en factor de calidad.
+CAPITULO V. GARANTIAS
+"""
+
+
+def test_extract_sistema_puntos_accepts_unknown_table_criteria():
+    text = """
+CAPITULO IV. CRITERIOS DE EVALUACION Y ASIGNACION DE PUNTAJE
+Concepto Puntaje maximo
+Criterio especial Alpha 15
+Otro factor Beta 5
+Total 20
+"""
+    items = extract_sistema_puntos(text, "pliego_condiciones", None)
+    keys = {item["key"] for item in items}
+    assert "criterio_especial_alpha" in keys
+    assert "otro_factor_beta" in keys
+    total = next(item for item in items if item["key"] == "total_points")
+    assert total["value"]["max_points"] == 20
+
+
+def test_extract_sistema_puntos_lp_infra_summary_table():
+    items = extract_sistema_puntos(LP_INFRA_SCORING_TABLE_SAMPLE, "pliego_condiciones", None)
+    keys = {item["key"] for item in items}
+    assert "oferta_economica" in keys
+    assert "factor_calidad" in keys
+    assert "industria_nacional" in keys
+    assert "total_points" in keys
+    assert "48_5_factor_de_calidad" not in keys
+
+    oferta = next(item for item in items if item["key"] == "oferta_economica")
+    assert oferta["value"]["max_points"] == 48.5
+
+    eval_points = sum(
+        float(item["value"]["max_points"])
+        for item in items
+        if item["value"].get("criterion_type") == "evaluacion"
+        and item["key"] != "total_points"
+    )
+    assert eval_points == 100
+
+
 CMA_SCORING_TABLE_SAMPLE = """
 CAPITULO IV. CRITERIOS DE EVALUACION, ASIGNACION DE PUNTAJE Y CRITERIOS DE DESEMPATE
 La Entidad calificara las ofertas que hayan cumplido los requisitos habilitantes con los siguientes

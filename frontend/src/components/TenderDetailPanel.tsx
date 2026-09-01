@@ -79,6 +79,8 @@ const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
     'specific_license',
   ],
   sistema_puntos: [
+    'oferta_economica',
+    'factor_calidad',
     'experiencia',
     'equipo_trabajo',
     'sostenibilidad',
@@ -461,6 +463,17 @@ const sortRequirementItems = (
 ) => {
   const order = REQUIREMENT_ITEM_ORDER[sectionKey] || []
   return [...items].sort((a, b) => {
+    if (sectionKey === 'sistema_puntos') {
+      const aOrder =
+        a.value && typeof a.value === 'object' && !Array.isArray(a.value)
+          ? Number((a.value as { sort_order?: number }).sort_order ?? 99)
+          : 99
+      const bOrder =
+        b.value && typeof b.value === 'object' && !Array.isArray(b.value)
+          ? Number((b.value as { sort_order?: number }).sort_order ?? 99)
+          : 99
+      if (aOrder !== bOrder) return aOrder - bOrder
+    }
     const aIndex = order.indexOf(a.key)
     const bIndex = order.indexOf(b.key)
     if (aIndex === -1 && bIndex === -1) return 0

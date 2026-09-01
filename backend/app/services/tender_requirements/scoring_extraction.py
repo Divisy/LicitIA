@@ -16,6 +16,7 @@ from app.services.tender_requirements.regex_extraction import (
     _clean_requirement_text,
     _extract_lettered_requirements,
     _find_topic_section,
+    _is_toc_occurrence,
     _item,
     _snippet,
     normalize_text,
@@ -53,7 +54,9 @@ _DESEMPATE_STOP_MARKERS: tuple[str, ...] = (
     "formato 1",
 )
 
-_TABLE_LABEL_SPECS: tuple[tuple[str, str, str], ...] = (
+_TABLE_LABEL_ALIASES: tuple[tuple[str, str, str], ...] = (
+    (r"oferta economica", "oferta_economica", "Oferta económica"),
+    (r"factor de calidad", "factor_calidad", "Factor de calidad"),
     (r"experiencia del proponente", "experiencia", "Experiencia del proponente"),
     (r"equipo de trabajo|personal clave evaluable", "equipo_trabajo", "Equipo de trabajo"),
     (r"factor de sostenibilidad", "sostenibilidad", "Factor de sostenibilidad"),
@@ -68,6 +71,18 @@ _TABLE_LABEL_SPECS: tuple[tuple[str, str, str], ...] = (
 )
 
 _ASSIGNMENT_SPECS: tuple[dict[str, Any], ...] = (
+    {
+        "keys": ("oferta_economica",),
+        "start_markers": ("4.1 oferta economica",),
+        "stop_markers": ("4.2", "factor de calidad"),
+        "prefer_phrases": ("propuesta economica", "correccion aritmetica", "presupuesto oficial"),
+    },
+    {
+        "keys": ("factor_calidad",),
+        "start_markers": ("4.2 factor de calidad",),
+        "stop_markers": ("4.3", "apoyo a la industria nacional", "las entidades estatal"),
+        "prefer_phrases": ("gerencia de proyectos", "maquinaria de obra", "plan de calidad"),
+    },
     {
         "keys": ("experiencia",),
         "start_markers": (
@@ -177,6 +192,8 @@ _PROSE_CRITERION_SPECS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 )
 
 _ITEM_ORDER: tuple[str, ...] = (
+    "oferta_economica",
+    "factor_calidad",
     "experiencia",
     "equipo_trabajo",
     "sostenibilidad",
@@ -191,6 +208,23 @@ _ITEM_ORDER: tuple[str, ...] = (
     "ajuste_obras_inconclusas",
     "ajuste_multas",
     "total_points",
+)
+
+_NOISE_LABELS = frozenset(
+    {
+        "total",
+        "concepto",
+        "puntaje",
+        "maximo",
+        "puntaje maximo",
+        "criterio",
+        "criterios",
+    }
+)
+
+_NUMBERED_SECTION_RE = re.compile(
+    r"\b(4\.\d+(?:\.\d+)?)\s+(.+?)(?=\s+4\.\d+(?:\.\d+)?\s+|\s+criterios de desempate|\s+capitulo v\b|\Z)",
+    flags=re.IGNORECASE | re.DOTALL,
 )
 
 _HEADER_NOISE_RE = re.compile(
@@ -244,18 +278,81 @@ def _parse_points_from_prose(window: str) -> Optional[float]:
     return None
 
 
-def _match_table_label(label: str) -> Optional[tuple[str, str]]:
+def _label_to_key(label: str) -> str:
     normalized = normalize_text(label)
-    if normalized in {"total", "concepto", "puntaje", "maximo", "puntaje maximo"}:
+    slug = re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")[:56]
+    return slug or "criterio"
+
+
+def _unique_key(base: str, seen: set[str]) -> str:
+    if base not in seen:
+        return base
+    suffix = 2
+    while f"{base}_{suffix}" in seen:
+        suffix += 1
+    return f"{base}_{suffix}"
+
+
+def _resolve_criterion_label(label: str) -> Optional[tuple[str, str]]:
+    normalized = normalize_text(label)
+    if not normalized or normalized in _NOISE_LABELS:
         return None
-    for pattern, key, display in _TABLE_LABEL_SPECS:
+    if _POINT_ONLY_RE.match(normalized.replace(" ", "")) or re.match(r"^\d", normalized):
+        return None
+
+    for pattern, key, display in _TABLE_LABEL_ALIASES:
         if re.search(pattern, normalized, flags=re.IGNORECASE):
             return key, display
-    if len(normalized) >= 12 and not _POINT_ONLY_RE.match(normalized.replace(" ", "")):
-        slug = re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")[:48]
-        if slug:
-            return slug, _clean_requirement_text(label, max_len=80)
-    return None
+
+    cleaned = _clean_requirement_text(label, max_len=96)
+    if len(normalized) < 3:
+        return None
+    return _label_to_key(label), cleaned
+
+
+def _scoring_chapter_body(normalized: str) -> str:
+    """Best Cap. IV slice for tables, assignment sections and adjustments."""
+    candidates: list[tuple[int, int]] = []
+    for marker in _EVALUATION_START_MARKERS:
+        search_from = 0
+        while True:
+            index = normalized.find(marker, search_from)
+            if index < 0:
+                break
+            if _is_toc_occurrence(normalized, index, len(marker)):
+                search_from = index + len(marker)
+                continue
+            window_end = min(len(normalized), index + 12_000)
+            window = normalized[index:window_end]
+            score = index  # prefer later (content) over early (TOC)
+            if "concepto" in window and "puntaje maximo" in window:
+                score += 500_000
+            if "4.1" in window:
+                score += 50_000
+            candidates.append((score, index))
+            search_from = index + len(marker)
+
+    if not candidates:
+        return _evaluation_main_body(normalized)
+
+    start = max(candidates, key=lambda item: item[0])[1]
+    end = len(normalized)
+    for stop in (
+        "capitulo v.",
+        "capitulo v ",
+        "capitulo vi",
+        "capitulo x.",
+        "capitulo x ",
+        "acreditacion de la experiencia del proponente",
+    ):
+        stop_idx = normalized.find(stop, start + 200)
+        if stop_idx >= 0:
+            end = min(end, stop_idx)
+    return _clean_pliego_section_body(normalized[start:end])
+
+
+def _match_table_label(label: str) -> Optional[tuple[str, str]]:
+    return _resolve_criterion_label(label)
 
 
 def _evaluation_main_body(normalized: str) -> str:
@@ -293,6 +390,7 @@ def _table_region(main_body: str) -> str:
         "reducir durante la evaluacion",
         "4.1 forma de verificacion",
         "4.1 forma de verificacion y asignacion",
+        "4.1 oferta economica",
         "nota 2:",
     ):
         idx = main_body.find(marker, start)
@@ -311,15 +409,39 @@ def _table_lines(region: str) -> list[str]:
     return lines
 
 
+def _extract_embedded_header_row(
+    region: str,
+) -> tuple[Optional[tuple[str, float]], str]:
+    """Some PDFs merge «Concepto | row1 | Puntaje máximo | pts» on one line."""
+    match = re.search(
+        r"concepto\s+(.+?)\s+puntaje\s+maximo\s+(\d{1,3}(?:[.,]\d+)?)\s*",
+        region,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None, region
+
+    label = match.group(1).strip()
+    normalized_label = normalize_text(label)
+    if normalized_label in {"puntaje", "maximo", "puntaje maximo"}:
+        return None, region
+
+    points = _parse_points_value(match.group(2))
+    if points is None:
+        return None, region
+
+    return (label, points), region[match.end() :].strip()
+
+
 def _strip_table_header(region: str) -> str:
     stripped = region.strip()
     for pattern in (
-        r"concepto\s+puntaje\s+maximo\s+",
-        r"puntaje\s+maximo\s+",
-        r"concepto\s+",
-        r"criterios de evaluacion y puntaje:\s*",
+        r"^concepto\s+puntaje\s+maximo\s+",
+        r"^puntaje\s+maximo\s+",
+        r"^concepto\s+",
+        r"^criterios de evaluacion y puntaje:\s*",
     ):
-        match = re.search(pattern, stripped, flags=re.IGNORECASE)
+        match = re.match(pattern, stripped, flags=re.IGNORECASE)
         if match:
             return stripped[match.end() :].strip()
     return stripped
@@ -327,15 +449,19 @@ def _strip_table_header(region: str) -> str:
 
 def _parse_label_point_pairs(content: str) -> list[tuple[str, float]]:
     """Parse «label points label points …» rows (normalized single-line tables)."""
+    pairs: list[tuple[str, float]] = []
+    embedded, content = _extract_embedded_header_row(content)
+    if embedded:
+        pairs.append(embedded)
+
     content = _strip_table_header(content)
     if not content:
-        return []
+        return pairs
 
     tokens = re.split(r"\s+(\d{1,3}(?:[.,]\d+)?)\s*", content)
     if len(tokens) < 2:
-        return []
+        return pairs
 
-    pairs: list[tuple[str, float]] = []
     label = tokens[0].strip()
     for index in range(1, len(tokens), 2):
         points = _parse_points_value(tokens[index])
@@ -344,6 +470,26 @@ def _parse_label_point_pairs(content: str) -> list[tuple[str, float]]:
             pairs.append((label, points))
         label = next_label
     return pairs
+
+
+def _append_table_row(
+    rows: list[tuple[str, str, float, str]],
+    seen_keys: set[str],
+    label_raw: str,
+    points: float,
+) -> None:
+    normalized_label = normalize_text(label_raw)
+    if normalized_label == "total":
+        rows.append(("total_points", "Total evaluación habilitante", points, f"Total: {points:g}"))
+        return
+
+    resolved = _resolve_criterion_label(label_raw)
+    if not resolved:
+        return
+    key, display = resolved
+    key = _unique_key(key, seen_keys)
+    seen_keys.add(key)
+    rows.append((key, display, points, f"{label_raw}: {points:g}"))
 
 
 def _extract_summary_table(main_body: str) -> list[tuple[str, str, float, str]]:
@@ -356,15 +502,7 @@ def _extract_summary_table(main_body: str) -> list[tuple[str, str, float, str]]:
     seen_keys: set[str] = set()
 
     for label_raw, points in _parse_label_point_pairs(region):
-        normalized_label = normalize_text(label_raw)
-        if normalized_label == "total":
-            rows.append(("total_points", "Total evaluación habilitante", points, f"Total: {points:g}"))
-            continue
-
-        matched = _match_table_label(label_raw)
-        if matched and matched[0] not in seen_keys:
-            seen_keys.add(matched[0])
-            rows.append((matched[0], matched[1], points, f"{label_raw}: {points:g}"))
+        _append_table_row(rows, seen_keys, label_raw, points)
 
     if rows:
         return rows
@@ -375,7 +513,7 @@ def _extract_summary_table(main_body: str) -> list[tuple[str, str, float, str]]:
         line = lines[index]
         lowered = normalize_text(line)
 
-        if lowered in {"concepto", "puntaje", "maximo", "puntaje maximo"}:
+        if lowered in _NOISE_LABELS:
             index += 1
             continue
 
@@ -384,13 +522,7 @@ def _extract_summary_table(main_body: str) -> list[tuple[str, str, float, str]]:
             label_raw = same_line.group(1).strip()
             points = _parse_points_value(same_line.group(2))
             if points is not None:
-                if normalize_text(label_raw) == "total":
-                    rows.append(("total_points", "Total evaluación habilitante", points, label_raw))
-                else:
-                    matched = _match_table_label(label_raw)
-                    if matched and matched[0] not in seen_keys:
-                        seen_keys.add(matched[0])
-                        rows.append((matched[0], matched[1], points, f"{label_raw}: {points:g}"))
+                _append_table_row(rows, seen_keys, label_raw, points)
             index += 1
             continue
 
@@ -398,15 +530,8 @@ def _extract_summary_table(main_body: str) -> list[tuple[str, str, float, str]]:
             next_line = lines[index + 1].strip().replace(" ", "")
             if _POINT_ONLY_RE.match(next_line):
                 points = _parse_points_value(next_line)
-                label_raw = line
                 if points is not None:
-                    if normalize_text(label_raw) == "total":
-                        rows.append(("total_points", "Total evaluación habilitante", points, f"Total: {points:g}"))
-                    else:
-                        matched = _match_table_label(label_raw)
-                        if matched and matched[0] not in seen_keys:
-                            seen_keys.add(matched[0])
-                            rows.append((matched[0], matched[1], points, f"{label_raw}: {points:g}"))
+                    _append_table_row(rows, seen_keys, line, points)
                 index += 2
                 continue
 
@@ -422,6 +547,84 @@ def _summarize_section(body: str, *, max_len: int = 260) -> str:
     if sentences:
         return _clean_requirement_text(" ".join(sentences[:2]), max_len=max_len)
     return _clean_requirement_text(body, max_len=max_len)
+
+
+def _section_title_label(section_number: str, raw_title: str) -> str:
+    title = re.sub(r"\s+", " ", raw_title).strip()
+    title = re.split(r"\s{2,}|\.\s+la entidad|\.\s+para ", title, maxsplit=1)[0]
+    title = title.strip(" .;:-")
+    if len(title) > 100:
+        title = title[:100].rsplit(" ", 1)[0]
+    return _clean_requirement_text(title or raw_title, max_len=96)
+
+
+def _extract_numbered_criteria_sections(
+    chapter_body: str,
+) -> list[tuple[str, str, Optional[float], str]]:
+    """Parse 4.x assignment sections when summary table is missing or incomplete."""
+    rows: list[tuple[str, str, Optional[float], str]] = []
+    seen_keys: set[str] = set()
+
+    for match in _NUMBERED_SECTION_RE.finditer(chapter_body):
+        section_number = match.group(1)
+        raw_title = match.group(2)
+        body = _clean_pliego_section_body(raw_title)
+        if len(body) < 30:
+            continue
+
+        title_line = _section_title_label(section_number, body[:160])
+        if normalize_text(title_line) in {"criterios de desempate", "nota"}:
+            continue
+        if re.search(r"desempate|aclaracion|nota\s+\d", title_line, flags=re.IGNORECASE):
+            continue
+
+        resolved = _resolve_criterion_label(title_line)
+        if not resolved:
+            continue
+        key, label = resolved
+        key = _unique_key(f"{_label_to_key(label)}_{section_number.replace('.', '_')}", seen_keys)
+        seen_keys.add(key)
+
+        points = _parse_points_from_prose(body[:900])
+        if points is None:
+            table_points = _parse_label_point_pairs(body[:500])
+            if len(table_points) == 1:
+                points = table_points[0][1]
+
+        rule = _summarize_section(body)
+        rows.append((key, label, points, rule or f"{section_number} {title_line}"))
+
+    return rows
+
+
+def _extract_generic_prose_criteria(chapter_body: str) -> list[tuple[str, str, float, str]]:
+    rows: list[tuple[str, str, float, str]] = []
+    seen_keys: set[str] = set()
+
+    for match in re.finditer(
+        r"\b4\.\d+(?:\.\d+)?\s+([^.\n]{5,120})",
+        chapter_body,
+        flags=re.IGNORECASE,
+    ):
+        title = _section_title_label(match.group(0)[:12], match.group(1))
+        if normalize_text(title) in _NOISE_LABELS:
+            continue
+        context = chapter_body[match.start() : min(len(chapter_body), match.start() + 900)]
+        if "desempate" in normalize_text(context[:120]) and "puntaje maximo" not in context[:200]:
+            continue
+        points = _parse_points_from_prose(context)
+        if points is None:
+            continue
+        resolved = _resolve_criterion_label(title)
+        if not resolved:
+            continue
+        key, label = resolved
+        key = _unique_key(key, seen_keys)
+        seen_keys.add(key)
+        rule = _summarize_section(context)
+        rows.append((key, label, points, rule or _snippet(chapter_body, match.start(), match.end() + 80)))
+
+    return rows
 
 
 def _assignment_rule_for_keys(main_body: str, keys: tuple[str, ...]) -> str:
@@ -441,8 +644,43 @@ def _assignment_rule_for_keys(main_body: str, keys: tuple[str, ...]) -> str:
     return ""
 
 
+def _assignment_rule_for_criterion(
+    chapter_body: str,
+    key: str,
+    label: str,
+    numbered_sections: list[tuple[str, str, Optional[float], str]],
+) -> str:
+    rule = _assignment_rule_for_keys(chapter_body, (key,))
+    if rule:
+        return rule
+
+    label_norm = normalize_text(label)
+    for section_key, section_label, _, section_rule in numbered_sections:
+        if section_key == key or normalize_text(section_label) == label_norm:
+            if section_rule:
+                return section_rule
+
+    words = [word for word in re.findall(r"[a-z]{4,}", label_norm) if word not in {"puntaje", "maximo"}][:3]
+    if words:
+        pattern = r"\b4\.\d+(?:\.\d+)?\s+[^.\n]{0,30}" + r"[^.\n]{0,30}".join(re.escape(word) for word in words[:2])
+        match = re.search(pattern, chapter_body, flags=re.IGNORECASE)
+        if match:
+            return _summarize_section(chapter_body[match.start() : match.start() + 10_000])
+
+    section = _find_topic_section(
+        chapter_body,
+        (label_norm[:60], label_norm[:40]),
+        ("capitulo v", "criterios de desempate", "4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7", "4.8"),
+        max_window=10_000,
+        prefer_phrases=("asignara", "puntaje", "evaluara", "verificacion"),
+    )
+    return _summarize_section(section)
+
+
 def _extract_prose_criteria(main_body: str) -> list[tuple[str, str, float, str]]:
     rows: list[tuple[str, str, float, str]] = []
+    seen_keys: set[str] = set()
+
     for key, label, patterns in _PROSE_CRITERION_SPECS:
         for pattern in patterns:
             match = re.search(pattern, main_body, flags=re.IGNORECASE | re.DOTALL)
@@ -454,9 +692,17 @@ def _extract_prose_criteria(main_body: str) -> list[tuple[str, str, float, str]]
             points = _parse_points_from_prose(context)
             if points is None:
                 continue
+            item_key = _unique_key(key, seen_keys)
+            seen_keys.add(item_key)
             rule = _summarize_section(context)
-            rows.append((key, label, points, rule or _snippet(main_body, match.start(), match.end() + 80)))
+            rows.append((item_key, label, points, rule or _snippet(main_body, match.start(), match.end() + 80)))
             break
+
+    for row in _extract_generic_prose_criteria(main_body):
+        if row[0] not in seen_keys:
+            seen_keys.add(row[0])
+            rows.append(row)
+
     return rows
 
 
@@ -480,26 +726,43 @@ def _extract_total_from_prose(main_body: str) -> Optional[tuple[float, str]]:
 
 
 def _extract_point_adjustments(main_body: str) -> list[tuple[str, str, float, str]]:
-    specs: tuple[tuple[str, str, str, float], ...] = (
-        (
-            r"descontara un \(1\) punto",
-            "ajuste_obras_inconclusas",
-            "Descuento por obras inconclusas (RED)",
-            -1.0,
-        ),
-        (
-            r"reducir.{0,60}dos \(2\) puntos",
-            "ajuste_multas",
-            "Descuento por multas o cláusulas penales",
-            -2.0,
-        ),
-    )
     rows: list[tuple[str, str, float, str]] = []
-    for pattern, key, label, points in specs:
-        match = re.search(pattern, main_body, flags=re.IGNORECASE | re.DOTALL)
-        if not match:
+    seen_keys: set[str] = set()
+
+    for match in re.finditer(
+        r"descontar[a]?\s+(?:un\s+)?\(?\s*(\d{1,2})\s*\)?\s*puntos?",
+        main_body,
+        flags=re.IGNORECASE,
+    ):
+        points = -float(match.group(1))
+        context = normalize_text(_snippet(main_body, match.start(), match.end() + 120))
+        if "obras" in context or "inconclus" in context or "red" in context:
+            key, label = "ajuste_obras_inconclusas", "Descuento por obras inconclusas (RED)"
+        else:
+            key = _unique_key(f"ajuste_descuento_{int(abs(points))}", seen_keys)
+            label = f"Descuento de {abs(points):g} punto(s)"
+        if key in seen_keys:
             continue
+        seen_keys.add(key)
         rows.append((key, label, points, _snippet(main_body, match.start(), match.end() + 120)))
+
+    for match in re.finditer(
+        r"reducir.{0,160}?\(?\s*(\d{1,2})\s*\)?\s+puntos?",
+        main_body,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        points = -float(match.group(1))
+        context = normalize_text(_snippet(main_body, max(0, match.start() - 80), match.end() + 120))
+        if "multa" in context or "clausula" in context or "penal" in context:
+            key, label = "ajuste_multas", "Descuento por multas o cláusulas penales"
+        else:
+            key = _unique_key(f"ajuste_reduccion_{int(abs(points))}", seen_keys)
+            label = f"Reducción de {abs(points):g} punto(s)"
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        rows.append((key, label, points, _snippet(main_body, match.start(), match.end() + 120)))
+
     return rows
 
 
@@ -598,28 +861,45 @@ def extract_sistema_puntos(
     if not _document_has_scoring_signals(normalized):
         return []
 
-    main_body = _evaluation_main_body(normalized)
-    if not main_body:
+    chapter_body = _scoring_chapter_body(normalized)
+    if not chapter_body:
         if re.search(r"calificacion por solvencia.{0,60}puntaje", normalized):
-            main_body = normalized[:30_000]
+            chapter_body = normalized[:30_000]
         else:
             return []
 
-    table_rows = _extract_summary_table(main_body)
+    numbered_sections = _extract_numbered_criteria_sections(chapter_body)
+    table_rows = _extract_summary_table(chapter_body)
+
     if not table_rows:
-        table_rows = _extract_prose_criteria(main_body)
+        table_rows = [
+            (key, label, float(points), evidence)
+            for key, label, points, evidence in _extract_prose_criteria(chapter_body)
+            if points is not None
+        ]
+    else:
+        known_labels = {normalize_text(label) for _, label, _, _ in table_rows if label}
+        for key, label, points, evidence in numbered_sections:
+            if points is None:
+                continue
+            if normalize_text(label) in known_labels:
+                continue
+            table_rows.append((key, label, float(points), evidence))
+            known_labels.add(normalize_text(label))
 
     by_key: dict[str, tuple[str, str, float, str]] = {}
-    for key, label, points, evidence in table_rows:
+    criterion_order: dict[str, int] = {}
+    for index, (key, label, points, evidence) in enumerate(table_rows):
         if key == "total_points":
             continue
-        by_key[key] = (key, label, points, evidence)
+        if key not in by_key:
+            criterion_order[key] = index
+            by_key[key] = (key, label, points, evidence)
 
     items: list[RequirementItem] = []
     for key, label, points, evidence in by_key.values():
-        rule = _assignment_rule_for_keys(main_body, (key,)) or evidence
-        items.append(
-            _make_scoring_item(
+        rule = _assignment_rule_for_criterion(chapter_body, key, label, numbered_sections) or evidence
+        item = _make_scoring_item(
                 key=key,
                 label=label,
                 max_points=points,
@@ -628,9 +908,12 @@ def extract_sistema_puntos(
                 source_document=source_document,
                 source_document_id=source_document_id,
                 evidence=evidence,
-                confidence=0.92 if key in {"experiencia", "equipo_trabajo", "industria_nacional"} else 0.88,
+                confidence=0.9 if key in criterion_order and criterion_order[key] < 8 else 0.86,
             )
-        )
+        value = dict(item["value"])
+        value["sort_order"] = criterion_order.get(key, 99)
+        item["value"] = value
+        items.append(item)
 
     total_row = next((row for row in table_rows if row[0] == "total_points"), None)
     if total_row:
@@ -649,7 +932,7 @@ def extract_sistema_puntos(
             )
         )
     else:
-        prose_total = _extract_total_from_prose(main_body)
+        prose_total = _extract_total_from_prose(chapter_body)
         if prose_total:
             points, evidence = prose_total
             items.append(
@@ -690,7 +973,7 @@ def extract_sistema_puntos(
                         )
                     )
 
-    for key, label, points, evidence in _extract_point_adjustments(main_body):
+    for key, label, points, evidence in _extract_point_adjustments(chapter_body):
         items.append(
             _make_scoring_item(
                 key=key,
@@ -705,7 +988,7 @@ def extract_sistema_puntos(
             )
         )
 
-    for key, label, rule in _extract_desempate_rules(normalized, main_body):
+    for key, label, rule in _extract_desempate_rules(normalized, chapter_body):
         items.append(
             _make_scoring_item(
                 key=key,
@@ -725,13 +1008,14 @@ def extract_sistema_puntos(
 
     order_map = {key: index for index, key in enumerate(_ITEM_ORDER)}
 
-    def sort_key(item: RequirementItem) -> tuple[int, int, str]:
+    def sort_key(item: RequirementItem) -> tuple[int, int, int, str]:
         value = item.get("value") if isinstance(item.get("value"), dict) else {}
         criterion_type = value.get("criterion_type", "evaluacion")
         type_order = {"evaluacion": 0, "ajuste": 1, "desempate": 2}.get(str(criterion_type), 3)
         if item["key"] == "total_points":
-            return (0, 0, "")
-        return (type_order, order_map.get(item["key"], 99), item["label"])
+            return (0, 0, 0, "")
+        sort_order = int(value.get("sort_order", 99))
+        return (type_order, order_map.get(item["key"], 50), sort_order, item["label"])
 
     items.sort(key=sort_key)
     if any(item["key"] == "total_points" for item in items):
