@@ -1347,65 +1347,28 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
       const criterionType = value?.criterion_type || 'evaluacion'
       return criterionType === 'evaluacion' && item.key !== 'total_points'
     })
-    const adjustmentItems = section.items.filter((item) => {
-      const value =
-        item.value && typeof item.value === 'object' && !Array.isArray(item.value)
-          ? (item.value as { criterion_type?: string })
-          : null
-      return value?.criterion_type === 'ajuste'
-    })
-    const desempateItems = section.items.filter((item) => {
-      const value =
-        item.value && typeof item.value === 'object' && !Array.isArray(item.value)
-          ? (item.value as { criterion_type?: string })
-          : null
-      return value?.criterion_type === 'desempate'
-    })
     const totalItem = section.items.find((item) => item.key === 'total_points')
     const sortedEvalItems = sortRequirementItems(section.key, evalItems)
-    const sortedAdjustmentItems = sortRequirementItems(section.key, adjustmentItems)
-    const sortedDesempateItems = sortRequirementItems(section.key, desempateItems)
-    const sourceLabel = section.items[0]
-      ? REQUIREMENT_SOURCE_LABELS[section.items[0].source_document] ||
-        section.items[0].source_document
-      : null
 
     const renderScoringRow = (
       item: TenderRequirementItem,
-      options?: { emphasizePoints?: boolean; hidePoints?: boolean },
-    ) => {
-      const value =
-        item.value && typeof item.value === 'object' && !Array.isArray(item.value)
-          ? (item.value as { max_points?: number; assignment_rule?: string })
-          : null
-      const assignmentRule = value?.assignment_rule?.trim()
-
-      return (
-        <tr key={`${section.key}-${item.key}`}>
-          <td>
-            <span className="tender-detail-panel__scoring-criterion">{item.label}</span>
-            {assignmentRule && (
-              <p className="tender-detail-panel__scoring-rule">{assignmentRule}</p>
-            )}
-          </td>
-          {!options?.hidePoints && (
-            <td className="tender-detail-panel__scoring-points">
-              {options?.emphasizePoints ? (
-                <strong>{item.display_value || '—'}</strong>
-              ) : (
-                item.display_value || '—'
-              )}
-            </td>
+      options?: { emphasizePoints?: boolean },
+    ) => (
+      <tr key={`${section.key}-${item.key}`}>
+        <td>
+          <span className="tender-detail-panel__scoring-criterion">
+            {options?.emphasizePoints ? <strong>{item.label}</strong> : item.label}
+          </span>
+        </td>
+        <td className="tender-detail-panel__scoring-points">
+          {options?.emphasizePoints ? (
+            <strong>{item.display_value || '—'}</strong>
+          ) : (
+            item.display_value || '—'
           )}
-        </tr>
-      )
-    }
-
-    const hasScoringContent =
-      sortedEvalItems.length > 0 ||
-      sortedAdjustmentItems.length > 0 ||
-      sortedDesempateItems.length > 0 ||
-      Boolean(totalItem)
+        </td>
+      </tr>
+    )
 
     return (
       <div
@@ -1419,69 +1382,21 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
           </Tag>
         </div>
 
-        {sourceLabel && (
-          <p className="tender-detail-panel__experience-source">Fuente: {sourceLabel}</p>
-        )}
-
-        <p className="tender-detail-panel__scoring-intro">
-          Ponderación de la evaluación habilitante según el pliego. Indica cuántos puntos puede
-          valer cada criterio; no implica que tu empresa ya los cumpla.
-        </p>
-
-        {hasScoringContent ? (
-          <>
-            {(sortedEvalItems.length > 0 || totalItem) && (
-              <div className="tender-detail-panel__scoring-table-wrap">
-                <table className="tender-detail-panel__scoring-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Criterio</th>
-                      <th scope="col">Puntos máx.</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedEvalItems.map((item) => renderScoringRow(item))}
-                    {totalItem && renderScoringRow(totalItem, { emphasizePoints: true })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {sortedAdjustmentItems.length > 0 && (
-              <div className="tender-detail-panel__scoring-table-wrap">
-                <h6 className="tender-detail-panel__scoring-subtitle">Ajustes al puntaje</h6>
-                <table className="tender-detail-panel__scoring-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Concepto</th>
-                      <th scope="col">Puntos</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedAdjustmentItems.map((item) => renderScoringRow(item))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {sortedDesempateItems.length > 0 && (
-              <div className="tender-detail-panel__scoring-table-wrap">
-                <h6 className="tender-detail-panel__scoring-subtitle">Criterios de desempate</h6>
-                <table className="tender-detail-panel__scoring-table tender-detail-panel__scoring-table--desempate">
-                  <thead>
-                    <tr>
-                      <th scope="col">Regla</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedDesempateItems.map((item) =>
-                      renderScoringRow(item, { hidePoints: true }),
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
+        {sortedEvalItems.length > 0 || totalItem ? (
+          <div className="tender-detail-panel__scoring-table-wrap">
+            <table className="tender-detail-panel__scoring-table">
+              <thead>
+                <tr>
+                  <th scope="col">Criterio</th>
+                  <th scope="col">Puntos máx.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedEvalItems.map((item) => renderScoringRow(item))}
+                {totalItem && renderScoringRow(totalItem, { emphasizePoints: true })}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <p className="tender-detail-panel__requirements-empty">
             {section.status === 'documento_no_disponible'
