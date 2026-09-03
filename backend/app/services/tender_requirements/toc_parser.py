@@ -43,9 +43,11 @@ LEGAL_TOC_KEYWORDS: tuple[str, ...] = (
 SCORING_TOC_KEYWORDS: tuple[str, ...] = (
     "criterios de evaluacion",
     "asignacion de puntaje",
+    "evaluacion habilitante",
     "puntaje por la experiencia",
     "criterios de desempate",
-    "capitulo iv",
+    "puntaje maximo",
+    "metodo de seleccion",
     "equipo de trabajo",
     "factor de sostenibilidad",
     "apoyo a la industria nacional",

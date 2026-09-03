@@ -9,6 +9,7 @@ from openai import OpenAI
 
 from app.config import settings
 from app.core.logging import get_logger
+from app.services.tender_requirements.scoring_extraction import _canonical_criterion_key
 
 logger = get_logger(__name__)
 
@@ -19,10 +20,12 @@ LLM_EXPERIENCE_SECTIONS: tuple[str, ...] = (
 
 LLM_FINANCIAL_SECTIONS: tuple[str, ...] = ("indicadores_financieros",)
 
+LLM_SCORING_SECTIONS: tuple[str, ...] = ("sistema_puntos",)
+
 LLM_LEGAL_SECTIONS: tuple[str, ...] = ()
 
 LLM_ENRICHED_SECTIONS: tuple[str, ...] = (
-    LLM_EXPERIENCE_SECTIONS + LLM_FINANCIAL_SECTIONS + LLM_LEGAL_SECTIONS
+    LLM_EXPERIENCE_SECTIONS + LLM_FINANCIAL_SECTIONS + LLM_SCORING_SECTIONS + LLM_LEGAL_SECTIONS
 )
 
 _FINANCIAL_LLM_ALLOWED_KEYS: frozenset[str] = frozenset(
@@ -67,6 +70,18 @@ _FINANCIAL_FIELD_GUIDE: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
+_SCORING_FIELD_GUIDE: dict[str, list[tuple[str, str]]] = {
+    "sistema_puntos": [
+        (
+            "criterio_evaluacion",
+            "Cada criterio con puntaje: key slug, label, max_points, criterion_type=evaluacion",
+        ),
+        ("total_points", "Fila total de la evaluación habilitante (normalmente 100)"),
+        ("ajuste", "Descuentos al puntaje (max_points negativo, criterion_type=ajuste)"),
+        ("desempate", "Reglas de desempate (sin puntos, criterion_type=desempate)"),
+    ],
+}
+
 _LEGAL_FIELD_GUIDE: dict[str, list[tuple[str, str]]] = {
     "requisitos_legales": [
         ("legal_summary", "Resumen de habilitación jurídica (2–4 oraciones claras)"),
@@ -88,6 +103,7 @@ _LEGAL_FIELD_GUIDE: dict[str, list[tuple[str, str]]] = {
 _FIELD_GUIDE: dict[str, list[tuple[str, str]]] = {
     **_EXPERIENCE_FIELD_GUIDE,
     **_FINANCIAL_FIELD_GUIDE,
+    **_SCORING_FIELD_GUIDE,
     **_LEGAL_FIELD_GUIDE,
 }
 
@@ -114,8 +130,18 @@ def _serialize_regex_hints(existing_sections: dict[str, list[dict[str, Any]]]) -
         lines.append(f"[{section_key}]")
         for item in items:
             label = item.get("label") or item.get("key")
-            display = item.get("display_value") or item.get("value")
-            lines.append(f"- {label}: {display}")
+            if section_key == "sistema_puntos":
+                value = item.get("value") if isinstance(item.get("value"), dict) else {}
+                points = value.get("max_points")
+                ctype = value.get("criterion_type", "evaluacion")
+                if points is None:
+                    display = item.get("display_value") or ctype
+                else:
+                    display = f"{points:g} pts ({ctype})"
+                lines.append(f"- {label}: {display}")
+            else:
+                display = item.get("display_value") or item.get("value")
+                lines.append(f"- {label}: {display}")
     return "\n".join(lines) if lines else "(sin borrador previo)"
 
 
@@ -125,11 +151,24 @@ def _build_prompt(
     object_text: str,
     experience_excerpt: str,
     financial_excerpt: str,
+    scoring_excerpt: str,
     legal_excerpt: str,
     regex_hints: str,
 ) -> str:
     field_lines: list[str] = []
     for section_key in LLM_ENRICHED_SECTIONS:
+        if section_key == "sistema_puntos":
+            field_lines.append('  "sistema_puntos": [')
+            field_lines.append(
+                '    {"key":"oferta_economica", "label":"Oferta económica", "max_points":48.5, '
+                '"criterion_type":"evaluacion", "display_value":"48.5 puntos", '
+                '"evidence":"...", "confidence":0.9}'
+            )
+            field_lines.append(
+                '    // Incluye TODOS los criterios con puntaje, total_points, ajustes y desempate'
+            )
+            field_lines.append("  ],")
+            continue
         fields = _FIELD_GUIDE[section_key]
         field_lines.append(f'  "{section_key}": [')
         for key, description in fields:
@@ -147,6 +186,8 @@ def _build_prompt(
         context_parts.append(f"Experiencia:\n{experience_excerpt}")
     if financial_excerpt.strip():
         context_parts.append(f"Solvencia financiera:\n{financial_excerpt}")
+    if scoring_excerpt.strip():
+        context_parts.append(f"Sistema de puntos / evaluación habilitante:\n{scoring_excerpt}")
     if legal_excerpt.strip():
         context_parts.append(f"Habilitación jurídica:\n{legal_excerpt}")
     context_block = "\n\n".join(context_parts) if context_parts else "(sin extracto)"
@@ -172,6 +213,15 @@ def _build_prompt(
         "Si la específica exige área en m² o % del área del proyecto, usa specific_area_phases.\n"
         "- indicadores_financieros: NO inventes umbrales numéricos (liquidez, endeudamiento, etc.); "
         "solo redacta financial_summary, accreditation_method y financial_exemptions.\n"
+        "- sistema_puntos: localiza la sección de criterios de evaluación y asignación de puntaje "
+        "(puede estar en cualquier capítulo del pliego, no siempre es el IV). Extrae la tabla "
+        "«Concepto | Puntaje máximo» y las subsecciones numeradas (4.x, 5.x, etc.). "
+        "Devuelve un ítem por cada criterio con max_points numérico. "
+        "Incluye total_points con key exacta \"total_points\". "
+        "Los ajustes (descuentos) van con criterion_type=ajuste y max_points negativo. "
+        "Las reglas de desempate van con criterion_type=desempate y max_points null. "
+        "NO incluyas encabezados de página, versiones del documento ni texto legal ajeno al puntaje. "
+        "La suma de criterios de evaluación debe coincidir con total_points.\n"
         "- requisitos_legales: lista cada habilitante jurídico explícito del pliego "
         "(RUP, capacidad jurídica, existencia/representación, REDAM, seguridad social, "
         "Formato 1/2/5, garantía de seriedad, etc.). NO inventes requisitos no mencionados.\n"
@@ -285,28 +335,184 @@ def sanitize_experiencia_especifica_items(items: list[dict[str, Any]]) -> list[d
     return sanitized
 
 
+def _scoring_criterion_type(item: dict[str, Any]) -> str:
+    value = item.get("value")
+    if isinstance(value, dict):
+        return str(value.get("criterion_type") or "evaluacion")
+    return "evaluacion"
+
+
+def _scoring_item_points(item: dict[str, Any]) -> Optional[float]:
+    value = item.get("value")
+    if isinstance(value, dict) and value.get("max_points") is not None:
+        try:
+            return float(value["max_points"])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _accept_scoring_llm_items(
+    llm_items: list[dict[str, Any]],
+    *,
+    min_confidence: float,
+) -> list[dict[str, Any]]:
+    accepted: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for raw in llm_items or []:
+        confidence = float(raw.get("confidence", 0))
+        if confidence < min_confidence:
+            continue
+        key = str(raw.get("key") or f"llm_criterio_{len(accepted)}")
+        if key in seen_keys:
+            continue
+        label = raw.get("label") or "Criterio de evaluación"
+        criterion_type = str(raw.get("criterion_type") or "evaluacion")
+        max_points: Optional[float]
+        if raw.get("max_points") is None:
+            max_points = None
+        else:
+            try:
+                max_points = float(raw["max_points"])
+            except (TypeError, ValueError):
+                max_points = None
+
+        if key == "total_points":
+            criterion_type = "evaluacion"
+            if max_points is None:
+                continue
+        elif criterion_type == "desempate":
+            max_points = None
+        elif criterion_type == "ajuste":
+            if max_points is None or max_points >= 0:
+                continue
+        elif max_points is None:
+            continue
+
+        display = raw.get("display_value")
+        if not display:
+            if max_points is None:
+                display = "Desempate"
+            elif max_points < 0:
+                display = f"{max_points:g} pts"
+            else:
+                display = f"{max_points:g} puntos"
+
+        seen_keys.add(key)
+        accepted.append(
+            {
+                "key": key,
+                "label": label,
+                "value": {
+                    "max_points": max_points,
+                    "assignment_rule": "",
+                    "criterion_type": criterion_type,
+                },
+                "display_value": display,
+                "confidence": confidence,
+                "source_document": raw.get("source_document") or "pliego_condiciones",
+                "source_document_id": None,
+                "evidence": raw.get("evidence"),
+                "extraction_method": "llm",
+            }
+        )
+    return accepted
+
+
+def _merge_scoring_with_regex_priority(
+    llm_items: list[dict[str, Any]],
+    regex_items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Prefer LLM criteria list; keep regex max_points when both agree on the same criterion."""
+    if not llm_items:
+        return regex_items
+    if not regex_items:
+        return llm_items
+
+    llm_eval = [
+        item
+        for item in llm_items
+        if _scoring_criterion_type(item) == "evaluacion" and item["key"] != "total_points"
+    ]
+    if not llm_eval:
+        return regex_items
+
+    regex_eval: dict[str, dict[str, Any]] = {}
+    for item in regex_items:
+        if _scoring_criterion_type(item) != "evaluacion" or item["key"] == "total_points":
+            continue
+        canonical = _canonical_criterion_key(item["key"], str(item.get("label") or ""))
+        regex_eval[canonical] = item
+
+    merged_eval: list[dict[str, Any]] = []
+    seen_canonical: set[str] = set()
+    for llm_item in llm_eval:
+        item = dict(llm_item)
+        canonical = _canonical_criterion_key(item["key"], str(item.get("label") or ""))
+        regex_match = regex_eval.get(canonical)
+        if regex_match is not None:
+            regex_points = _scoring_item_points(regex_match)
+            if regex_points is not None:
+                value = dict(item.get("value") or {})
+                value["max_points"] = regex_points
+                value["criterion_type"] = "evaluacion"
+                item["value"] = value
+                item["display_value"] = (
+                    f"{regex_points:g} pts" if regex_points < 0 else f"{regex_points:g} puntos"
+                )
+                item["extraction_method"] = "hybrid"
+        merged_eval.append(item)
+        seen_canonical.add(canonical)
+
+    regex_total = next((item for item in regex_items if item["key"] == "total_points"), None)
+    llm_total = next((item for item in llm_items if item["key"] == "total_points"), None)
+    total_item = regex_total or llm_total
+
+    llm_secondary = [
+        item
+        for item in llm_items
+        if _scoring_criterion_type(item) in {"ajuste", "desempate"}
+    ]
+    if not llm_secondary:
+        llm_secondary = [
+            item
+            for item in regex_items
+            if _scoring_criterion_type(item) in {"ajuste", "desempate"}
+        ]
+
+    merged: list[dict[str, Any]] = list(merged_eval)
+    if total_item:
+        merged.append(total_item)
+    merged.extend(llm_secondary)
+    return merged
+
+
 def enrich_requirements_with_llm(
     *,
     tender_external_id: str,
     object_text: str,
     context_excerpt: str,
     financial_context_excerpt: str = "",
+    scoring_context_excerpt: str = "",
     legal_context_excerpt: str = "",
     existing_sections: dict[str, list[dict[str, Any]]],
 ) -> dict[str, list[dict[str, Any]]]:
-    """Refine experience, financial and legal requirements with gpt-4o-mini."""
+    """Refine experience, financial, scoring and legal requirements with gpt-4o-mini."""
     if not settings.TENDER_REQUIREMENTS_USE_LLM or not _openai_client:
         return existing_sections
 
     experience_excerpt = (context_excerpt or "").strip()
     financial_excerpt = (financial_context_excerpt or "").strip()
+    scoring_excerpt = (scoring_context_excerpt or "").strip()
     legal_excerpt = (legal_context_excerpt or "").strip()
-    if not experience_excerpt and not financial_excerpt and not legal_excerpt:
+    if not any((experience_excerpt, financial_excerpt, scoring_excerpt, legal_excerpt)):
         return existing_sections
 
     max_chars = settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS
     active_excerpts = sum(
-        1 for excerpt in (experience_excerpt, financial_excerpt, legal_excerpt) if excerpt
+        1
+        for excerpt in (experience_excerpt, financial_excerpt, scoring_excerpt, legal_excerpt)
+        if excerpt
     )
     budget = max_chars // active_excerpts if active_excerpts > 1 else max_chars
     regex_hints = _serialize_regex_hints(existing_sections)
@@ -315,6 +521,7 @@ def enrich_requirements_with_llm(
         object_text=object_text or "",
         experience_excerpt=experience_excerpt[:budget],
         financial_excerpt=financial_excerpt[:budget],
+        scoring_excerpt=scoring_excerpt[:budget],
         legal_excerpt=legal_excerpt[:budget],
         regex_hints=regex_hints,
     )
@@ -335,7 +542,7 @@ def enrich_requirements_with_llm(
                 {"role": "user", "content": prompt},
             ],
             temperature=0.1,
-            max_tokens=2500,
+            max_tokens=3500,
             response_format={"type": "json_object"},
         )
         payload = _parse_json_content(response.choices[0].message.content or "{}")
@@ -364,6 +571,14 @@ def enrich_requirements_with_llm(
         )
         regex_items = existing_sections.get(section_key, [])
         merged[section_key] = _merge_financial_with_regex_priority(accepted, regex_items)
+
+    for section_key in LLM_SCORING_SECTIONS:
+        accepted = _accept_scoring_llm_items(
+            llm_sections.get(section_key, []),
+            min_confidence=min_confidence,
+        )
+        regex_items = existing_sections.get(section_key, [])
+        merged[section_key] = _merge_scoring_with_regex_priority(accepted, regex_items)
 
     for section_key in LLM_LEGAL_SECTIONS:
         accepted = _accept_llm_items(

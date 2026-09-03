@@ -12,6 +12,7 @@ from app.services.tender_requirements.regex_extraction import (
     normalize_text,
 )
 from app.services.tender_requirements.scoring_extraction import extract_sistema_puntos
+from app.services.tender_requirements.text_selection import select_scoring_text_for_llm
 from app.services.tender_requirements.service import build_tender_requirements, requirements_cache_is_stale
 
 
@@ -629,6 +630,39 @@ CAPITULO V. GARANTIAS
 """
 
 
+def test_extract_sistema_puntos_ignores_footer_noise_after_total():
+    text = """
+CAPITULO IV. CRITERIOS DE EVALUACION Y ASIGNACION DE PUNTAJE
+Concepto Puntaje maximo Oferta economica 48,5 Factor de calidad 30
+Apoyo a la industria nacional 20 Vinculacion de personas con discapacidad 1
+Emprendimientos y empresas de mujeres 0,25 Mipyme 0,25 Total 100
+documento base licitacion de obra publica de infraestructura social 68 version 2 del 21
+de conformidad con el articulo 67 factor de calidad 30 apoyo a la industria nacional 20
+tarjeta de circulacion y residencia occre 5
+4.1 OFERTA ECONOMICA
+4.2 FACTOR DE CALIDAD
+"""
+    items = extract_sistema_puntos(text, "pliego_condiciones", None)
+    eval_keys = [
+        item["key"]
+        for item in items
+        if item["value"].get("criterion_type") == "evaluacion" and item["key"] != "total_points"
+    ]
+    assert eval_keys == [
+        "oferta_economica",
+        "factor_calidad",
+        "industria_nacional",
+        "discapacidad",
+        "empresas_mujeres",
+        "mipyme",
+    ]
+    assert sum(
+        float(item["value"]["max_points"])
+        for item in items
+        if item["key"] != "total_points" and item["value"].get("criterion_type") == "evaluacion"
+    ) == 100
+
+
 def test_extract_sistema_puntos_accepts_unknown_table_criteria():
     text = """
 CAPITULO IV. CRITERIOS DE EVALUACION Y ASIGNACION DE PUNTAJE
@@ -794,3 +828,22 @@ La calificacion por solvencia tendra un puntaje de veinte (20) puntos.
 def test_extract_sistema_puntos_no_signals_returns_empty():
     text = "3.2 CAPACIDAD JURIDICA. El proponente debera acreditar capacidad juridica."
     assert extract_sistema_puntos(text, "pliego_condiciones", None) == []
+
+
+def test_select_scoring_text_for_llm_finds_chapter_iii_solvencia():
+    text = """
+CAPITULO III. REQUISITOS DE PARTICIPACION
+3.3 SOLVENCIA ECONOMICA Y FINANCIERA
+El indice de liquidez corriente debera ser mayor o igual a 1.2.
+La calificacion por solvencia tendra un puntaje de veinte (20) puntos.
+CAPITULO IV. PRESENTACION DE LAS OFERTAS
+"""
+    excerpt = select_scoring_text_for_llm(None, text, 4000)
+    assert "solvencia" in excerpt.lower()
+    assert "puntaje" in excerpt.lower()
+    assert "presentacion de las ofertas" not in excerpt.lower()
+
+
+def test_select_scoring_text_for_llm_empty_without_scoring_signals():
+    text = "3.2 CAPACIDAD JURIDICA. El proponente debera acreditar capacidad juridica."
+    assert select_scoring_text_for_llm(None, text, 4000) == ""

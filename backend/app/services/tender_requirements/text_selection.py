@@ -4,6 +4,10 @@ from __future__ import annotations
 import re
 
 from app.services.tender_requirements.regex_extraction import normalize_text
+from app.services.tender_requirements.scoring_extraction import (
+    _trim_scoring_excerpt_at_stops,
+    extract_scoring_context_for_llm,
+)
 from app.services.tender_requirements.toc_parser import (
     EXPERIENCE_TOC_KEYWORDS,
     locate_pages_from_toc,
@@ -455,6 +459,111 @@ def select_legal_text_for_llm(
 
     if not parts and pliego_text.strip() and budget > 0:
         parts.append(_select_legal_markers_text(pliego_text, budget))
+
+    combined = "\n\n".join(parts)
+    return combined[:max_chars]
+
+
+_SCORING_MARKERS: tuple[str, ...] = (
+    "criterios de evaluacion",
+    "asignacion de puntaje",
+    "evaluacion habilitante",
+    "puntaje maximo",
+    "concepto puntaje",
+    "criterios de desempate",
+    "puntaje por la experiencia",
+    "oferta economica",
+    "factor de calidad",
+    "equipo de trabajo",
+    "factor de sostenibilidad",
+    "apoyo a la industria nacional",
+    "calificacion por solvencia",
+)
+
+
+def _select_scoring_markers_text(text: str, max_chars: int) -> str:
+    if not text:
+        return ""
+
+    normalized = normalize_text(text)
+    if not any(marker in normalized for marker in _SCORING_MARKERS):
+        return ""
+
+    ranges: list[tuple[int, int]] = []
+    for marker in _SCORING_MARKERS:
+        for match in re.finditer(re.escape(marker), normalized):
+            raw_start = max(0, int(match.start() * len(text) / max(len(normalized), 1)) - 400)
+            raw_end = min(
+                len(text),
+                int(match.end() * len(text) / max(len(normalized), 1)) + 5_500,
+            )
+            ranges.append((raw_start, raw_end))
+
+    if not ranges:
+        return ""
+
+    merged = _merge_ranges(ranges)
+    chunks: list[str] = []
+    total = 0
+    for start, end in merged:
+        chunk = text[start:end]
+        if not chunk.strip():
+            continue
+        if total + len(chunk) > max_chars:
+            remaining = max_chars - total
+            if remaining <= 0:
+                break
+            chunk = chunk[:remaining]
+        chunks.append(chunk)
+        total += len(chunk)
+        if total >= max_chars:
+            break
+    excerpt = "\n\n".join(chunks) if chunks else ""
+    if not excerpt:
+        return ""
+    return _trim_scoring_excerpt_at_stops(normalize_text(excerpt)) or excerpt[:max_chars]
+
+
+def select_scoring_text_for_llm(
+    pages: list[tuple[int, str]] | None,
+    pliego_text: str,
+    max_chars: int,
+) -> str:
+    """Build a compact excerpt for LLM enrichment (scoring section, any chapter)."""
+    budget = max_chars
+    parts: list[str] = []
+
+    if pages:
+        grouped_pages = locate_pages_from_toc(pages)
+        scoring_pages = grouped_pages.get("puntaje", [])
+        if scoring_pages:
+            refined = refine_page_window_with_heading(
+                pages,
+                scoring_pages,
+                (
+                    "criterios de evaluacion",
+                    "asignacion de puntaje",
+                    "evaluacion habilitante",
+                    "puntaje maximo",
+                    "concepto",
+                    "calificacion por solvencia",
+                ),
+            )
+            pliego_excerpt = select_text_from_pages(pages, sorted(refined), budget)
+            if pliego_excerpt.strip():
+                parts.append(pliego_excerpt)
+                budget = max(0, budget - len(pliego_excerpt))
+
+    topic_excerpt = extract_scoring_context_for_llm(pliego_text, budget)
+    if topic_excerpt.strip():
+        if not parts:
+            parts.append(topic_excerpt)
+        elif normalize_text(topic_excerpt) not in normalize_text(parts[0]):
+            parts.insert(0, topic_excerpt)
+            budget = max(0, budget - len(topic_excerpt))
+
+    if not parts and pliego_text.strip() and budget > 0:
+        parts.append(_select_scoring_markers_text(pliego_text, budget))
 
     combined = "\n\n".join(parts)
     return combined[:max_chars]

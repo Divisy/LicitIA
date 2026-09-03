@@ -337,3 +337,123 @@ def test_llm_skipped_without_openai_client(mock_settings):
         existing_sections=existing,
     )
     assert result == existing
+
+
+@patch("app.services.tender_requirements.llm_extraction._openai_client")
+@patch("app.services.tender_requirements.llm_extraction.settings")
+def test_llm_merges_scoring_with_regex_points_priority(mock_settings, mock_client):
+    mock_settings.TENDER_REQUIREMENTS_USE_LLM = True
+    mock_settings.OPENAI_MODEL_NAME = "gpt-4o-mini"
+    mock_settings.TENDER_REQUIREMENTS_LLM_MIN_CONFIDENCE = 0.70
+    mock_settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS = 8000
+    mock_client.chat.completions.create.return_value = _llm_response(
+        {
+            "sistema_puntos": [
+                {
+                    "key": "oferta_economica",
+                    "label": "Oferta económica",
+                    "max_points": 50.0,
+                    "criterion_type": "evaluacion",
+                    "display_value": "50 puntos",
+                    "evidence": "Oferta económica 48,5",
+                    "confidence": 0.92,
+                },
+                {
+                    "key": "factor_calidad",
+                    "label": "Factor de calidad",
+                    "max_points": 30.0,
+                    "criterion_type": "evaluacion",
+                    "display_value": "30 puntos",
+                    "evidence": "Factor de calidad 30",
+                    "confidence": 0.9,
+                },
+                {
+                    "key": "total_points",
+                    "label": "Total",
+                    "max_points": 100.0,
+                    "criterion_type": "evaluacion",
+                    "display_value": "100 puntos",
+                    "evidence": "Total 100",
+                    "confidence": 0.95,
+                },
+            ]
+        }
+    )
+
+    regex_oferta = {
+        "key": "oferta_economica",
+        "label": "Oferta económica",
+        "value": {
+            "max_points": 48.5,
+            "assignment_rule": "",
+            "criterion_type": "evaluacion",
+        },
+        "display_value": "48.5 puntos",
+        "confidence": 0.88,
+        "extraction_method": "regex",
+    }
+    regex_total = {
+        "key": "total_points",
+        "label": "Total",
+        "value": {"max_points": 100.0, "assignment_rule": "", "criterion_type": "evaluacion"},
+        "display_value": "100 puntos",
+        "confidence": 0.9,
+        "extraction_method": "regex",
+    }
+    existing = {
+        "experiencia_general": [],
+        "experiencia_especifica": [],
+        "sistema_puntos": [regex_oferta, regex_total],
+    }
+    result = enrich_requirements_with_llm(
+        tender_external_id="CO1.REQ.LP",
+        object_text="Infraestructura vial",
+        context_excerpt="",
+        scoring_context_excerpt="Capítulo IV. Concepto Puntaje máximo Oferta económica 48,5",
+        existing_sections=existing,
+    )
+
+    oferta = next(item for item in result["sistema_puntos"] if item["key"] == "oferta_economica")
+    assert oferta["value"]["max_points"] == 48.5
+    assert oferta["extraction_method"] == "hybrid"
+    assert oferta["label"] == "Oferta económica"
+
+    calidad = next(item for item in result["sistema_puntos"] if item["key"] == "factor_calidad")
+    assert calidad["extraction_method"] == "llm"
+    assert calidad["value"]["max_points"] == 30.0
+
+    total = next(item for item in result["sistema_puntos"] if item["key"] == "total_points")
+    assert total["value"]["max_points"] == 100.0
+
+
+@patch("app.services.tender_requirements.llm_extraction._openai_client")
+@patch("app.services.tender_requirements.llm_extraction.settings")
+def test_llm_scoring_falls_back_to_regex_when_llm_empty(mock_settings, mock_client):
+    mock_settings.TENDER_REQUIREMENTS_USE_LLM = True
+    mock_settings.OPENAI_MODEL_NAME = "gpt-4o-mini"
+    mock_settings.TENDER_REQUIREMENTS_LLM_MIN_CONFIDENCE = 0.70
+    mock_settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS = 8000
+    mock_client.chat.completions.create.return_value = _llm_response({"sistema_puntos": []})
+
+    regex_item = {
+        "key": "experiencia",
+        "label": "Experiencia",
+        "value": {"max_points": 25.0, "assignment_rule": "", "criterion_type": "evaluacion"},
+        "display_value": "25 puntos",
+        "confidence": 0.85,
+        "extraction_method": "regex",
+    }
+    existing = {
+        "experiencia_general": [],
+        "experiencia_especifica": [],
+        "sistema_puntos": [regex_item],
+    }
+    result = enrich_requirements_with_llm(
+        tender_external_id="CO1.REQ.1",
+        object_text="Obra",
+        context_excerpt="",
+        scoring_context_excerpt="Capítulo IV criterios de evaluación",
+        existing_sections=existing,
+    )
+
+    assert result["sistema_puntos"] == [regex_item]

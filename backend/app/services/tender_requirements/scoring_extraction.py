@@ -23,12 +23,21 @@ from app.services.tender_requirements.regex_extraction import (
 )
 
 _EVALUATION_START_MARKERS: tuple[str, ...] = (
-    "capitulo iv. criterios de evaluacion",
-    "capitulo iv criterios de evaluacion",
     "criterios de evaluacion y asignacion de puntaje",
     "criterios de evaluacion, asignacion de puntaje",
-    "criterios de evaluacion",
     "asignacion de puntaje y criterios de desempate",
+    "criterios de evaluacion y puntaje",
+    "criterios de evaluacion",
+    "evaluacion habilitante",
+    "asignacion de puntaje",
+    "metodo de seleccion objetiva",
+    "sistema de evaluacion de las ofertas",
+    "capitulo iv. criterios de evaluacion",
+    "capitulo iv criterios de evaluacion",
+    "capitulo v. criterios de evaluacion",
+    "capitulo v criterios de evaluacion",
+    "capitulo iii. criterios de evaluacion",
+    "capitulo iii criterios de evaluacion",
 )
 
 _EVALUATION_STOP_MARKERS: tuple[str, ...] = (
@@ -227,6 +236,35 @@ _NUMBERED_SECTION_RE = re.compile(
     flags=re.IGNORECASE | re.DOTALL,
 )
 
+_LABEL_NOISE_PATTERNS: tuple[str, ...] = (
+    r"^documento base",
+    r"^version\b",
+    r"^pagina\b",
+    r"^codigo\b",
+    r"^cce-",
+    r"^del$",
+    r"^de$",
+    r"^de conformidad",
+    r"licitacion de (obra|infraestructura)",
+    r"tarjeta de circulacion",
+    r"obra publica de infraestructura",
+)
+
+_SCORING_KEYWORD_HINTS: tuple[str, ...] = (
+    "oferta",
+    "experiencia",
+    "calidad",
+    "industria",
+    "discapacidad",
+    "mujer",
+    "mipyme",
+    "financier",
+    "organizacional",
+    "sostenibilidad",
+    "equipo",
+    "solvencia",
+)
+
 _HEADER_NOISE_RE = re.compile(
     r"^(codigo|pagina|version|documento base|cce-|interventoria de obra)",
     re.IGNORECASE,
@@ -278,6 +316,31 @@ def _parse_points_from_prose(window: str) -> Optional[float]:
     return None
 
 
+def _is_noise_criterion_label(label: str) -> bool:
+    normalized = normalize_text(label)
+    if len(normalized) < 3:
+        return True
+    if normalized in {"del", "de", "la", "el", "los", "las", "version", "pagina"}:
+        return True
+    for pattern in _LABEL_NOISE_PATTERNS:
+        if re.search(pattern, normalized):
+            return True
+    word_count = len(normalized.split())
+    if word_count == 1 and normalized not in {"mipyme"}:
+        return True
+    if len(normalized) > 72 and not any(hint in normalized for hint in _SCORING_KEYWORD_HINTS):
+        return True
+    return False
+
+
+def _canonical_criterion_key(key: str, label: str) -> str:
+    normalized = normalize_text(label)
+    for pattern, alias_key, _ in _TABLE_LABEL_ALIASES:
+        if key == alias_key or re.search(pattern, normalized, flags=re.IGNORECASE):
+            return alias_key
+    return key
+
+
 def _label_to_key(label: str) -> str:
     normalized = normalize_text(label)
     slug = re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")[:56]
@@ -299,6 +362,8 @@ def _resolve_criterion_label(label: str) -> Optional[tuple[str, str]]:
         return None
     if _POINT_ONLY_RE.match(normalized.replace(" ", "")) or re.match(r"^\d", normalized):
         return None
+    if _is_noise_criterion_label(label):
+        return None
 
     for pattern, key, display in _TABLE_LABEL_ALIASES:
         if re.search(pattern, normalized, flags=re.IGNORECASE):
@@ -311,7 +376,7 @@ def _resolve_criterion_label(label: str) -> Optional[tuple[str, str]]:
 
 
 def _scoring_chapter_body(normalized: str) -> str:
-    """Best Cap. IV slice for tables, assignment sections and adjustments."""
+    """Best scoring-section slice (any chapter) for tables and assignment rules."""
     candidates: list[tuple[int, int]] = []
     for marker in _EVALUATION_START_MARKERS:
         search_from = 0
@@ -337,12 +402,8 @@ def _scoring_chapter_body(normalized: str) -> str:
 
     start = max(candidates, key=lambda item: item[0])[1]
     end = len(normalized)
-    for stop in (
-        "capitulo v.",
-        "capitulo v ",
+    for stop in _EVALUATION_STOP_MARKERS + (
         "capitulo vi",
-        "capitulo x.",
-        "capitulo x ",
         "acreditacion de la experiencia del proponente",
     ):
         stop_idx = normalized.find(stop, start + 200)
@@ -396,7 +457,11 @@ def _table_region(main_body: str) -> str:
         idx = main_body.find(marker, start)
         if idx >= 0:
             end = min(end, idx)
-    return main_body[start:end]
+    region = main_body[start:end]
+    total_match = re.search(r"\btotal\s+\d{1,3}(?:[.,]\d+)?", region, flags=re.IGNORECASE)
+    if total_match:
+        region = region[: total_match.end()]
+    return region
 
 
 def _table_lines(region: str) -> list[str]:
@@ -468,6 +533,8 @@ def _parse_label_point_pairs(content: str) -> list[tuple[str, float]]:
         next_label = tokens[index + 1].strip() if index + 1 < len(tokens) else ""
         if points is not None and label:
             pairs.append((label, points))
+            if normalize_text(label) == "total":
+                break
         label = next_label
     return pairs
 
@@ -487,9 +554,11 @@ def _append_table_row(
     if not resolved:
         return
     key, display = resolved
-    key = _unique_key(key, seen_keys)
-    seen_keys.add(key)
-    rows.append((key, display, points, f"{label_raw}: {points:g}"))
+    canonical = _canonical_criterion_key(key, display)
+    if canonical in seen_keys:
+        return
+    seen_keys.add(canonical)
+    rows.append((canonical, display, points, f"{label_raw}: {points:g}"))
 
 
 def _extract_summary_table(main_body: str) -> list[tuple[str, str, float, str]]:
@@ -848,6 +917,35 @@ def _make_scoring_item(
     )
 
 
+def _trim_scoring_excerpt_at_stops(text: str) -> str:
+    end = len(text)
+    for stop in _EVALUATION_STOP_MARKERS + (
+        "capitulo iv. presentacion",
+        "capitulo iv presentacion",
+        "capitulo v. presentacion",
+        "capitulo v presentacion",
+    ):
+        idx = text.find(stop)
+        if idx >= 80:
+            end = min(end, idx)
+    return text[:end].strip()
+
+
+def _resolve_scoring_body(normalized: str) -> str:
+    """Locate scoring content regardless of chapter number."""
+    body = _scoring_chapter_body(normalized)
+    if not body.strip():
+        body = _evaluation_main_body(normalized)
+    if not body.strip():
+        match = re.search(r"calificacion por solvencia", normalized, flags=re.IGNORECASE)
+        if match:
+            start = max(0, match.start() - 600)
+            body = normalized[start : start + 3_000]
+    if body.strip():
+        return _trim_scoring_excerpt_at_stops(body)
+    return ""
+
+
 def extract_sistema_puntos(
     text: str,
     source_document: str,
@@ -861,15 +959,13 @@ def extract_sistema_puntos(
     if not _document_has_scoring_signals(normalized):
         return []
 
-    chapter_body = _scoring_chapter_body(normalized)
+    chapter_body = _resolve_scoring_body(normalized)
     if not chapter_body:
-        if re.search(r"calificacion por solvencia.{0,60}puntaje", normalized):
-            chapter_body = normalized[:30_000]
-        else:
-            return []
+        return []
 
     numbered_sections = _extract_numbered_criteria_sections(chapter_body)
     table_rows = _extract_summary_table(chapter_body)
+    has_complete_table = bool(table_rows) and any(row[0] == "total_points" for row in table_rows)
 
     if not table_rows:
         table_rows = [
@@ -877,14 +973,19 @@ def extract_sistema_puntos(
             for key, label, points, evidence in _extract_prose_criteria(chapter_body)
             if points is not None
         ]
-    else:
+    elif not has_complete_table:
         known_labels = {normalize_text(label) for _, label, _, _ in table_rows if label}
         for key, label, points, evidence in numbered_sections:
             if points is None:
                 continue
-            if normalize_text(label) in known_labels:
+            canonical = _canonical_criterion_key(key, label)
+            if normalize_text(label) in known_labels or canonical in {
+                _canonical_criterion_key(row_key, row_label)
+                for row_key, row_label, _, _ in table_rows
+                if row_key != "total_points"
+            }:
                 continue
-            table_rows.append((key, label, float(points), evidence))
+            table_rows.append((canonical, label, float(points), evidence))
             known_labels.add(normalize_text(label))
 
     by_key: dict[str, tuple[str, str, float, str]] = {}
@@ -892,9 +993,11 @@ def extract_sistema_puntos(
     for index, (key, label, points, evidence) in enumerate(table_rows):
         if key == "total_points":
             continue
-        if key not in by_key:
-            criterion_order[key] = index
-            by_key[key] = (key, label, points, evidence)
+        canonical = _canonical_criterion_key(key, label)
+        if canonical in by_key:
+            continue
+        criterion_order[canonical] = index
+        by_key[canonical] = (canonical, label, points, evidence)
 
     items: list[RequirementItem] = []
     for key, label, points, evidence in by_key.values():
@@ -1026,3 +1129,19 @@ def extract_sistema_puntos(
         items = eval_and_adjust + [total] + desempate
 
     return items
+
+
+def extract_scoring_context_for_llm(text: str, max_chars: int) -> str:
+    """Return the scoring/evaluation section for LLM enrichment (chapter-agnostic)."""
+    if not text or not text.strip() or max_chars <= 0:
+        return ""
+
+    normalized = normalize_text(text)
+    if not _document_has_scoring_signals(normalized):
+        return ""
+
+    body = _resolve_scoring_body(normalized)
+    if not body.strip():
+        return ""
+
+    return body[:max_chars]
