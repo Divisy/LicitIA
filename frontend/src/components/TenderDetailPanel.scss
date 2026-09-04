@@ -447,6 +447,12 @@
 
 .tender-detail-panel__residual-hero-amount {
   @include type-style('heading-04');
+  margin: 0 0 $spacing-02;
+  color: var(--cds-text-primary);
+}
+
+.tender-detail-panel__residual-hero-rule {
+  @include type-style('heading-compact-01');
   margin: 0 0 $spacing-03;
   color: var(--cds-text-primary);
 }
@@ -456,33 +462,6 @@
   margin: 0;
   color: var(--cds-text-secondary);
   line-height: 1.45;
-}
-
-.tender-detail-panel__residual-mvp-note {
-  @include type-style('body-compact-01');
-  margin: 0 0 $spacing-05;
-  padding: $spacing-04;
-  border-left: 3px solid var(--cds-border-interactive);
-  color: var(--cds-text-secondary);
-  background: var(--cds-layer-02);
-  line-height: 1.45;
-}
-
-.tender-detail-panel__residual-secondary {
-  margin-top: $spacing-04;
-
-  summary {
-    @include type-style('heading-compact-01');
-    color: var(--cds-text-primary);
-    cursor: pointer;
-  }
-}
-
-.tender-detail-panel__residual-secondary-body {
-  margin-top: $spacing-04;
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-04;
 }
 
 .tender-detail-panel__experience-card--scoring {

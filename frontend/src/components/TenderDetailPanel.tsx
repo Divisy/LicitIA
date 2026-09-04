@@ -491,12 +491,6 @@ const computeCrpcEstimated = (
   return Math.round(net)
 }
 
-const RESIDUAL_FACTOR_KEYS = new Set([
-  'factor_experiencia',
-  'factor_capacidad_financiera',
-  'factor_capacidad_tecnica',
-])
-
 const sortRequirementItems = (
   sectionKey: string,
   items: TenderRequirementSection['items']
@@ -1379,7 +1373,6 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
   }
 
   const renderResidualSection = (section: TenderRequirementSection) => {
-    const items = sortRequirementItems(section.key, section.items)
     const officialBudgetTotal = resolveSecopBudgetAmount(tender?.amount)
     const advancePaymentPercentage = parseAdvancePaymentPercentage(summary)
     const durationField = summary?.fields?.find((field) => field.key === 'execution_duration')
@@ -1390,32 +1383,15 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
       executionMonths
     )
 
-    const habilitanteItem = findRequirementItem(items, 'habilitante_rule')
-    const crpcItem = findRequirementItem(items, 'crpc_formula')
-    const crpItem = findRequirementItem(items, 'crp_formula')
-    const factorItems = items.filter((item) => RESIDUAL_FACTOR_KEYS.has(item.key))
-    const coItem = findRequirementItem(items, 'factor_organizacion')
-    const sceItem = findRequirementItem(items, 'sce')
-    const pluralItem = findRequirementItem(items, 'proponente_plural')
-    const accreditationItem = findRequirementItem(items, 'accreditation_formato_5')
-
-    const parseFactorMaxScore = (item: TenderRequirementItem): number | null => {
-      if (!item.value || typeof item.value !== 'object' || Array.isArray(item.value)) {
-        return null
-      }
-      const score = Number((item.value as { max_score?: number }).max_score)
-      return Number.isFinite(score) ? score : null
-    }
-
+    const crpcItem = findRequirementItem(section.items, 'crpc_formula')
     const hasCrpcContent = Boolean(crpcItem?.display_value || crpcEstimated != null)
-    const hasProponentGuidance = Boolean(
-      crpItem?.display_value ||
-        factorItems.length > 0 ||
-        coItem?.display_value ||
-        sceItem?.display_value ||
-        pluralItem?.display_value ||
-        accreditationItem?.display_value
-    )
+
+    const crpcFootnote =
+      crpcEstimated != null
+        ? executionMonths != null && executionMonths > 12
+          ? `Calculada con POE y anticipo (plazo ${Math.round(executionMonths)} meses).`
+          : 'Calculada con POE y anticipo de esta licitación.'
+        : crpcItem?.display_value || null
 
     return (
       <div key={section.key} className="tender-detail-panel__experience-card">
@@ -1426,159 +1402,26 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
           </Tag>
         </div>
 
-        {items.length > 0 ? (
-          <>
-            <p className="tender-detail-panel__financial-intro">
-              El pliego exige que tu capacidad residual (CRP) sea mayor o igual a la capacidad
-              residual del proceso (CRPC). A continuación se muestra cuánto K exige este proceso.
-            </p>
-
-            {habilitanteItem?.display_value && (
-              <div className="tender-detail-panel__financial-capital" role="note">
-                <strong>Regla habilitante:</strong> {habilitanteItem.display_value}
-              </div>
+        {section.items.length > 0 && hasCrpcContent ? (
+          <div className="tender-detail-panel__residual-hero" role="region" aria-label="CRPC exigida">
+            <p className="tender-detail-panel__residual-hero-title">CRPC exigida por el proceso</p>
+            {crpcEstimated != null ? (
+              <p className="tender-detail-panel__residual-hero-amount">
+                {formatCopCurrency(crpcEstimated)}
+              </p>
+            ) : (
+              <p className="tender-detail-panel__residual-hero-amount">Ver fórmula en el pliego</p>
             )}
-
-            {hasCrpcContent && (
-              <div className="tender-detail-panel__residual-hero" role="region" aria-label="CRPC exigida">
-                <p className="tender-detail-panel__residual-hero-title">CRPC exigida por el proceso</p>
-                {crpcEstimated != null ? (
-                  <p className="tender-detail-panel__residual-hero-amount">
-                    {formatCopCurrency(crpcEstimated)}
-                  </p>
-                ) : (
-                  <p className="tender-detail-panel__residual-hero-amount">
-                    Ver fórmula en el pliego
-                  </p>
-                )}
-                {crpcItem?.display_value && (
-                  <p className="tender-detail-panel__residual-hero-formula">{crpcItem.display_value}</p>
-                )}
-                {crpcEstimated != null && executionMonths != null && executionMonths > 12 && (
-                  <p className="tender-detail-panel__residual-hero-formula">
-                    Calculada con POE y anticipo de esta licitación (plazo{' '}
-                    {Math.round(executionMonths)} meses, proporcional a 12 meses).
-                  </p>
-                )}
-                {crpcEstimated != null &&
-                  (executionMonths == null || executionMonths <= 12) && (
-                    <p className="tender-detail-panel__residual-hero-formula">
-                      Calculada con POE y anticipo de esta licitación.
-                    </p>
-                  )}
-                {crpcEstimated == null && (
-                  <p className="tender-detail-panel__residual-hero-formula">
-                    Completa el presupuesto oficial (POE), anticipo y plazo en información general
-                    para estimar el valor en pesos.
-                  </p>
-                )}
-              </div>
+            <p className="tender-detail-panel__residual-hero-rule">CRP ≥ CRPC</p>
+            {crpcFootnote && (
+              <p className="tender-detail-panel__residual-hero-formula">{crpcFootnote}</p>
             )}
-
-            <p className="tender-detail-panel__residual-mvp-note" role="note">
-              LicitIA no calcula tu CRP en esta versión. Para saber si cumples, debes calcular la
-              capacidad residual de tu empresa con el Formato 5 y verificar que sea mayor o igual a
-              la CRPC del proceso.
-            </p>
-
-            {hasProponentGuidance && (
-              <details className="tender-detail-panel__residual-secondary">
-                <summary>Cómo calcular tu CRP (proponente)</summary>
-                <div className="tender-detail-panel__residual-secondary-body">
-                  {crpItem?.display_value && (
-                    <div className="tender-detail-panel__experience-block">
-                      <h6 className="tender-detail-panel__experience-block-title">Fórmula CRP</h6>
-                      <p className="tender-detail-panel__experience-prose">{crpItem.display_value}</p>
-                      <p className="tender-detail-panel__financial-formula">
-                        E, CF y CT son puntajes (no ratios directos). CO es un multiplicador en pesos
-                        y SCE resta contratos en ejecución.
-                      </p>
-                    </div>
-                  )}
-
-                  {factorItems.length > 0 && (
-                    <div className="tender-detail-panel__experience-block">
-                      <h6 className="tender-detail-panel__experience-block-title">
-                        Factores de calificación (E / CF / CT)
-                      </h6>
-                      <div className="tender-detail-panel__experience-tier-grid">
-                        {factorItems.map((item) => {
-                          const maxScore = parseFactorMaxScore(item)
-                          return (
-                            <div
-                              key={`${section.key}-${item.key}`}
-                              className="tender-detail-panel__experience-tier"
-                            >
-                              <span className="tender-detail-panel__experience-tier-range">
-                                {item.label}
-                              </span>
-                              {maxScore != null && (
-                                <span className="tender-detail-panel__experience-tier-percentage">
-                                  Máx. {maxScore} pts
-                                </span>
-                              )}
-                              <span className="tender-detail-panel__experience-tier-amount">
-                                {item.display_value}
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {coItem?.display_value && (
-                    <div className="tender-detail-panel__experience-block">
-                      <h6 className="tender-detail-panel__experience-block-title">
-                        Capacidad de organización (CO)
-                      </h6>
-                      <p className="tender-detail-panel__experience-prose">{coItem.display_value}</p>
-                    </div>
-                  )}
-
-                  {sceItem?.display_value && (
-                    <div className="tender-detail-panel__experience-block">
-                      <h6 className="tender-detail-panel__experience-block-title">
-                        Contratos en ejecución (SCE)
-                      </h6>
-                      <p className="tender-detail-panel__experience-prose">{sceItem.display_value}</p>
-                    </div>
-                  )}
-
-                  {pluralItem?.display_value && (
-                    <div className="tender-detail-panel__experience-block">
-                      <h6 className="tender-detail-panel__experience-block-title">Proponente plural</h6>
-                      <p className="tender-detail-panel__experience-prose">{pluralItem.display_value}</p>
-                    </div>
-                  )}
-
-                  {accreditationItem?.display_value && (
-                    <div className="tender-detail-panel__experience-block">
-                      <h6 className="tender-detail-panel__experience-block-title">Cómo acreditar</h6>
-                      <p className="tender-detail-panel__experience-prose">
-                        {accreditationItem.display_value}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </details>
+            {crpcEstimated == null && (
+              <p className="tender-detail-panel__residual-hero-formula">
+                Agrega POE, anticipo y plazo en información general para estimar el valor.
+              </p>
             )}
-
-            {items.some((item) => item.evidence) && (
-              <details className="tender-detail-panel__experience-citations">
-                <summary>Ver texto original del documento</summary>
-                <ul>
-                  {items
-                    .filter((item) => item.evidence)
-                    .map((item) => (
-                      <li key={`${section.key}-${item.key}-evidence`}>
-                        <strong>{item.label}:</strong> {item.evidence}
-                      </li>
-                    ))}
-                </ul>
-              </details>
-            )}
-          </>
+          </div>
         ) : (
           <p className="tender-detail-panel__requirements-empty">
             {section.status === 'documento_no_disponible'
