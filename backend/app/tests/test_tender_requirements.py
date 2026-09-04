@@ -666,6 +666,38 @@ tarjeta de circulacion y residencia occre 5
     ) == 100
 
 
+def test_extract_sistema_puntos_keeps_mipyme_when_section_41_splits_table():
+    text = """
+CAPITULO IV. CRITERIOS DE EVALUACION
+Concepto
+Puntaje maximo
+Oferta economica
+48,5
+Factor de calidad
+30
+Apoyo a la industria nacional
+20
+Vinculacion de personas con discapacidad
+1
+Emprendimientos y empresas de mujeres
+0,25
+4.1 OFERTA ECONOMICA
+Para calificar este factor...
+Mipyme domiciliada en Colombia
+0,25
+Total
+100
+"""
+    items = extract_sistema_puntos(text, "pliego_condiciones", None)
+    keys = [item["key"] for item in items if item["value"].get("criterion_type") == "evaluacion"]
+    assert "mipyme" in keys
+    assert sum(
+        float(item["value"]["max_points"])
+        for item in items
+        if item["key"] != "total_points" and item["value"].get("criterion_type") == "evaluacion"
+    ) == 100
+
+
 def test_extract_sistema_puntos_accepts_unknown_table_criteria():
     text = """
 CAPITULO IV. CRITERIOS DE EVALUACION Y ASIGNACION DE PUNTAJE

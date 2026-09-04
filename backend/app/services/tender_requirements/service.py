@@ -36,7 +36,7 @@ from app.services.tender_requirements.text_selection import (
 from app.services.document_text import extract_document_text
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.9.3"
+EXTRACTION_VERSION = "1.9.4"
 
 _SECTION_SOURCE = {key: source for key, _, source in SECTION_DEFINITIONS}
 _SECTION_TITLE = {key: title for key, title, _ in SECTION_DEFINITIONS}
@@ -292,8 +292,55 @@ _FINANCIAL_METRIC_ITEM_KEYS = frozenset(
 )
 
 
+def _scoring_section_sum_mismatch(cached_payload: dict[str, Any]) -> bool:
+    scoring_section = next(
+        (
+            section
+            for section in cached_payload.get("sections", [])
+            if section.get("key") == "sistema_puntos"
+        ),
+        None,
+    )
+    if not scoring_section:
+        return False
+
+    items = scoring_section.get("items", [])
+    total_item = next((item for item in items if item.get("key") == "total_points"), None)
+    if not total_item:
+        return False
+
+    target = (total_item.get("value") or {}).get("max_points")
+    if target is None:
+        return False
+
+    try:
+        target_points = float(target)
+    except (TypeError, ValueError):
+        return False
+
+    eval_sum = 0.0
+    for item in items:
+        if item.get("key") == "total_points":
+            continue
+        value = item.get("value") or {}
+        if value.get("criterion_type") != "evaluacion":
+            continue
+        points = value.get("max_points")
+        if points is None:
+            continue
+        try:
+            eval_sum += float(points)
+        except (TypeError, ValueError):
+            continue
+
+    return abs(eval_sum - target_points) > 0.01
+
+
 def requirements_cache_is_stale(tender: Tender, cached_payload: dict[str, Any]) -> bool:
-    """Invalidate cached financial requirements when Matriz 2 exists but was not applied."""
+    """Invalidate cached requirements when scoring or financial data is inconsistent."""
+    if _scoring_section_sum_mismatch(cached_payload):
+        return True
+
     indicadores = select_indicadores_financieros_document(_visible_documents(tender))
     if not indicadores:
         return False

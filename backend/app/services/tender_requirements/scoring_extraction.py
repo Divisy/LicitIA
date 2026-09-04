@@ -284,8 +284,15 @@ def _document_has_scoring_signals(normalized: str) -> bool:
     )
 
 
+def _looks_like_section_number(raw: str) -> bool:
+    cleaned = raw.strip().replace(" ", "").replace(",", ".")
+    return bool(re.match(r"^[4-9]\.\d+$", cleaned))
+
+
 def _parse_points_value(raw: str) -> Optional[float]:
     cleaned = raw.strip().replace(" ", "").replace(",", ".")
+    if _looks_like_section_number(cleaned):
+        return None
     try:
         value = float(cleaned)
     except ValueError:
@@ -360,14 +367,25 @@ def _resolve_criterion_label(label: str) -> Optional[tuple[str, str]]:
     normalized = normalize_text(label)
     if not normalized or normalized in _NOISE_LABELS:
         return None
-    if _POINT_ONLY_RE.match(normalized.replace(" ", "")) or re.match(r"^\d", normalized):
+    if _POINT_ONLY_RE.match(normalized.replace(" ", "")):
         return None
-    if _is_noise_criterion_label(label):
+    if re.match(r"^\d", normalized) and not any(
+        re.search(pattern, normalized, flags=re.IGNORECASE)
+        for pattern, _, _ in _TABLE_LABEL_ALIASES
+    ):
         return None
 
+    matches: list[tuple[int, str, str]] = []
     for pattern, key, display in _TABLE_LABEL_ALIASES:
-        if re.search(pattern, normalized, flags=re.IGNORECASE):
-            return key, display
+        match = re.search(pattern, normalized, flags=re.IGNORECASE)
+        if match:
+            matches.append((match.start(), key, display))
+    if matches:
+        _, key, display = max(matches, key=lambda item: item[0])
+        return key, display
+
+    if _is_noise_criterion_label(label):
+        return None
 
     cleaned = _clean_requirement_text(label, max_len=96)
     if len(normalized) < 3:
@@ -444,6 +462,16 @@ def _table_region(main_body: str) -> str:
     if start < 0:
         return ""
 
+    # Prefer the first «Total <n>» after the table header so rows after an early
+    # «4.1 …» marker (common PDF column wrap) are not dropped.
+    total_match = re.search(
+        r"\btotal\s+\d{1,3}(?:[.,]\d+)?(?:\s+puntos)?",
+        main_body[start:],
+        flags=re.IGNORECASE,
+    )
+    if total_match:
+        return main_body[start : start + total_match.end()]
+
     end = len(main_body)
     for marker in (
         "las entidades deben consultar",
@@ -457,11 +485,7 @@ def _table_region(main_body: str) -> str:
         idx = main_body.find(marker, start)
         if idx >= 0:
             end = min(end, idx)
-    region = main_body[start:end]
-    total_match = re.search(r"\btotal\s+\d{1,3}(?:[.,]\d+)?", region, flags=re.IGNORECASE)
-    if total_match:
-        region = region[: total_match.end()]
-    return region
+    return main_body[start:end]
 
 
 def _table_lines(region: str) -> list[str]:
