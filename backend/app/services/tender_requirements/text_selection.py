@@ -7,6 +7,7 @@ from app.services.tender_requirements.regex_extraction import normalize_text
 from app.services.tender_requirements.scoring_extraction import (
     _trim_scoring_excerpt_at_stops,
     extract_scoring_context_for_llm,
+    find_scoring_summary_window,
 )
 from app.services.tender_requirements.toc_parser import (
     EXPERIENCE_TOC_KEYWORDS,
@@ -567,3 +568,37 @@ def select_scoring_text_for_llm(
 
     combined = "\n\n".join(parts)
     return combined[:max_chars]
+
+
+_SCORING_FALLBACK_TABLE_RE = re.compile(
+    r"(?:concepto|criterio(?:s)? de evaluacion)\s+puntaje\s+maximo"
+    r".{20,8000}?"
+    r"(?:puntaje\s+total|total)\s+\d{1,3}(?:[.,]\d+)?(?:\s+puntos)?",
+    re.IGNORECASE,
+)
+
+
+def select_scoring_fallback_text_for_llm(pliego_text: str, max_chars: int) -> str:
+    """Broader scoring excerpt for LLM fallback when regex reconciliation fails."""
+    if not pliego_text or not pliego_text.strip() or max_chars <= 0:
+        return ""
+
+    summary_window = find_scoring_summary_window(pliego_text)
+    if summary_window.strip():
+        return summary_window[:max_chars]
+
+    normalized = normalize_text(pliego_text)
+    best = ""
+    for match in _SCORING_FALLBACK_TABLE_RE.finditer(normalized):
+        candidate = match.group()
+        if len(candidate) > len(best):
+            best = candidate
+    if best:
+        trimmed = _trim_scoring_excerpt_at_stops(best) or best
+        return trimmed[:max_chars]
+
+    topic_excerpt = extract_scoring_context_for_llm(pliego_text, max_chars)
+    if topic_excerpt.strip():
+        return topic_excerpt[:max_chars]
+
+    return _select_scoring_markers_text(pliego_text, max_chars)

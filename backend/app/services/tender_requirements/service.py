@@ -18,9 +18,14 @@ from app.services.tender_requirements.document_selection import (
     select_indicadores_financieros_document,
     select_pliego_document,
 )
-from app.services.tender_requirements.scoring_extraction import reconcile_sistema_puntos_items
+from app.services.tender_requirements.scoring_extraction import (
+    merge_scoring_fallback_items,
+    reconcile_sistema_puntos_items,
+    sistema_puntos_sum_mismatch,
+)
 from app.services.tender_requirements.llm_extraction import (
     enrich_requirements_with_llm,
+    extract_scoring_fallback_with_llm,
     sanitize_experiencia_especifica_items,
 )
 from app.services.tender_requirements.regex_extraction import EXTRACTORS, SECTION_DEFINITIONS, _merge_items, merge_financial_requirement_items
@@ -31,12 +36,13 @@ from app.services.tender_requirements.text_selection import (
     select_financial_text_for_llm,
     select_legal_text_for_llm,
     select_scoring_text_for_llm,
+    select_scoring_fallback_text_for_llm,
     select_requirement_relevant_text,
 )
 from app.services.document_text import extract_document_text
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.9.4"
+EXTRACTION_VERSION = "1.9.6"
 
 _SECTION_SOURCE = {key: source for key, _, source in SECTION_DEFINITIONS}
 _SECTION_TITLE = {key: title for key, title, _ in SECTION_DEFINITIONS}
@@ -233,10 +239,27 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         existing_sections=extracted_by_section,
     )
     if extracted_by_section.get("sistema_puntos") or regex_scoring_items:
-        extracted_by_section["sistema_puntos"] = reconcile_sistema_puntos_items(
+        scoring_items = reconcile_sistema_puntos_items(
             extracted_by_section.get("sistema_puntos") or [],
             regex_items=regex_scoring_items,
         )
+        if (
+            settings.TENDER_REQUIREMENTS_SCORING_LLM_FALLBACK
+            and sistema_puntos_sum_mismatch(scoring_items)
+            and (pliego_raw or pliego_text).strip()
+        ):
+            fallback_excerpt = select_scoring_fallback_text_for_llm(
+                pliego_raw or pliego_text,
+                settings.TENDER_REQUIREMENTS_SCORING_LLM_FALLBACK_MAX_CHARS,
+            )
+            fallback_items = extract_scoring_fallback_with_llm(
+                tender_external_id=tender.external_id,
+                object_text=tender.object_text or "",
+                scoring_excerpt=fallback_excerpt,
+            )
+            if fallback_items:
+                scoring_items = merge_scoring_fallback_items(scoring_items, fallback_items)
+        extracted_by_section["sistema_puntos"] = scoring_items
     if extracted_by_section.get("experiencia_especifica"):
         extracted_by_section["experiencia_especifica"] = sanitize_experiencia_especifica_items(
             extracted_by_section["experiencia_especifica"]
@@ -304,36 +327,7 @@ def _scoring_section_sum_mismatch(cached_payload: dict[str, Any]) -> bool:
     if not scoring_section:
         return False
 
-    items = scoring_section.get("items", [])
-    total_item = next((item for item in items if item.get("key") == "total_points"), None)
-    if not total_item:
-        return False
-
-    target = (total_item.get("value") or {}).get("max_points")
-    if target is None:
-        return False
-
-    try:
-        target_points = float(target)
-    except (TypeError, ValueError):
-        return False
-
-    eval_sum = 0.0
-    for item in items:
-        if item.get("key") == "total_points":
-            continue
-        value = item.get("value") or {}
-        if value.get("criterion_type") != "evaluacion":
-            continue
-        points = value.get("max_points")
-        if points is None:
-            continue
-        try:
-            eval_sum += float(points)
-        except (TypeError, ValueError):
-            continue
-
-    return abs(eval_sum - target_points) > 0.01
+    return sistema_puntos_sum_mismatch(scoring_section.get("items", []))
 
 
 def requirements_cache_is_stale(tender: Tender, cached_payload: dict[str, Any]) -> bool:

@@ -9,7 +9,11 @@ from openai import OpenAI
 
 from app.config import settings
 from app.core.logging import get_logger
-from app.services.tender_requirements.scoring_extraction import _canonical_criterion_key
+from app.services.tender_requirements.scoring_extraction import (
+    _canonical_criterion_key,
+    reconcile_sistema_puntos_items,
+    sistema_puntos_sum_mismatch,
+)
 
 logger = get_logger(__name__)
 
@@ -600,3 +604,113 @@ def enrich_requirements_with_llm(
         merged[section_key] = _merge_with_regex_fallback(accepted, regex_items)
 
     return merged
+
+
+def _build_scoring_fallback_prompt(
+    *,
+    tender_external_id: str,
+    object_text: str,
+    scoring_excerpt: str,
+) -> str:
+    schema = (
+        '{\n'
+        '  "sistema_puntos": [\n'
+        '    {"key":"experiencia", "label":"Experiencia del proponente", "max_points":40, '
+        '"criterion_type":"evaluacion", "display_value":"40 puntos", '
+        '"evidence":"...", "confidence":0.92},\n'
+        '    {"key":"total_points", "label":"Total evaluación habilitante", "max_points":100, '
+        '"criterion_type":"evaluacion", "display_value":"100 puntos", '
+        '"evidence":"...", "confidence":0.95}\n'
+        "  ]\n"
+        "}"
+    )
+    return (
+        f"Licitación: {tender_external_id}\n"
+        f"Objeto: {object_text or '(no indicado)'}\n\n"
+        f"Fragmento del pliego (criterios de evaluación y puntaje):\n{scoring_excerpt}\n\n"
+        f"Devuelve JSON con este esquema:\n{schema}\n\n"
+        "Reglas obligatorias:\n"
+        "- Localiza la TABLA RESUMEN de criterios de evaluación con sus puntajes máximos "
+        "(puede decir «Concepto», «Criterio de evaluación» o «Puntaje máximo», y filas "
+        "tipo «40 puntos» o número en línea aparte).\n"
+        "- Un ítem por cada criterio de evaluación con max_points numérico explícito en el texto.\n"
+        "- Incluye total_points con key exacta \"total_points\" y el total declarado en el pliego.\n"
+        "- Los descuentos opcionales van con criterion_type=ajuste y max_points negativo.\n"
+        "- Las reglas de desempate van con criterion_type=desempate y max_points null.\n"
+        "- La suma de criterios de evaluación (sin total_points) DEBE coincidir con total_points.\n"
+        "- NO inventes criterios ni puntajes que no aparezcan en el fragmento.\n"
+        "- NO incluyas texto legal del decreto 1082 ni requisitos de experiencia sin puntaje.\n"
+        "- evidence: cita literal breve (máx. 200 caracteres) del fragmento.\n"
+        "- confidence 0.75–1.0 según claridad."
+    )
+
+
+def extract_scoring_fallback_with_llm(
+    *,
+    tender_external_id: str,
+    object_text: str,
+    scoring_excerpt: str,
+) -> list[dict[str, Any]]:
+    """Dedicated scoring-only LLM pass when regex/hybrid reconciliation fails."""
+    if not settings.TENDER_REQUIREMENTS_USE_LLM:
+        return []
+    if not settings.TENDER_REQUIREMENTS_SCORING_LLM_FALLBACK:
+        return []
+    if not _openai_client or not scoring_excerpt.strip():
+        return []
+
+    prompt = _build_scoring_fallback_prompt(
+        tender_external_id=tender_external_id,
+        object_text=object_text,
+        scoring_excerpt=scoring_excerpt[: settings.TENDER_REQUIREMENTS_SCORING_LLM_FALLBACK_MAX_CHARS],
+    )
+
+    try:
+        response = _openai_client.chat.completions.create(
+            model=settings.OPENAI_MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Eres un analista senior de licitaciones públicas colombianas (SECOP). "
+                        "Extraes tablas de criterios de evaluación y puntaje con precisión numérica. "
+                        "Responde únicamente JSON válido."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.0,
+            max_tokens=2000,
+            response_format={"type": "json_object"},
+        )
+        payload = _parse_json_content(response.choices[0].message.content or "{}")
+        sections_payload = payload.get("sections")
+        if isinstance(sections_payload, dict):
+            raw_items = sections_payload.get("sistema_puntos") or []
+        else:
+            raw_items = payload.get("sistema_puntos") or payload.get("items") or []
+    except Exception as exc:
+        logger.warning(
+            "LLM scoring fallback failed for %s: %s",
+            tender_external_id,
+            exc,
+        )
+        return []
+
+    min_confidence = max(settings.TENDER_REQUIREMENTS_LLM_MIN_CONFIDENCE, 0.75)
+    accepted = _accept_scoring_llm_items(raw_items, min_confidence=min_confidence)
+    if not accepted:
+        return []
+
+    for item in accepted:
+        item["extraction_method"] = "llm_fallback"
+
+    reconciled = reconcile_sistema_puntos_items(accepted, regex_items=None)
+    if sistema_puntos_sum_mismatch(reconciled):
+        logger.info(
+            "LLM scoring fallback for %s still mismatched total; discarding",
+            tender_external_id,
+        )
+        return []
+
+    return reconciled

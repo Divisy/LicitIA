@@ -13,9 +13,14 @@ from app.services.tender_requirements.regex_extraction import (
 )
 from app.services.tender_requirements.scoring_extraction import (
     extract_sistema_puntos,
+    merge_scoring_fallback_items,
     reconcile_sistema_puntos_items,
+    sistema_puntos_sum_mismatch,
 )
-from app.services.tender_requirements.text_selection import select_scoring_text_for_llm
+from app.services.tender_requirements.text_selection import (
+    select_scoring_fallback_text_for_llm,
+    select_scoring_text_for_llm,
+)
 from app.services.tender_requirements.service import build_tender_requirements, requirements_cache_is_stale
 
 
@@ -795,6 +800,42 @@ def test_extract_sistema_puntos_cma_summary_table():
     assert total["value"]["max_points"] == 100
 
 
+CMA_CONCURSO_MERITOS_TABLE_SAMPLE = """
+CAPITULO IV. CRITERIOS DE EVALUACION Y ASIGNACION DE PUNTAJE
+criterio de evaluacion puntaje maximo
+evaluacion y ponderacion de la experiencia especifica del proponente 40 puntos
+evaluacion y ponderacion del personal de equipo de trabajo 45 puntos
+generacion de empleo territorial 2.5 puntos
+incentivo a la industria nacional 10 puntos
+puntaje adicional para empleadores de personas con discapacidad 2 puntos
+emprendimiento y empresas de mujeres 0.25 puntos
+mipymes 0.25 puntos
+puntaje total 100 puntos
+CAPITULO V. PRESENTACION DE LAS OFERTAS
+"""
+
+
+def test_extract_sistema_puntos_cma_concurso_meritos_puntos_suffix():
+    items = extract_sistema_puntos(CMA_CONCURSO_MERITOS_TABLE_SAMPLE, "pliego_condiciones", None)
+    keys = {item["key"] for item in items}
+    assert keys == {
+        "experiencia",
+        "equipo_trabajo",
+        "empleo_territorial",
+        "industria_nacional",
+        "discapacidad",
+        "empresas_mujeres",
+        "mipyme",
+        "total_points",
+    }
+    eval_sum = sum(
+        float(item["value"]["max_points"])
+        for item in items
+        if item["key"] != "total_points" and item["value"].get("criterion_type") == "evaluacion"
+    )
+    assert eval_sum == 100
+
+
 CCE_SCORING_PLIEGO_SAMPLE = """
 CAPITULO IV. CRITERIOS DE EVALUACION Y ASIGNACION DE PUNTAJE
 
@@ -927,3 +968,48 @@ def test_reconcile_sistema_puntos_drops_spurious_rows_over_total():
     reconciled = reconcile_sistema_puntos_items(llm_items, regex_items=regex_items)
     assert _eval_points_sum(reconciled) == 100
     assert not any(item["key"] == "factor_calidad_extra" for item in reconciled)
+
+
+def test_sistema_puntos_sum_mismatch_detects_bad_totals():
+    items = [
+        {
+            "key": "experiencia",
+            "value": {"max_points": 40.0, "criterion_type": "evaluacion"},
+        },
+        {
+            "key": "total_points",
+            "value": {"max_points": 100.0, "criterion_type": "evaluacion"},
+        },
+    ]
+    assert sistema_puntos_sum_mismatch(items) is True
+
+
+def test_select_scoring_fallback_text_finds_concurso_meritos_table():
+    text = CMA_CONCURSO_MERITOS_TABLE_SAMPLE
+    excerpt = select_scoring_fallback_text_for_llm(text, 4000)
+    assert "experiencia especifica" in excerpt.lower()
+    assert "puntaje total" in excerpt.lower()
+
+
+def test_merge_scoring_fallback_items_keeps_desempate_from_failed_pass():
+    failed = [
+        {
+            "key": "garbage",
+            "label": "del decreto 1082 de 2015)",
+            "value": {"max_points": 2.0, "criterion_type": "evaluacion"},
+        },
+        {
+            "key": "total_points",
+            "value": {"max_points": 100.0, "criterion_type": "evaluacion"},
+        },
+        {
+            "key": "desempate_discapacidad",
+            "label": "Desempate discapacidad",
+            "value": {"max_points": None, "criterion_type": "desempate"},
+        },
+    ]
+    fallback = extract_sistema_puntos(CMA_CONCURSO_MERITOS_TABLE_SAMPLE, "pliego_condiciones", None)
+    merged = merge_scoring_fallback_items(failed, fallback)
+    assert not sistema_puntos_sum_mismatch(merged)
+    assert any(item["key"] == "experiencia" for item in merged)
+    assert any(item["key"] == "desempate_discapacidad" for item in merged)

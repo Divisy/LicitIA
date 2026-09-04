@@ -1,7 +1,10 @@
 """Tests for LLM enrichment of tender requirements (US 1.5)."""
 from unittest.mock import MagicMock, patch
 
-from app.services.tender_requirements.llm_extraction import enrich_requirements_with_llm
+from app.services.tender_requirements.llm_extraction import (
+    enrich_requirements_with_llm,
+    extract_scoring_fallback_with_llm,
+)
 
 
 def _llm_response(sections: dict) -> MagicMock:
@@ -569,3 +572,121 @@ def test_llm_scoring_keeps_regex_criteria_missing_from_llm(mock_settings, mock_c
     keys = {item["key"] for item in eval_items}
     assert "mipyme" in keys
     assert sum(float(item["value"]["max_points"]) for item in eval_items) == 100.0
+
+
+@patch("app.services.tender_requirements.llm_extraction._openai_client", None)
+@patch("app.services.tender_requirements.llm_extraction.settings")
+def test_scoring_fallback_skipped_without_openai(mock_settings):
+    mock_settings.TENDER_REQUIREMENTS_USE_LLM = True
+    mock_settings.TENDER_REQUIREMENTS_SCORING_LLM_FALLBACK = True
+    result = extract_scoring_fallback_with_llm(
+        tender_external_id="CO1.TEST",
+        object_text="Obra",
+        scoring_excerpt="Concepto Puntaje maximo Total 100",
+    )
+    assert result == []
+
+
+@patch("app.services.tender_requirements.llm_extraction._openai_client")
+@patch("app.services.tender_requirements.llm_extraction.settings")
+def test_scoring_fallback_accepts_valid_llm_table(mock_settings, mock_client):
+    mock_settings.TENDER_REQUIREMENTS_USE_LLM = True
+    mock_settings.TENDER_REQUIREMENTS_SCORING_LLM_FALLBACK = True
+    mock_settings.OPENAI_MODEL_NAME = "gpt-4o-mini"
+    mock_settings.TENDER_REQUIREMENTS_LLM_MIN_CONFIDENCE = 0.70
+    mock_settings.TENDER_REQUIREMENTS_SCORING_LLM_FALLBACK_MAX_CHARS = 6000
+    mock_client.chat.completions.create.return_value = _llm_response(
+        {
+            "sistema_puntos": [
+                {
+                    "key": "experiencia",
+                    "label": "Experiencia del proponente",
+                    "max_points": 40,
+                    "criterion_type": "evaluacion",
+                    "display_value": "40 puntos",
+                    "evidence": "experiencia especifica 40 puntos",
+                    "confidence": 0.93,
+                },
+                {
+                    "key": "equipo_trabajo",
+                    "label": "Equipo de trabajo",
+                    "max_points": 45,
+                    "criterion_type": "evaluacion",
+                    "display_value": "45 puntos",
+                    "evidence": "personal de equipo 45 puntos",
+                    "confidence": 0.93,
+                },
+                {
+                    "key": "industria_nacional",
+                    "label": "Industria nacional",
+                    "max_points": 15,
+                    "criterion_type": "evaluacion",
+                    "display_value": "15 puntos",
+                    "evidence": "industria nacional 15 puntos",
+                    "confidence": 0.9,
+                },
+                {
+                    "key": "total_points",
+                    "label": "Total",
+                    "max_points": 100,
+                    "criterion_type": "evaluacion",
+                    "display_value": "100 puntos",
+                    "evidence": "puntaje total 100 puntos",
+                    "confidence": 0.95,
+                },
+            ]
+        }
+    )
+
+    result = extract_scoring_fallback_with_llm(
+        tender_external_id="CO1.TEST",
+        object_text="Concurso de méritos",
+        scoring_excerpt="experiencia 40 puntos equipo 45 puntos industria 15 puntos total 100 puntos",
+    )
+
+    assert result
+    assert all(item.get("extraction_method") == "llm_fallback" for item in result if item["key"] != "total_points")
+    eval_sum = sum(
+        float(item["value"]["max_points"])
+        for item in result
+        if item["key"] != "total_points" and item["value"]["criterion_type"] == "evaluacion"
+    )
+    assert eval_sum == 100.0
+    mock_client.chat.completions.create.assert_called_once()
+
+
+@patch("app.services.tender_requirements.llm_extraction._openai_client")
+@patch("app.services.tender_requirements.llm_extraction.settings")
+def test_scoring_fallback_discards_mismatched_llm_table(mock_settings, mock_client):
+    mock_settings.TENDER_REQUIREMENTS_USE_LLM = True
+    mock_settings.TENDER_REQUIREMENTS_SCORING_LLM_FALLBACK = True
+    mock_settings.OPENAI_MODEL_NAME = "gpt-4o-mini"
+    mock_settings.TENDER_REQUIREMENTS_LLM_MIN_CONFIDENCE = 0.70
+    mock_settings.TENDER_REQUIREMENTS_SCORING_LLM_FALLBACK_MAX_CHARS = 6000
+    mock_client.chat.completions.create.return_value = _llm_response(
+        {
+            "sistema_puntos": [
+                {
+                    "key": "experiencia",
+                    "label": "Experiencia",
+                    "max_points": 40,
+                    "criterion_type": "evaluacion",
+                    "confidence": 0.9,
+                },
+                {
+                    "key": "total_points",
+                    "label": "Total",
+                    "max_points": 100,
+                    "criterion_type": "evaluacion",
+                    "confidence": 0.9,
+                },
+            ]
+        }
+    )
+
+    result = extract_scoring_fallback_with_llm(
+        tender_external_id="CO1.TEST",
+        object_text="Obra",
+        scoring_excerpt="experiencia 40 puntos total 100 puntos",
+    )
+    assert result == []

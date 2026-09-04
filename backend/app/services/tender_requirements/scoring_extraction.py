@@ -23,6 +23,7 @@ from app.services.tender_requirements.regex_extraction import (
 )
 
 _EVALUATION_START_MARKERS: tuple[str, ...] = (
+    "criterio de evaluacion puntaje maximo",
     "criterios de evaluacion y asignacion de puntaje",
     "criterios de evaluacion, asignacion de puntaje",
     "asignacion de puntaje y criterios de desempate",
@@ -66,11 +67,12 @@ _DESEMPATE_STOP_MARKERS: tuple[str, ...] = (
 _TABLE_LABEL_ALIASES: tuple[tuple[str, str, str], ...] = (
     (r"oferta economica", "oferta_economica", "Oferta económica"),
     (r"factor de calidad", "factor_calidad", "Factor de calidad"),
-    (r"experiencia del proponente", "experiencia", "Experiencia del proponente"),
-    (r"equipo de trabajo|personal clave evaluable", "equipo_trabajo", "Equipo de trabajo"),
+    (r"experiencia del proponente|experiencia especifica", "experiencia", "Experiencia del proponente"),
+    (r"equipo de trabajo|personal de equipo|personal clave evaluable", "equipo_trabajo", "Equipo de trabajo"),
     (r"factor de sostenibilidad", "sostenibilidad", "Factor de sostenibilidad"),
-    (r"apoyo a la industria nacional|industria nacional", "industria_nacional", "Apoyo a la industria nacional"),
-    (r"discapacidad", "discapacidad", "Vinculación personas con discapacidad"),
+    (r"apoyo a la industria nacional|industria nacional|incentivo a la industria nacional", "industria_nacional", "Apoyo a la industria nacional"),
+    (r"generacion de empleo territorial|empleo territorial", "empleo_territorial", "Generación de empleo territorial"),
+    (r"discapacidad|personas con discapacidad|empleadores de personas con discapacidad", "discapacidad", "Vinculación personas con discapacidad"),
     (r"emprendimiento|empresas de mujeres", "empresas_mujeres", "Empresas de mujeres"),
     (r"mipyme", "mipyme", "MiPyme"),
     (r"capacidad financiera", "capacidad_financiera", "Capacidad financiera"),
@@ -210,6 +212,7 @@ _ITEM_ORDER: tuple[str, ...] = (
     "discapacidad",
     "empresas_mujeres",
     "mipyme",
+    "empleo_territorial",
     "solvencia_economica",
     "capacidad_financiera",
     "capacidad_organizacional",
@@ -263,6 +266,9 @@ _SCORING_KEYWORD_HINTS: tuple[str, ...] = (
     "sostenibilidad",
     "equipo",
     "solvencia",
+    "empleo",
+    "territorial",
+    "ponderacion",
 )
 
 _HEADER_NOISE_RE = re.compile(
@@ -329,6 +335,12 @@ def _is_noise_criterion_label(label: str) -> bool:
         return True
     if normalized in {"del", "de", "la", "el", "los", "las", "version", "pagina"}:
         return True
+    if re.search(r"^del\s+decreto\s+\d+", normalized):
+        return True
+    if normalized.endswith(")") and "(" not in normalized:
+        return True
+    if "decreto" in normalized and "puntaje" not in normalized and len(normalized) < 96:
+        return True
     for pattern in _LABEL_NOISE_PATTERNS:
         if re.search(pattern, normalized):
             return True
@@ -375,13 +387,13 @@ def _resolve_criterion_label(label: str) -> Optional[tuple[str, str]]:
     ):
         return None
 
-    matches: list[tuple[int, str, str]] = []
+    matches: list[tuple[int, int, str, str]] = []
     for pattern, key, display in _TABLE_LABEL_ALIASES:
         match = re.search(pattern, normalized, flags=re.IGNORECASE)
         if match:
-            matches.append((match.start(), key, display))
+            matches.append((match.start(), len(match.group()), key, display))
     if matches:
-        _, key, display = max(matches, key=lambda item: item[0])
+        _, _, key, display = max(matches, key=lambda item: (item[1], item[0]))
         return key, display
 
     if _is_noise_criterion_label(label):
@@ -410,6 +422,10 @@ def _scoring_chapter_body(normalized: str) -> str:
             score = index  # prefer later (content) over early (TOC)
             if "concepto" in window and "puntaje maximo" in window:
                 score += 500_000
+            if "criterio de evaluacion" in window and "puntaje maximo" in window:
+                score += 500_000
+            if re.search(r"puntaje\s+total\s+100\s+puntos", window):
+                score += 300_000
             if "4.1" in window:
                 score += 50_000
             candidates.append((score, index))
@@ -451,21 +467,70 @@ def _evaluation_main_body(normalized: str) -> str:
 
 def _has_summary_table_header(text: str) -> bool:
     normalized = normalize_text(text)
-    return "concepto" in normalized and "puntaje maximo" in normalized
+    if "puntaje maximo" not in normalized:
+        return False
+    return any(
+        marker in normalized
+        for marker in (
+            "concepto",
+            "criterio de evaluacion",
+            "criterios de evaluacion",
+        )
+    )
+
+
+_SCORING_SUMMARY_TABLE_RE = re.compile(
+    r"(?:concepto|criterio(?:s)? de evaluacion)\s+puntaje\s+maximo"
+    r".{20,4000}?"
+    r"puntaje\s+total\s+(\d{1,3}(?:[.,]\d+)?)\s+puntos?",
+    re.IGNORECASE,
+)
+
+
+def _find_scoring_summary_window(normalized: str) -> str:
+    best = ""
+    best_score = -1
+    for match in _SCORING_SUMMARY_TABLE_RE.finditer(normalized):
+        window = match.group()
+        score = window.count(" puntos") * 100
+        if "puntaje maximo" in window:
+            score += 500
+        try:
+            score += float(match.group(1).replace(",", "."))
+        except (TypeError, ValueError):
+            pass
+        if score > best_score:
+            best_score = score
+            best = window
+    if not best:
+        return ""
+    return _trim_scoring_excerpt_at_stops(best)
 
 
 def _table_region(main_body: str) -> str:
     if not main_body or not _has_summary_table_header(main_body):
         return ""
 
-    start = main_body.find("concepto")
+    normalized = normalize_text(main_body)
+    start = -1
+    for marker in (
+        "criterio de evaluacion puntaje maximo",
+        "criterios de evaluacion puntaje maximo",
+        "concepto puntaje maximo",
+        "concepto",
+        "criterio de evaluacion",
+    ):
+        index = normalized.find(marker)
+        if index >= 0 and (start < 0 or index < start):
+            start = index
+
+    if start < 0:
+        start = main_body.find("concepto")
     if start < 0:
         return ""
 
-    # Prefer the first «Total <n>» after the table header so rows after an early
-    # «4.1 …» marker (common PDF column wrap) are not dropped.
     total_match = re.search(
-        r"\btotal\s+\d{1,3}(?:[.,]\d+)?(?:\s+puntos)?",
+        r"\b(?:puntaje\s+total|total)\s+\d{1,3}(?:[.,]\d+)?(?:\s+puntos)?",
         main_body[start:],
         flags=re.IGNORECASE,
     )
@@ -477,9 +542,6 @@ def _table_region(main_body: str) -> str:
         "las entidades deben consultar",
         "se descontara un",
         "reducir durante la evaluacion",
-        "4.1 forma de verificacion",
-        "4.1 forma de verificacion y asignacion",
-        "4.1 oferta economica",
         "nota 2:",
     ):
         idx = main_body.find(marker, start)
@@ -525,6 +587,8 @@ def _extract_embedded_header_row(
 def _strip_table_header(region: str) -> str:
     stripped = region.strip()
     for pattern in (
+        r"^criterio de evaluacion\s+puntaje\s+maximo\s+",
+        r"^criterios de evaluacion\s+puntaje\s+maximo\s+",
         r"^concepto\s+puntaje\s+maximo\s+",
         r"^puntaje\s+maximo\s+",
         r"^concepto\s+",
@@ -563,6 +627,53 @@ def _parse_label_point_pairs(content: str) -> list[tuple[str, float]]:
     return pairs
 
 
+def _parse_label_puntos_pairs(content: str) -> list[tuple[str, float]]:
+    """Parse «label 40 puntos label 45 puntos …» rows (concurso de méritos)."""
+    stripped = _strip_table_header(content)
+    if not stripped:
+        return []
+
+    pairs: list[tuple[str, float]] = []
+    pattern = re.compile(
+        r"(.+?)\s+(\d{1,3}(?:[.,]\d+)?)\s+puntos?\b",
+        flags=re.IGNORECASE,
+    )
+    for match in pattern.finditer(stripped):
+        label = re.sub(r"\s+", " ", match.group(1)).strip(" .;:-")
+        points = _parse_points_value(match.group(2))
+        if not label or points is None:
+            continue
+        normalized_label = normalize_text(label)
+        if normalized_label in {"puntaje", "maximo", "criterio de evaluacion", "criterios de evaluacion"}:
+            continue
+        if "puntaje maximo" in normalized_label:
+            label = re.sub(r"^.*puntaje maximo\s*", "", label, flags=re.IGNORECASE).strip(" .;:-")
+            if not label:
+                continue
+        pairs.append((label, points))
+    return pairs
+
+
+def _salvage_contaminated_table_label(label_raw: str) -> str:
+    """Recover criterion text when a 4.x section header interrupts the summary table."""
+    stripped = label_raw.strip()
+    if not re.match(r"4\.\d+\s", normalize_text(stripped)):
+        return stripped
+
+    normalized = normalize_text(stripped)
+    matches: list[tuple[int, int, str]] = []
+    for pattern, _, _ in _TABLE_LABEL_ALIASES:
+        match = re.search(pattern, normalized, flags=re.IGNORECASE)
+        if match:
+            matches.append((match.start(), len(match.group()), match.group()))
+    if matches:
+        start, _, _ = max(matches, key=lambda item: (item[0], item[1]))
+        return stripped[start:].strip()
+
+    tail = re.split(r"\.{3,}", stripped)[-1].strip()
+    return tail or stripped
+
+
 def _append_table_row(
     rows: list[tuple[str, str, float, str]],
     seen_keys: set[str],
@@ -570,10 +681,11 @@ def _append_table_row(
     points: float,
 ) -> None:
     normalized_label = normalize_text(label_raw)
-    if normalized_label == "total":
+    if normalized_label in {"total", "puntaje total"}:
         rows.append(("total_points", "Total evaluación habilitante", points, f"Total: {points:g}"))
         return
 
+    label_raw = _salvage_contaminated_table_label(label_raw)
     resolved = _resolve_criterion_label(label_raw)
     if not resolved:
         return
@@ -585,6 +697,10 @@ def _append_table_row(
     rows.append((canonical, display, points, f"{label_raw}: {points:g}"))
 
 
+def _region_uses_puntos_suffix(region: str) -> bool:
+    return len(re.findall(r"\d{1,3}(?:[.,]\d+)?\s+puntos?\b", region, flags=re.IGNORECASE)) >= 3
+
+
 def _extract_summary_table(main_body: str) -> list[tuple[str, str, float, str]]:
     """Parse «Concepto | Puntaje máximo» summary tables (CMA-style)."""
     region = _table_region(main_body)
@@ -594,8 +710,22 @@ def _extract_summary_table(main_body: str) -> list[tuple[str, str, float, str]]:
     rows: list[tuple[str, str, float, str]] = []
     seen_keys: set[str] = set()
 
-    for label_raw, points in _parse_label_point_pairs(region):
+    if _region_uses_puntos_suffix(region):
+        label_point_iter = _parse_label_puntos_pairs(region)
+    else:
+        label_point_iter = _parse_label_point_pairs(region)
+
+    for label_raw, points in label_point_iter:
         _append_table_row(rows, seen_keys, label_raw, points)
+
+    if not rows:
+        fallback_iter = (
+            _parse_label_point_pairs(region)
+            if _region_uses_puntos_suffix(region)
+            else _parse_label_puntos_pairs(region)
+        )
+        for label_raw, points in fallback_iter:
+            _append_table_row(rows, seen_keys, label_raw, points)
 
     if rows:
         return rows
@@ -957,6 +1087,10 @@ def _trim_scoring_excerpt_at_stops(text: str) -> str:
 
 def _resolve_scoring_body(normalized: str) -> str:
     """Locate scoring content regardless of chapter number."""
+    summary = _find_scoring_summary_window(normalized)
+    if summary.strip():
+        return summary
+
     body = _scoring_chapter_body(normalized)
     if not body.strip():
         body = _evaluation_main_body(normalized)
@@ -1134,6 +1268,65 @@ def _sort_scoring_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return eval_and_adjust + [total] + desempate
 
 
+def sistema_puntos_sum_mismatch(items: list[dict[str, Any]]) -> bool:
+    """True when evaluation criteria do not sum to the declared total_points."""
+    total_item = next((item for item in items if item.get("key") == "total_points"), None)
+    if not total_item:
+        return False
+
+    target = (total_item.get("value") or {}).get("max_points")
+    if target is None:
+        return False
+
+    try:
+        target_points = float(target)
+    except (TypeError, ValueError):
+        return False
+
+    eval_sum = 0.0
+    for item in items:
+        if item.get("key") == "total_points":
+            continue
+        value = item.get("value") or {}
+        if value.get("criterion_type") != "evaluacion":
+            continue
+        points = value.get("max_points")
+        if points is None:
+            continue
+        try:
+            eval_sum += float(points)
+        except (TypeError, ValueError):
+            continue
+
+    return not _points_equal(eval_sum, target_points)
+
+
+def merge_scoring_fallback_items(
+    failed_items: list[dict[str, Any]],
+    fallback_items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Replace failed eval/total rows with LLM fallback; keep ajustes/desempate from prior pass."""
+    if not fallback_items:
+        return failed_items
+
+    fallback_keys = {str(item.get("key") or "") for item in fallback_items}
+    secondary = [
+        dict(item)
+        for item in failed_items
+        if _scoring_criterion_type(item) in {"ajuste", "desempate"}
+        and str(item.get("key") or "") not in fallback_keys
+    ]
+    combined = [dict(item) for item in fallback_items] + secondary
+    return reconcile_sistema_puntos_items(combined, regex_items=None)
+
+
+def find_scoring_summary_window(text: str) -> str:
+    """Return the best inline scoring summary table window (chapter-agnostic)."""
+    if not text or not text.strip():
+        return ""
+    return _find_scoring_summary_window(normalize_text(text))
+
+
 def reconcile_sistema_puntos_items(
     items: list[dict[str, Any]],
     regex_items: list[dict[str, Any]] | None = None,
@@ -1234,11 +1427,13 @@ def extract_sistema_puntos(
     has_complete_table = bool(table_rows) and any(row[0] == "total_points" for row in table_rows)
 
     if not table_rows:
-        table_rows = [
+        prose_rows = [
             (key, label, float(points), evidence)
             for key, label, points, evidence in _extract_prose_criteria(chapter_body)
             if points is not None
         ]
+        if prose_rows and not any("decreto" in normalize_text(label) for _, label, _, _ in prose_rows):
+            table_rows = prose_rows
     elif not has_complete_table:
         known_labels = {normalize_text(label) for _, label, _, _ in table_rows if label}
         for key, label, points, evidence in numbered_sections:
