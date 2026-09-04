@@ -330,6 +330,46 @@ def test_extract_cce_interventoria_financial_indicators():
     assert "CTd" in capital["display_value"]
 
 
+OBRA_DOCUMENTO_BASE_FINANCIAL = """
+CAPITULO III. REQUISITOS HABILITANTES Y SU VERIFICACION
+3.6. CAPACIDAD FINANCIERA
+Los Proponentes deberan acreditar los siguientes indicadores en los terminos senalados en la Matriz
+2 – Indicadores financieros y organizacionales:
+Indicador Formula
+Liquidez Activo Corriente / Pasivo Corriente
+Nivel de Endeudamiento Pasivo Total / Activo Total
+Razon de Cobertura de Intereses Utilidad Operacional / Gastos Interes
+3.7. CAPITAL DE TRABAJO
+CT = AC - PC >= CTd
+CTd = (POE - Anticipo o Pago anticipado) x 33%
+3.8. PATRIMONIO
+no se solicitara el Patrimonio como un indicador de capacidad financiera adicional.
+3.9. CAPACIDAD ORGANIZACIONAL
+Los Proponentes deben acreditar los siguientes indicadores en los terminos senalados en la Matriz 2:
+Indicador Formula
+Rentabilidad sobre Patrimonio (Roe) Utilidad Operacional / Patrimonio
+Rentabilidad del Activo (Roa) Utilidad Operacional / Activo Total
+3.10. ACREDITACION DE LA CAPACIDAD FINANCIERA Y ORGANIZACIONAL
+La evaluacion financiera y organizacional se efectuara a partir de la informacion contenida en el RUP.
+CAPITULO IV. CRITERIOS DE EVALUACION
+"""
+
+
+def test_extract_obra_documento_base_includes_organizational_indicators():
+    items = extract_indicadores_financieros(OBRA_DOCUMENTO_BASE_FINANCIAL, "pliego_condiciones", None)
+    keys = {item["key"] for item in items}
+    assert "liquidez_corriente" in keys
+    assert "endeudamiento" in keys
+    assert "cobertura_intereses" in keys
+    assert "capital_trabajo" in keys
+    assert "rentabilidad_patrimonio" in keys
+    assert "rentabilidad_activo" in keys
+    assert "patrimonio_minimo" not in keys
+
+    roe = next(item for item in items if item["key"] == "rentabilidad_patrimonio")
+    assert roe["value"]["threshold_note"] == "Umbrales según Matriz 2 (ver anexo del proceso)"
+
+
 MATRIZ_2_INTERVENTORIA_SAMPLE = """
 MATRIZ 2 – INDICADORES FINANCIEROS Y ORGANIZACIONALES
 Índices de Capacidad Financiera y Organizacionales para Mipyme.

@@ -890,8 +890,11 @@ FINANCIAL_REGION_MARKERS: tuple[str, ...] = (
     "capacidad financiera",
     "indicadores financieros",
     "3.5 capacidad financiera",
+    "3.6 capacidad financiera",
     "3.6 capital de trabajo",
+    "3.7 capital de trabajo",
     "3.7 capacidad organizacional",
+    "3.9 capacidad organizacional",
     "matriz 2 - indicadores",
     "indice de liquidez",
     "liquidez corriente",
@@ -932,9 +935,8 @@ def _append_financial_supplements(
         if not any(existing["key"] == item["key"] for existing in items):
             items.append(item)
 
-    org_start = effective_region.find("3.7 capacidad organizacional")
-    if org_start >= 0:
-        org_region = effective_region[org_start:]
+    org_region = _organizational_section_region(normalized, effective_region)
+    if org_region:
         org_matriz = bool(re.search(r"matriz\s*2\b", org_region))
         for item in _extract_financial_indicator_items(
             org_region,
@@ -1113,12 +1115,18 @@ def _parse_indicator_threshold(
 
 
 def _financial_section_region(normalized: str) -> str:
-    """Body text for capacidad financiera / organizacional (§3.5–§3.7.1), excluding TOC."""
+    """Body text for capacidad financiera / organizacional (§3.5–§3.9), excluding TOC."""
     start = -1
-    for match in re.finditer(r"3\.5\s+capacidad financiera", normalized):
-        window = normalized[match.start() : match.start() + 600]
-        if re.search(r"proponentes\s+deberan|matriz\s*2", window):
-            start = match.start()
+    for pattern in (
+        r"3\.5\s+capacidad financiera",
+        r"3\.6\s+capacidad financiera",
+    ):
+        for match in re.finditer(pattern, normalized):
+            window = normalized[match.start() : match.start() + 600]
+            if re.search(r"proponentes\s+deberan|matriz\s*2", window):
+                start = match.start()
+                break
+        if start >= 0:
             break
     if start < 0:
         for marker in ("solvencia economica y financiera", "indicadores financieros"):
@@ -1133,6 +1141,7 @@ def _financial_section_region(normalized: str) -> str:
     for marker in (
         "3.8 exigencias minimas de la experiencia",
         "3.8 experiencia",
+        "3.10 acreditacion de la capacidad financiera",
         "capitulo iv. criterios de evaluacion",
     ):
         idx = normalized.find(marker, start + 100)
@@ -1141,17 +1150,42 @@ def _financial_section_region(normalized: str) -> str:
     return normalized[start:end]
 
 
+def _organizational_section_region(normalized: str, effective_region: str) -> str:
+    """Locate capacidad organizacional (traditional §3.7 or obra documento base §3.9)."""
+    for source in (effective_region, normalized):
+        if not source.strip():
+            continue
+        for pattern in (
+            r"3\.9\.?\s*capacidad organizacional",
+            r"3\.7\.?\s*capacidad organizacional",
+        ):
+            match = re.search(pattern, source)
+            if match:
+                return source[match.start() : match.start() + 1_400]
+    return ""
+
+
 def _capital_trabajo_region(normalized: str) -> str:
     anchor = re.search(r"ct\s*=\s*ac\s*-\s*pc", normalized)
     if anchor:
         start = max(0, anchor.start() - 400)
     else:
-        match = re.search(r"3\.6\s+capital de trabajo", normalized)
+        match = re.search(r"3\.(?:6|7)\.?\s*capital de trabajo", normalized)
         if not match:
             return ""
         start = match.start()
-    end = normalized.find("3.7 capacidad organizacional", start)
-    if end < 0:
+    end = len(normalized)
+    for marker in (
+        "3.7 capacidad organizacional",
+        "3.8 patrimonio",
+        "3.9 capacidad organizacional",
+        "3.10 acreditacion de la capacidad financiera",
+    ):
+        idx = normalized.find(marker, start + 40)
+        if idx >= 0:
+            end = min(end, idx)
+            break
+    if end == len(normalized):
         end = min(len(normalized), start + 2800)
     return normalized[start:end]
 
@@ -1969,6 +2003,61 @@ def _extract_matriz_2_indicators(
             source_document,
             source_document_id,
             spec_by_key,
+        )
+
+    if not any(item["key"] in _FINANCIAL_METRIC_KEYS for item in items):
+        items = _append_matriz_template_indicator_items(
+            items,
+            normalized,
+            source_document,
+            source_document_id,
+            spec_by_key,
+        )
+
+    return items
+
+
+_MATRIZ_TEMPLATE_INDICATOR_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("liquidez_corriente", r"indice de liquidez"),
+    ("endeudamiento", r"indice de endeudamiento"),
+    ("cobertura_intereses", r"razon de cobertura de intereses"),
+    ("rentabilidad_patrimonio", r"rentabilidad del patrimonio"),
+    ("rentabilidad_activo", r"rentabilidad del activo"),
+)
+
+
+def _append_matriz_template_indicator_items(
+    items: list[RequirementItem],
+    normalized: str,
+    source_document: str,
+    source_document_id: Optional[UUID],
+    spec_by_key: dict[str, dict[str, Any]],
+) -> list[RequirementItem]:
+    """Emit Matriz 2 indicator rows when the template lists them without numeric valores."""
+    if "valor concertado" not in normalized or "indice de liquidez" not in normalized:
+        return items
+
+    for key, pattern in _MATRIZ_TEMPLATE_INDICATOR_PATTERNS:
+        if any(item["key"] == key for item in items):
+            continue
+        if not re.search(pattern, normalized):
+            continue
+        spec = spec_by_key.get(key)
+        if not spec:
+            continue
+        items.append(
+            _build_financial_indicator_item(
+                key=key,
+                label=str(spec["label"]),
+                formula=str(spec["formula"]),
+                operator=str(spec["default_operator"]),
+                threshold=None,
+                threshold_note="Umbrales según Matriz 2 (ver anexo del proceso)",
+                source_document=source_document,
+                source_document_id=source_document_id,
+                evidence=f"Indicador listado en Matriz 2: {spec['label']}",
+                confidence=0.84,
+            )
         )
 
     return items
