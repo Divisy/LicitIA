@@ -11,6 +11,7 @@ from app.services.tender_requirements.regex_extraction import (
     merge_financial_requirement_items,
     normalize_text,
 )
+from app.services.tender_requirements.residual_capacity_extraction import extract_capacidad_residual
 from app.services.tender_requirements.scoring_extraction import (
     extract_sistema_puntos,
     merge_scoring_fallback_items,
@@ -368,6 +369,100 @@ def test_extract_obra_documento_base_includes_organizational_indicators():
 
     roe = next(item for item in items if item["key"] == "rentabilidad_patrimonio")
     assert roe["value"]["threshold_note"] == "Umbrales según Matriz 2 (ver anexo del proceso)"
+
+
+OBRA_DOCUMENTO_BASE_RESIDUAL = """
+3.11 CAPACIDAD RESIDUAL
+El Proponente sera habil si su capacidad residual es mayor o igual a la capacidad residual de Proceso
+de Contratacion (CRPC). Asi: CRP >= CRPC
+3.11.1 CALCULO DE LA CAPACIDAD RESIDUAL DEL PROCESO DE CONTRATACION (CRPC)
+Si el plazo estimado del contrato es menor o igual a 12 meses, el calculo de la CRPC debera tener
+en cuenta el siguiente proceso: CRPC=POE-Anticipo o pago anticipado
+Si el plazo estimado del contrato es mayor a 12 meses el calculo de la CRPC debera tener en cuenta
+el siguiente proceso: CRPC=POE-Anticipo o pago anticipado / Plazo estimado (meses) * 12
+3.11.2 CALCULO DE LA CAPACIDAD RESIDUAL DEL PROPONENTE (CRP)
+La capacidad residual del Proponente se calculara de la siguiente manera:
+CRP=CO*[(E+CT+CF)/100]-SCE
+La CRP del Proponente plural es la suma de la capacidad residual de cada uno de sus miembros
+A cada uno de los factores se le asigna maximo el siguiente puntaje:
+Factor Puntaje maximo
+Experiencia (E) 120
+Capacidad financiera (CF) 40
+Capacidad tecnica (CT) 40
+La Capacidad de Organizacion (CO) no tiene asignacion de puntaje en la formula porque constituye
+un factor multiplicador de los demas factores.
+E. Saldos Contratos en Ejecucion (SCE):
+El Proponente debe presentar el Formato 5 - Capacidad residual suscrito por su representante legal
+Para acreditar el factor (E), el proponente debe diligenciar el Formato 5 - Capacidad residual
+4. CAPITULO IV. CRITERIOS DE EVALUACION
+"""
+
+
+def test_extract_capacidad_residual_obra_documento_base():
+    items = extract_capacidad_residual(OBRA_DOCUMENTO_BASE_RESIDUAL, "pliego_condiciones", None)
+    keys = {item["key"] for item in items}
+    assert "residual_summary" in keys
+    assert "habilitante_rule" in keys
+    assert "crpc_formula" in keys
+    assert "crp_formula" in keys
+    assert "factor_experiencia" in keys
+    assert "factor_capacidad_financiera" in keys
+    assert "factor_capacidad_tecnica" in keys
+    assert "factor_organizacion" in keys
+    assert "sce" in keys
+    assert "proponente_plural" in keys
+    assert "accreditation_formato_5" in keys
+
+    experiencia = next(item for item in items if item["key"] == "factor_experiencia")
+    assert experiencia["value"]["max_score"] == 120
+    cf = next(item for item in items if item["key"] == "factor_capacidad_financiera")
+    assert cf["value"]["max_score"] == 40
+    ct = next(item for item in items if item["key"] == "factor_capacidad_tecnica")
+    assert ct["value"]["max_score"] == 40
+
+    crpc = next(item for item in items if item["key"] == "crpc_formula")
+    assert crpc["value"]["formula_type"] == "both"
+
+
+def test_extract_capacidad_residual_empty_without_section():
+    items = extract_capacidad_residual(OBRA_DOCUMENTO_BASE_FINANCIAL, "pliego_condiciones", None)
+    assert items == []
+
+
+def test_build_tender_requirements_includes_residual_for_obra():
+    tender = Tender(
+        id=uuid4(),
+        external_id="CO1.REQ.OBRA",
+        portfolio_id="portfolio-1",
+        source=TenderSource.SECOP_II,
+        entity_name="Entity",
+        object_text="Construccion de infraestructura vial",
+        contract_modality="Licitación pública Obra Pública",
+        state="Publicado",
+        process_url="https://example.com",
+    )
+    tender.documents = []
+    payload = build_tender_requirements(tender)
+    section_keys = [section["key"] for section in payload["sections"]]
+    assert "capacidad_residual" in section_keys
+
+
+def test_build_tender_requirements_excludes_residual_for_interventoria():
+    tender = Tender(
+        id=uuid4(),
+        external_id="CO1.REQ.INT",
+        portfolio_id="portfolio-1",
+        source=TenderSource.SECOP_II,
+        entity_name="Entity",
+        object_text="Interventoria tecnica de obra",
+        contract_modality="Licitación pública Obra Pública",
+        state="Publicado",
+        process_url="https://example.com",
+    )
+    tender.documents = []
+    payload = build_tender_requirements(tender)
+    section_keys = [section["key"] for section in payload["sections"]]
+    assert "capacidad_residual" not in section_keys
 
 
 MATRIZ_2_INTERVENTORIA_SAMPLE = """

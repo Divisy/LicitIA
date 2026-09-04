@@ -1,8 +1,8 @@
-# US 1.8 — Capacidad residual (obra pública)
+# US 1.8 — Capacidad residual en licitaciones de obra pública
 
 ## USER STORY
 
-**As a** constructor o licitador de obra pública  
+**As a** constructor o personal de licitaciones de obra pública  
 **Quiero** ver en el detalle de la licitación el requisito de capacidad residual (K de contratación), la CRPC del proceso y cómo acreditarla  
 **Para** saber si mi empresa tiene cupo para asumir el contrato junto con los demás en ejecución, sin confundirlo con los indicadores financieros de la Matriz 2.
 
@@ -10,13 +10,24 @@
 
 ## BACKGROUND
 
-En Colombia, la **capacidad residual** (también **K de contratación**) es un habilitante **adicional** a liquidez, endeudamiento, ROE, etc. Está regulada en el **Decreto 1082 de 2015** (arts. 2.2.1.1.1.3.1 y 2.2.1.1.1.6.4) y en la **Guía CCE GI-22** (*Capacidad residual del proponente en procesos de contratación de obra pública*).
+Hoy LicitIA permite (US 1.5):
 
-| Concepto | Definición breve |
-|----------|------------------|
-| **CRPC** | Capacidad residual **del proceso** (lo que exige la entidad) |
-| **CRP** | Capacidad residual **del proponente** (lo que debe demostrar el oferente) |
-| **Regla** | El proponente es hábil si **CRP ≥ CRPC** |
+- Extraer y mostrar **indicadores financieros y solvencia** desde el pliego y la Matriz 2 (liquidez, endeudamiento, cobertura de intereses, capital de trabajo, ROE, ROA).
+- Clasificar el tipo de proceso en el dashboard: **ejecución de obra**, **estudios, diseños y obra**, interventoría, estudios y diseños, etc. (`contract_kind.py`).
+
+**Lo que no existe:**
+
+- Extracción ni visualización de la **capacidad residual** (§3.11 del documento base obra, Formato 5).
+- Diferenciación clara entre *índices de la Matriz 2* y *K de contratación* en la UI.
+
+**Marco normativo (Colombia):**
+
+| Concepto | Definición |
+|----------|------------|
+| **Capacidad residual / K** | Aptitud del oferente para ejecutar el contrato sin que otros compromisos contractuales afecten su cumplimiento (Decreto 1082 de 2015, art. 2.2.1.1.1.3.1) |
+| **CRPC** | Capacidad residual **del proceso** (calcula la entidad) |
+| **CRP** | Capacidad residual **del proponente** (acredita el oferente) |
+| **Regla habilitante** | **CRP ≥ CRPC** |
 
 **Fórmulas documento base obra (§3.11):**
 
@@ -24,187 +35,225 @@ En Colombia, la **capacidad residual** (también **K de contratación**) es un h
 - Plazo > 12 meses: `CRPC = (POE − Anticipo) / Plazo_estimado × 12`
 - Proponente: `CRP = CO × [(E + CT + CF) / 100] − SCE`
 
-Factores del puntaje máximo (ej. Villa María III):
+**Factores CRP (ej. documento base CCE):**
 
-| Factor | Máx. pts | Fuente en pliego |
-|--------|----------|------------------|
+| Factor | Puntaje máx. | Acreditación |
+|--------|--------------|--------------|
 | Experiencia (E) | 120 | Formato 5, contratos segmento 72 |
-| Capacidad financiera (CF) | 40 | Índice de liquidez (reutiliza §3.6) |
+| Capacidad financiera (CF) | 40 | Índice de liquidez (§3.6) |
 | Capacidad técnica (CT) | 40 | Profesionales vinculados (Formato 5) |
-| Capacidad de organización (CO) | factor multiplicador | Metodología CCE |
-| SCE | resta | Contratos en ejecución (Formato 5) |
+| Capacidad de organización (CO) | multiplicador | Metodología CCE (Guía GI-22) |
+| SCE | resta | Saldos de contratos en ejecución (Formato 5) |
 
-**Acreditación:** Formato 5 – Capacidad residual (+ RUP cuando aplica).
+**Alcance normativo:** la capacidad residual **solo aplica a contratos de obra pública** (Guía CCE GI-22). No aplica a interventoría, consultoría pura ni suministros.
 
-### Qué NO es capacidad residual
+**Flujo operativo del licitador (obra):**
 
-- No es un índice de la Matriz 2 (liquidez, ROE, ROA).
-- No aplica a interventoría, consultoría pura ni suministros.
-- No sustituye capital de trabajo (§3.7); son requisitos distintos.
+1. Revisa indicadores financieros (Matriz 2) en LicitIA.
+2. Debe además verificar si tiene **cupo residual** para el nuevo contrato (contratos en ejecución + capacidad técnica/financiera).
+3. Hoy debe buscar manualmente el §3.11 y el Formato 5 en el pliego.
 
-### Estado actual en LicitIA
+**Relación con otras US:**
 
-- `indicadores_financieros` extrae §3.6–3.9 y Matriz 2 (v1.9.7 incluye ROE/ROA en documento base obra).
-- **No hay** extracción ni UI de §3.11 / Formato 5.
-- `ContractKind` ya distingue `ejecucion_obra` y `estudios_disenos_y_obra` (`contract_kind.py`).
-
----
-
-## ALCANCE DE TIPO DE PROCESO
-
-La extracción y visualización de capacidad residual **solo** se activa cuando:
-
-```text
-detect_contract_kind(tender) ∈ { ejecucion_obra, estudios_disenos_y_obra }
-```
-
-Equivalente operativo en SECOP: modalidad **«Licitación pública Obra Pública»**, excluyendo interventoría en el objeto.
-
-| Tipo LicitIA | ¿Capacidad residual? |
-|--------------|----------------------|
-| `ejecucion_obra` | **Sí** |
-| `estudios_disenos_y_obra` | **Sí** |
-| `interventoria` | No |
-| `estudios_disenos` | No |
-| `desconocido` | No |
+| US | Relación |
+|----|----------|
+| 1.4 Variables licitación | POE, anticipo y plazo de ejecución alimentan el cálculo/display de CRPC |
+| 1.5 Indicadores financieros | CF en CRP reutiliza liquidez de §3.6; sección separada, no mezclar con Matriz 2 |
+| 1.5.3 Gap analysis (futuro) | Comparar CRP de la empresa vs CRPC del proceso |
+| 1.7 Favoritas | El usuario puede marcar obras que luego revisa capacidad residual en detalle |
 
 ---
 
 ## OBJETIVO
 
-Mostrar en el panel de detalle una subsección **«Capacidad residual»** (o ítems dentro de requisitos) con:
+Extraer y presentar la **capacidad residual (K)** en el panel de detalle de licitaciones de **obra pública**, con trazabilidad al pliego (§3.11) y estados claros cuando el dato no se encuentre.
 
-1. CRPC calculada o citada del pliego (POE, anticipo, plazo).
-2. Fórmula CRP y factores E / CF / CT / CO / SCE con puntajes máximos.
-3. Formato 5 y reglas de proponente plural.
-4. Evidencia textual (§3.11) y estado `no_encontrado` si el pliego no es documento base obra.
+### Alcance MVP (etiqueta Jira: BACKEND + FRONTEND)
 
-### Fuera de alcance (fase inicial)
-
-- Calcular CRP de la empresa del usuario (gap analysis).
-- Descargar o validar Formato 5 diligenciado.
-- Aplicativo Excel CCE integrado.
+| Incluye | No incluye (futuro) |
+|---------|---------------------|
+| Sección **Capacidad residual (K)** en requisitos | Calcular CRP de la empresa del usuario |
+| Solo tipos `ejecucion_obra` y `estudios_disenos_y_obra` | Interventoría, estudios y diseños puros, otros procesos |
+| Extracción regex de §3.11 (CRPC, CRP, factores E/CF/CT/CO/SCE) | Validar Formato 5 diligenciado |
+| Display de CRPC estimada con POE/anticipo/plazo (US 1.4) | Integrar aplicativo Excel CCE |
+| Formato 5 y regla CRP ≥ CRPC | Gap analysis / semáforo de cumplimiento |
+| Tests unitarios + bump `EXTRACTION_VERSION` | LLM fallback (fase 1.8.2) |
 
 ---
 
-## SOLUCIÓN PROPUESTA
+## SOLUCIÓN
 
-### Fase 1.8.1 — Extracción regex (MVP)
+### A. Gate por tipo de proceso
 
-#### A. Gate por tipo de contrato
+La sección solo se extrae y muestra cuando:
 
-En `build_tender_requirements()` o extractor dedicado:
-
-```python
-if detect_contract_kind(tender) not in (
-    ContractKind.EJECUCION_OBRA,
-    ContractKind.ESTUDIOS_DISENOS_Y_OBRA,
-):
-    return []  # no sección capacidad_residual
+```text
+detect_contract_kind(tender) ∈ { ejecucion_obra, estudios_disenos_y_obra }
 ```
 
-#### B. Nueva sección o extensión de requisitos
+Equivalente SECOP: modalidad **«Licitación pública Obra Pública»**, excluyendo interventoría en el objeto.
 
-**Opción recomendada:** clave `capacidad_residual` en `SECTION_DEFINITIONS` (título: «Capacidad residual (K)»), separada de `indicadores_financieros` para no mezclar Matriz 2 con §3.11.
+### B. Nueva sección de requisitos
 
-Ítems estructurados sugeridos:
+Clave: `capacidad_residual`  
+Título UI: **Capacidad residual (K)**  
+Separada de `indicadores_financieros` para no confundir Matriz 2 con §3.11.
 
-| key | label | value |
-|-----|-------|-------|
-| `crpc_formula` | CRPC del proceso | fórmula + POE/anticipo/plazo si están en pliego o US 1.4 |
+**Ítems estructurados (MVP):**
+
+| key | label | Contenido |
+|-----|-------|-----------|
+| `residual_summary` | Resumen | Qué es K y regla CRP ≥ CRPC |
+| `crpc_formula` | CRPC del proceso | Fórmula según plazo + valores POE/anticipo si existen |
 | `crp_formula` | CRP del proponente | `CO × [(E+CT+CF)/100] − SCE` |
-| `factor_experiencia` | Experiencia (E) | puntaje máx. 120, referencia Formato 5 |
-| `factor_capacidad_financiera` | CF | puntaje máx. 40, liquidez |
-| `factor_capacidad_tecnica` | CT | puntaje máx. 40, profesionales |
-| `factor_organizacion` | CO | descripción breve |
-| `sce` | Contratos en ejecución | resta SCE, Formato 5 |
-| `proponente_plural` | Proponente plural | suma CRP miembros, regla miembro negativo |
+| `factor_experiencia` | Experiencia (E) | Máx. 120 pts, Formato 5 |
+| `factor_capacidad_financiera` | Capacidad financiera (CF) | Máx. 40 pts, liquidez |
+| `factor_capacidad_tecnica` | Capacidad técnica (CT) | Máx. 40 pts, profesionales |
+| `factor_organizacion` | Capacidad de organización (CO) | Rol multiplicador |
+| `sce` | Contratos en ejecución (SCE) | Resta al CRP, Formato 5 |
+| `proponente_plural` | Proponente plural | Suma CRP de integrantes |
 | `accreditation_formato_5` | Cómo acreditar | Formato 5 + firmas |
 | `habilitante_rule` | Regla de habilitación | CRP ≥ CRPC |
 
-#### C. Localización en el pliego
+### C. Extracción (backend)
 
-Marcadores (documento base CCE obra):
+**Archivo nuevo:** `backend/app/services/tender_requirements/residual_capacity_extraction.py`
 
-```text
-3.11 capacidad residual
-3.11.1 calculo de la capacidad residual del proceso
-3.11.2 calculo de la capacidad residual del proponente
-formato 5 capacidad residual
-crp >= crpc
-```
+**Marcadores en pliego (documento base CCE obra):**
 
-Archivo nuevo sugerido: `backend/app/services/tender_requirements/residual_capacity_extraction.py`.
+- `3.11 capacidad residual`
+- `3.11.1 calculo de la capacidad residual del proceso`
+- `3.11.2 calculo de la capacidad residual del proponente`
+- `formato 5 capacidad residual`
+- `crp` / `crpc`
 
-Reutilizar:
+**Integración:**
 
-- `normalize_text`, `_snippet`, `_item` de `regex_extraction.py`
-- POE y anticipo de `tender_summary` / US 1.4 cuando existan para **pre-calcular CRPC** en display.
-- Plazo de ejecución de US 1.4 para elegir fórmula ≤12 vs >12 meses.
+- Registrar en `SECTION_DEFINITIONS` y `EXTRACTORS` en `regex_extraction.py` / `service.py`.
+- En `build_tender_requirements()`: invocar extractor solo si `ContractKind` es obra.
+- Reutilizar POE, anticipo y plazo desde `tender_summary` / US 1.4 para **mostrar CRPC estimada** cuando el pliego no repita cifras.
+- `EXTRACTION_VERSION` bump + invalidación de caché si obra pública tiene `3.11` en pliego pero sin ítems extraídos.
 
-#### D. Enriquecimiento LLM (opcional, fase 1.8.2)
+### D. Interfaz (frontend)
 
-Solo si regex devuelve sección vacía o incompleta:
+**Ubicación:** `TenderDetailPanel` → acordeón **Requisitos de participación**, después de *Indicadores financieros y solvencia*.
 
-- Excerpt §3.11 (~3.000 caracteres).
-- Prompt scoring-only style: no inventar CRPC; citar evidencia.
-- Validar que mencione CRP y CRPC.
+**Visibilidad:** solo si `contractKind === 'ejecucion_obra' || contractKind === 'estudios_disenos_y_obra'`.
 
-Costo: 1 llamada condicional (~misma magnitud que fallback de puntaje).
+**Presentación:**
 
-#### E. Frontend
+- Tarjeta resumen: *“Debes acreditar CRP ≥ CRPC”*.
+- CRPC estimada (si hay POE y anticipo de US 1.4).
+- Tabla de factores E / CF / CT con puntajes máximos.
+- Formato 5 y enlace al documento pliego (US 1.3).
+- Estados: `extraido` | `no_encontrado` | `documento_no_disponible`.
 
-`TenderDetailPanel.tsx`:
+### E. Archivos a tocar (estimación)
 
-- Mostrar sección `capacidad_residual` **solo** si `contractKind` es `ejecucion_obra` o `estudios_disenos_y_obra`.
-- Tarjetas: regla CRP ≥ CRPC, CRPC estimada (si hay POE), tabla de factores E/CF/CT, enlace a Formato 5.
-- No mostrar en filtros de interventoría / estudios puros.
+| Archivo | Cambio |
+|---------|--------|
+| `residual_capacity_extraction.py` | **Nuevo** — parser §3.11 |
+| `regex_extraction.py` / `service.py` | Sección + gate `ContractKind` |
+| `test_tender_requirements.py` | Tests con muestra Villa María §3.11 |
+| `TenderDetailPanel.tsx` | Sección UI + gate por tipo |
+| `client.ts` | Tipos sección `capacidad_residual` (si aplica) |
 
-#### F. Versión y caché
+### F. Fase 1.8.2 (opcional, post-MVP)
 
-- `EXTRACTION_VERSION` bump al implementar.
-- Invalidar caché si obra pública sin ítems `capacidad_residual` pero pliego contiene `3.11 capacidad residual`.
-
----
-
-## CRITERIOS DE ACEPTACIÓN (fase 1.8.1)
-
-1. **LP-009 / Villa María III:** extrae §3.11, factores 120/40/40, Formato 5, regla CRP ≥ CRPC.
-2. **Interventoría (ej. CCE):** no aparece sección capacidad residual.
-3. **Estudios y diseños** (concurso méritos sin obra pública): no aparece.
-4. **Estudios, diseños y obra** (modalidad obra pública): sí aparece.
-5. Tests unitarios con fragmento `OBRA_DOCUMENTO_BASE_RESIDUAL_SAMPLE`.
-6. CRPC display usa POE de US 1.4 cuando el pliego no repite el valor numérico.
+- LLM fallback si regex no encuentra §3.11 (1 llamada condicional, mismo patrón que puntaje v1.9.6).
+- Solo si excerpt contiene `capacidad residual` y faltan ítems clave.
 
 ---
 
-## PLAN DE IMPLEMENTACIÓN
+## CRITERIOS DE ACEPTACIÓN
 
-| Paso | Tarea | Estimación |
-|------|-------|------------|
-| 1 | `residual_capacity_extraction.py` + tests con Villa María §3.11 | 1 día |
-| 2 | Registrar sección en `SECTION_DEFINITIONS` + `service.py` con gate `ContractKind` | 0.5 día |
-| 3 | Merge POE/anticipo/plazo desde `tender` / summary para CRPC display | 0.5 día |
-| 4 | UI `TenderDetailPanel` + orden de ítems | 0.5 día |
-| 5 | LLM fallback opcional (1.8.2) | 0.5 día |
-| 6 | QA manual LP-009 + una obra sin estudios + una interventoría | 0.5 día |
+### MVP
 
-**Total MVP regex:** ~3 días.
+**GIVEN** una licitación clasificada como **ejecución de obra** con pliego documento base CCE (ej. LP-009 Villa María III)  
+**WHEN** el usuario abre el detalle y la sección de requisitos  
+**THEN**
+
+- Ve la sección **Capacidad residual (K)** separada de indicadores financieros.
+- Ve la regla **CRP ≥ CRPC**, la fórmula CRPC y los factores E (120), CF (40), CT (40).
+- Ve referencia al **Formato 5** y evidencia del §3.11.
+
+**GIVEN** una licitación clasificada como **estudios, diseños y obra** (modalidad obra pública)  
+**WHEN** el usuario abre requisitos  
+**THEN**
+
+- Ve la misma sección de capacidad residual que en ejecución de obra pura.
+
+**GIVEN** una licitación de **interventoría**  
+**WHEN** el usuario abre requisitos  
+**THEN**
+
+- **No** aparece la sección Capacidad residual (K).
+
+**GIVEN** una licitación de **estudios y diseños** (concurso de méritos / consultoría, sin obra pública)  
+**WHEN** el usuario abre requisitos  
+**THEN**
+
+- **No** aparece la sección Capacidad residual (K).
+
+**GIVEN** que US 1.4 tiene POE y anticipo extraídos  
+**WHEN** el pliego no repite el valor numérico de CRPC  
+**THEN**
+
+- La UI muestra CRPC estimada con la fórmula aplicada (POE − Anticipo, o proporcional si plazo > 12 meses).
+
+**GIVEN** que el pliego de obra no contiene §3.11  
+**WHEN** se extraen requisitos  
+**THEN**
+
+- La sección queda en estado `no_encontrado` sin inventar datos.
+
+### Validación manual (gate de cierre)
+
+| Paso | Resultado esperado |
+|------|-------------------|
+| LP-009 / Villa María III | Sección K con §3.11, factores 120/40/40, Formato 5 |
+| Obra sin estudios en objeto | Sección K visible |
+| Interventoría CCE | Sin sección K |
+| Estudios puros (concurso méritos) | Sin sección K |
+| Reabrir licitación tras deploy | Re-extracción con nueva `EXTRACTION_VERSION` |
 
 ---
 
-## REFERENCIAS NORMATIVAS
+## FUERA DE ALCANCE (MVP)
 
-- Decreto 1082 de 2015: arts. 2.2.1.1.1.3.1, 2.2.1.1.1.6.4.
-- [Guía CCE — Capacidad residual (GI-22)](https://www.colombiacompra.gov.co/manuales-guias-y-pliegos-tipo/manuales-y-guias).
-- Documento base — Licitación de obra pública de infraestructura social (§3.11, Formato 5).
+- Cálculo del CRP de la empresa contratista (requiere datos financieros internos).
+- Carga o validación del Formato 5 diligenciado.
+- Aplicativo Excel de Colombia Compra Eficiente embebido.
+- Capacidad residual en procesos que no sean licitación de obra pública.
+- Semáforo cumple / no cumple (US 1.5.3).
 
 ---
 
-## RELACIÓN CON OTRAS US
+## DEFINICIÓN DE HECHO
 
-| US | Relación |
-|----|----------|
-| 1.4 Variables licitación | POE, anticipo, plazo → CRPC |
-| 1.5 Indicadores financieros | CF en CRP reutiliza liquidez de §3.6; no duplicar Matriz 2 |
-| 1.5.3 Gap analysis (futuro) | CRP empresa vs CRPC proceso |
+- [ ] Extractor `residual_capacity_extraction.py` con tests unitarios.
+- [ ] Sección `capacidad_residual` en API `GET /tenders/{id}/requirements`.
+- [ ] Gate por `ContractKind` (solo obra y estudios+diseños+obra).
+- [ ] UI en `TenderDetailPanel` con sección separada de indicadores financieros.
+- [ ] CRPC display reutiliza POE/anticipo/plazo de US 1.4 cuando aplica.
+- [ ] `EXTRACTION_VERSION` actualizada e invalidación de caché.
+- [ ] Validación manual según tabla anterior.
+
+---
+
+## ESTIMACIÓN
+
+| Ítem | Esfuerzo |
+|------|----------|
+| Extractor regex + tests (§3.11) | 1 d |
+| Integración service + SECTION_DEFINITIONS + gate | 0,5 d |
+| Merge POE/anticipo/plazo para CRPC display | 0,5 d |
+| UI TenderDetailPanel | 0,5 d |
+| QA manual (obra / interventoría / estudios) | 0,5 d |
+| **Total MVP** | **~3 días** |
+
+---
+
+## TÍTULO JIRA SUGERIDO
+
+`1.8 [Backend+Frontend] Capacidad residual (K) en licitaciones de obra pública — extracción §3.11 y UI (solo ejecución de obra y estudios, diseños y obra)`

@@ -33,6 +33,8 @@ import './TenderDetailPanel.scss'
 
 const EXPERIENCE_SECTION_KEYS = new Set(['experiencia_general', 'experiencia_especifica'])
 const FINANCIAL_SECTION_KEYS = new Set(['indicadores_financieros'])
+const RESIDUAL_SECTION_KEYS = new Set(['capacidad_residual'])
+const OBRA_RESIDUAL_CONTRACT_KINDS = new Set(['ejecucion_obra', 'estudios_disenos_y_obra'])
 const LEGAL_SECTION_KEYS = new Set(['requisitos_legales'])
 const SCORING_SECTION_KEYS = new Set(['sistema_puntos'])
 
@@ -67,6 +69,19 @@ const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
     'matriz_2_reference',
     'accreditation_method',
     'financial_exemptions',
+  ],
+  capacidad_residual: [
+    'residual_summary',
+    'habilitante_rule',
+    'crpc_formula',
+    'crp_formula',
+    'factor_experiencia',
+    'factor_capacidad_financiera',
+    'factor_capacidad_tecnica',
+    'factor_organizacion',
+    'sce',
+    'proponente_plural',
+    'accreditation_formato_5',
   ],
   requisitos_legales: [
     'rup_certificate_validity',
@@ -456,6 +471,31 @@ const computeCtdMinimumAmount = (
       : 0
   return Math.round((officialBudgetTotal - advanceAmount) * (ctdPercentage / 100))
 }
+
+const computeCrpcEstimated = (
+  officialBudgetTotal: number | null,
+  advancePaymentPercentage: number | null,
+  executionMonths: number | null
+): number | null => {
+  if (officialBudgetTotal == null || officialBudgetTotal <= 0) {
+    return null
+  }
+  const advanceAmount =
+    advancePaymentPercentage != null
+      ? Math.round((officialBudgetTotal * advancePaymentPercentage) / 100)
+      : 0
+  const net = officialBudgetTotal - advanceAmount
+  if (executionMonths != null && executionMonths > 12) {
+    return Math.round((net / executionMonths) * 12)
+  }
+  return Math.round(net)
+}
+
+const RESIDUAL_FACTOR_KEYS = new Set([
+  'factor_experiencia',
+  'factor_capacidad_financiera',
+  'factor_capacidad_tecnica',
+])
 
 const sortRequirementItems = (
   sectionKey: string,
@@ -1338,6 +1378,218 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     )
   }
 
+  const renderResidualSection = (section: TenderRequirementSection) => {
+    const items = sortRequirementItems(section.key, section.items)
+    const officialBudgetTotal = resolveSecopBudgetAmount(tender?.amount)
+    const advancePaymentPercentage = parseAdvancePaymentPercentage(summary)
+    const durationField = summary?.fields?.find((field) => field.key === 'execution_duration')
+    const executionMonths = parseDurationMonths(durationField?.display_value)
+    const crpcEstimated = computeCrpcEstimated(
+      officialBudgetTotal,
+      advancePaymentPercentage,
+      executionMonths
+    )
+
+    const habilitanteItem = findRequirementItem(items, 'habilitante_rule')
+    const crpcItem = findRequirementItem(items, 'crpc_formula')
+    const crpItem = findRequirementItem(items, 'crp_formula')
+    const factorItems = items.filter((item) => RESIDUAL_FACTOR_KEYS.has(item.key))
+    const coItem = findRequirementItem(items, 'factor_organizacion')
+    const sceItem = findRequirementItem(items, 'sce')
+    const pluralItem = findRequirementItem(items, 'proponente_plural')
+    const accreditationItem = findRequirementItem(items, 'accreditation_formato_5')
+
+    const parseFactorMaxScore = (item: TenderRequirementItem): number | null => {
+      if (!item.value || typeof item.value !== 'object' || Array.isArray(item.value)) {
+        return null
+      }
+      const score = Number((item.value as { max_score?: number }).max_score)
+      return Number.isFinite(score) ? score : null
+    }
+
+    const hasCrpcContent = Boolean(crpcItem?.display_value || crpcEstimated != null)
+    const hasProponentGuidance = Boolean(
+      crpItem?.display_value ||
+        factorItems.length > 0 ||
+        coItem?.display_value ||
+        sceItem?.display_value ||
+        pluralItem?.display_value ||
+        accreditationItem?.display_value
+    )
+
+    return (
+      <div key={section.key} className="tender-detail-panel__experience-card">
+        <div className="tender-detail-panel__requirements-group-header">
+          <h5 className="tender-detail-panel__requirements-group-title">{section.title}</h5>
+          <Tag type={requirementStatusTagType(section.status)} size="sm">
+            {REQUIREMENT_STATUS_LABELS[section.status] || section.status}
+          </Tag>
+        </div>
+
+        {items.length > 0 ? (
+          <>
+            <p className="tender-detail-panel__financial-intro">
+              El pliego exige que tu capacidad residual (CRP) sea mayor o igual a la capacidad
+              residual del proceso (CRPC). A continuación se muestra cuánto K exige este proceso.
+            </p>
+
+            {habilitanteItem?.display_value && (
+              <div className="tender-detail-panel__financial-capital" role="note">
+                <strong>Regla habilitante:</strong> {habilitanteItem.display_value}
+              </div>
+            )}
+
+            {hasCrpcContent && (
+              <div className="tender-detail-panel__residual-hero" role="region" aria-label="CRPC exigida">
+                <p className="tender-detail-panel__residual-hero-title">CRPC exigida por el proceso</p>
+                {crpcEstimated != null ? (
+                  <p className="tender-detail-panel__residual-hero-amount">
+                    {formatCopCurrency(crpcEstimated)}
+                  </p>
+                ) : (
+                  <p className="tender-detail-panel__residual-hero-amount">
+                    Ver fórmula en el pliego
+                  </p>
+                )}
+                {crpcItem?.display_value && (
+                  <p className="tender-detail-panel__residual-hero-formula">{crpcItem.display_value}</p>
+                )}
+                {crpcEstimated != null && executionMonths != null && executionMonths > 12 && (
+                  <p className="tender-detail-panel__residual-hero-formula">
+                    Calculada con POE y anticipo de esta licitación (plazo{' '}
+                    {Math.round(executionMonths)} meses, proporcional a 12 meses).
+                  </p>
+                )}
+                {crpcEstimated != null &&
+                  (executionMonths == null || executionMonths <= 12) && (
+                    <p className="tender-detail-panel__residual-hero-formula">
+                      Calculada con POE y anticipo de esta licitación.
+                    </p>
+                  )}
+                {crpcEstimated == null && (
+                  <p className="tender-detail-panel__residual-hero-formula">
+                    Completa el presupuesto oficial (POE), anticipo y plazo en información general
+                    para estimar el valor en pesos.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <p className="tender-detail-panel__residual-mvp-note" role="note">
+              LicitIA no calcula tu CRP en esta versión. Para saber si cumples, debes calcular la
+              capacidad residual de tu empresa con el Formato 5 y verificar que sea mayor o igual a
+              la CRPC del proceso.
+            </p>
+
+            {hasProponentGuidance && (
+              <details className="tender-detail-panel__residual-secondary">
+                <summary>Cómo calcular tu CRP (proponente)</summary>
+                <div className="tender-detail-panel__residual-secondary-body">
+                  {crpItem?.display_value && (
+                    <div className="tender-detail-panel__experience-block">
+                      <h6 className="tender-detail-panel__experience-block-title">Fórmula CRP</h6>
+                      <p className="tender-detail-panel__experience-prose">{crpItem.display_value}</p>
+                      <p className="tender-detail-panel__financial-formula">
+                        E, CF y CT son puntajes (no ratios directos). CO es un multiplicador en pesos
+                        y SCE resta contratos en ejecución.
+                      </p>
+                    </div>
+                  )}
+
+                  {factorItems.length > 0 && (
+                    <div className="tender-detail-panel__experience-block">
+                      <h6 className="tender-detail-panel__experience-block-title">
+                        Factores de calificación (E / CF / CT)
+                      </h6>
+                      <div className="tender-detail-panel__experience-tier-grid">
+                        {factorItems.map((item) => {
+                          const maxScore = parseFactorMaxScore(item)
+                          return (
+                            <div
+                              key={`${section.key}-${item.key}`}
+                              className="tender-detail-panel__experience-tier"
+                            >
+                              <span className="tender-detail-panel__experience-tier-range">
+                                {item.label}
+                              </span>
+                              {maxScore != null && (
+                                <span className="tender-detail-panel__experience-tier-percentage">
+                                  Máx. {maxScore} pts
+                                </span>
+                              )}
+                              <span className="tender-detail-panel__experience-tier-amount">
+                                {item.display_value}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {coItem?.display_value && (
+                    <div className="tender-detail-panel__experience-block">
+                      <h6 className="tender-detail-panel__experience-block-title">
+                        Capacidad de organización (CO)
+                      </h6>
+                      <p className="tender-detail-panel__experience-prose">{coItem.display_value}</p>
+                    </div>
+                  )}
+
+                  {sceItem?.display_value && (
+                    <div className="tender-detail-panel__experience-block">
+                      <h6 className="tender-detail-panel__experience-block-title">
+                        Contratos en ejecución (SCE)
+                      </h6>
+                      <p className="tender-detail-panel__experience-prose">{sceItem.display_value}</p>
+                    </div>
+                  )}
+
+                  {pluralItem?.display_value && (
+                    <div className="tender-detail-panel__experience-block">
+                      <h6 className="tender-detail-panel__experience-block-title">Proponente plural</h6>
+                      <p className="tender-detail-panel__experience-prose">{pluralItem.display_value}</p>
+                    </div>
+                  )}
+
+                  {accreditationItem?.display_value && (
+                    <div className="tender-detail-panel__experience-block">
+                      <h6 className="tender-detail-panel__experience-block-title">Cómo acreditar</h6>
+                      <p className="tender-detail-panel__experience-prose">
+                        {accreditationItem.display_value}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </details>
+            )}
+
+            {items.some((item) => item.evidence) && (
+              <details className="tender-detail-panel__experience-citations">
+                <summary>Ver texto original del documento</summary>
+                <ul>
+                  {items
+                    .filter((item) => item.evidence)
+                    .map((item) => (
+                      <li key={`${section.key}-${item.key}-evidence`}>
+                        <strong>{item.label}:</strong> {item.evidence}
+                      </li>
+                    ))}
+                </ul>
+              </details>
+            )}
+          </>
+        ) : (
+          <p className="tender-detail-panel__requirements-empty">
+            {section.status === 'documento_no_disponible'
+              ? 'Sube el pliego para extraer la capacidad residual (§3.11).'
+              : 'No se encontró la sección de capacidad residual en el pliego analizado.'}
+          </p>
+        )}
+      </div>
+    )
+  }
+
   const renderScoringSection = (section: TenderRequirementSection) => {
     const evalItems = section.items.filter((item) => {
       const value =
@@ -1772,6 +2024,11 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                   {requirements.sections
                     .filter((section) => FINANCIAL_SECTION_KEYS.has(section.key))
                     .map((section) => renderFinancialSection(section))}
+                  {summary?.contract_kind &&
+                    OBRA_RESIDUAL_CONTRACT_KINDS.has(summary.contract_kind) &&
+                    requirements.sections
+                      .filter((section) => RESIDUAL_SECTION_KEYS.has(section.key))
+                      .map((section) => renderResidualSection(section))}
                   {requirements.sections
                     .filter((section) => SCORING_SECTION_KEYS.has(section.key))
                     .map((section) => renderScoringSection(section))}
@@ -1783,6 +2040,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                       (section) =>
                         !EXPERIENCE_SECTION_KEYS.has(section.key) &&
                         !FINANCIAL_SECTION_KEYS.has(section.key) &&
+                        !RESIDUAL_SECTION_KEYS.has(section.key) &&
                         !LEGAL_SECTION_KEYS.has(section.key) &&
                         !SCORING_SECTION_KEYS.has(section.key)
                     )

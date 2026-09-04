@@ -40,9 +40,14 @@ from app.services.tender_requirements.text_selection import (
     select_requirement_relevant_text,
 )
 from app.services.document_text import extract_document_text
+from app.services.tender_summary.contract_kind import ContractKind, detect_contract_kind
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.9.7"
+EXTRACTION_VERSION = "1.9.9"
+
+_OBRA_RESIDUAL_CONTRACT_KINDS = frozenset(
+    {ContractKind.EJECUCION_OBRA, ContractKind.ESTUDIOS_DISENOS_Y_OBRA}
+)
 
 _SECTION_SOURCE = {key: source for key, _, source in SECTION_DEFINITIONS}
 _SECTION_TITLE = {key: title for key, title, _ in SECTION_DEFINITIONS}
@@ -148,8 +153,22 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         warnings.append("Sube el pliego o el anexo técnico para extraer requisitos")
 
     extracted_by_section: dict[str, list[dict[str, Any]]] = {}
+    contract_kind = detect_contract_kind(tender)
 
     for section_key, _, default_source in SECTION_DEFINITIONS:
+        if section_key == "capacidad_residual":
+            if contract_kind not in _OBRA_RESIDUAL_CONTRACT_KINDS:
+                continue
+            if pliego and (pliego_raw or pliego_text):
+                extracted_by_section[section_key] = EXTRACTORS[section_key](
+                    pliego_raw or pliego_text,
+                    pliego.document_type,
+                    pliego.id,
+                )
+            else:
+                extracted_by_section[section_key] = []
+            continue
+
         if section_key == "experiencia_especifica":
             items: list[dict[str, Any]] = []
             if pliego_text.strip():
@@ -267,6 +286,9 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
 
     sections: list[dict[str, Any]] = []
     for section_key, title, default_source in SECTION_DEFINITIONS:
+        if section_key == "capacidad_residual" and contract_kind not in _OBRA_RESIDUAL_CONTRACT_KINDS:
+            continue
+
         if section_key == "experiencia_especifica":
             has_source_document = pliego is not None or anexo is not None
             text_extracted = bool(pliego_text.strip() or anexo_text.strip())
@@ -275,6 +297,9 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
             text_extracted = bool(
                 (indicadores_raw or indicadores_text or pliego_raw or pliego_text).strip()
             )
+        elif section_key == "capacidad_residual":
+            has_source_document = pliego is not None
+            text_extracted = bool((pliego_raw or pliego_text).strip())
         else:
             has_source_document = pliego is not None
             text_extracted = bool(pliego_text.strip())
