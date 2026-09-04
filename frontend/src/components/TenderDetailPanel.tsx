@@ -556,7 +556,7 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   pliego_condiciones: 'Pliego de condiciones',
   anexo_tecnico: 'Anexo técnico',
   presupuesto: 'Presupuesto',
-  indicadores_financieros: 'Indicadores financieros',
+  indicadores_financieros: 'Matriz 2 (financiera y organizacional)',
 }
 
 const ACCEPTED_DOCUMENT_EXTENSIONS = '.pdf,.xlsx,.xls,.xlsm'
@@ -674,6 +674,62 @@ function computeMonthlyCashFlow(
 
 function formatMonthlyCashFlow(amount: number): string {
   return `$ ${Math.round(amount).toLocaleString('es-CO').replace(/,/g, '.')}/mes`
+}
+
+const parseLegalBulletLines = (value: string): string[] =>
+  value
+    .split('\n')
+    .map((line) => line.trim().replace(/^[•\-]\s*/, ''))
+    .filter(Boolean)
+
+type LegalChecklistGroup = {
+  title: string
+  items: string[]
+}
+
+const buildLegalChecklistGroups = (items: TenderRequirementItem[]): LegalChecklistGroup[] => {
+  const groups: LegalChecklistGroup[] = []
+  const groupIndex = new Map<string, number>()
+
+  const appendToGroup = (title: string, entries: string[]) => {
+    const normalizedTitle = title.trim() || 'Requisito'
+    const existingIndex = groupIndex.get(normalizedTitle)
+    if (existingIndex == null) {
+      groupIndex.set(normalizedTitle, groups.length)
+      groups.push({ title: normalizedTitle, items: [...entries] })
+      return
+    }
+    groups[existingIndex].items.push(...entries)
+  }
+
+  for (const item of items) {
+    if (!item.display_value?.trim()) {
+      continue
+    }
+
+    if (item.key.includes('_check_')) {
+      appendToGroup(item.label, [item.display_value.trim()])
+      continue
+    }
+
+    if (item.key.endsWith('_resumen')) {
+      appendToGroup(item.label, parseLegalBulletLines(item.display_value))
+      continue
+    }
+
+    appendToGroup(item.label, [item.display_value.trim()])
+  }
+
+  return groups.filter((group) => group.items.length > 0)
+}
+
+const shortenLegalChecklistText = (value: string): string => {
+  const cleaned = value.replace(/\s+/g, ' ').trim()
+  if (cleaned.length <= 140) {
+    return cleaned
+  }
+  const trimmed = cleaned.slice(0, 137).replace(/\s+\S*$/, '')
+  return `${trimmed}...`
 }
 
 const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
@@ -1195,8 +1251,8 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
           <>
             <p className="tender-detail-panel__financial-intro">
               {dualBudgetRanges
-                ? 'Tu empresa debe cumplir estos indicadores financieros para poder participar. Los valores dependen del tamaño del contrato según su presupuesto oficial.'
-                : 'Tu empresa debe cumplir estos indicadores financieros para poder participar en la licitación.'}
+                ? 'Tu empresa debe cumplir estos indicadores de capacidad financiera y organizacional para participar. Los valores dependen del tamaño del contrato según su presupuesto oficial.'
+                : 'Tu empresa debe cumplir estos indicadores de capacidad financiera y organizacional para participar en la licitación.'}
             </p>
 
             {dualBudgetRanges && (
@@ -1505,28 +1561,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
 
   const renderLegalSection = (section: TenderRequirementSection) => {
     const items = sortRequirementItems(section.key, section.items)
-    const sourceLabel = items[0]
-      ? REQUIREMENT_SOURCE_LABELS[items[0].source_document] || items[0].source_document
-      : null
-
-    const renderLegalValue = (value: string) => {
-      const lines = value
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean)
-      if (lines.length <= 1) {
-        return <p className="tender-detail-panel__experience-prose">{value}</p>
-      }
-      return (
-        <ul className="tender-detail-panel__legal-bullets">
-          {lines.map((line, index) => (
-            <li key={`${section.key}-line-${index}`}>
-              {line.replace(/^[•\-]\s*/, '')}
-            </li>
-          ))}
-        </ul>
-      )
-    }
+    const checklistGroups = buildLegalChecklistGroups(items)
 
     return (
       <div key={section.key} className="tender-detail-panel__experience-card">
@@ -1537,39 +1572,38 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
           </Tag>
         </div>
 
-        {sourceLabel && (
-          <p className="tender-detail-panel__experience-source">Fuente: {sourceLabel}</p>
-        )}
-
-        {items.length > 0 ? (
+        {checklistGroups.length > 0 ? (
           <>
-            {items.map((item) => (
-              <div key={`${section.key}-${item.key}`} className="tender-detail-panel__experience-block">
-                <h6 className="tender-detail-panel__experience-block-title">{item.label}</h6>
-                {item.display_value && renderLegalValue(item.display_value)}
-              </div>
-            ))}
-
-            {items.some((item) => item.evidence && !isRedundantEvidence(item)) && (
-              <details className="tender-detail-panel__experience-citations">
-                <summary>Ver texto original del documento</summary>
-                <ul>
-                  {items
-                    .filter((item) => item.evidence && !isRedundantEvidence(item))
-                    .map((item) => (
-                      <li key={`${section.key}-${item.key}-evidence`}>
-                        <strong>{item.label}:</strong> {item.evidence}
+            <p className="tender-detail-panel__legal-checklist-intro">
+              Documentos y requisitos para acreditar la capacidad jurídica según el pliego.
+            </p>
+            <div className="tender-detail-panel__legal-checklist">
+              {checklistGroups.map((group) => (
+                <div
+                  key={`${section.key}-${group.title}`}
+                  className="tender-detail-panel__legal-checklist-group"
+                >
+                  <h6 className="tender-detail-panel__legal-checklist-group-title">{group.title}</h6>
+                  <ul className="tender-detail-panel__legal-checklist-items">
+                    {group.items.map((entry, index) => (
+                      <li
+                        key={`${section.key}-${group.title}-${index}`}
+                        className="tender-detail-panel__legal-checklist-item"
+                      >
+                        <span className="tender-detail-panel__legal-checklist-box" aria-hidden="true" />
+                        <span>{shortenLegalChecklistText(entry)}</span>
                       </li>
                     ))}
-                </ul>
-              </details>
-            )}
+                  </ul>
+                </div>
+              ))}
+            </div>
           </>
         ) : (
           <p className="tender-detail-panel__requirements-empty">
             {section.status === 'documento_no_disponible'
-              ? 'Sube el documento correspondiente para extraer esta sección.'
-              : 'No se encontraron requisitos en el documento analizado.'}
+              ? 'Sube el pliego para extraer la capacidad jurídica.'
+              : 'No se encontraron requisitos jurídicos en el documento analizado.'}
           </p>
         )}
       </div>

@@ -43,7 +43,7 @@ from app.services.document_text import extract_document_text
 from app.services.tender_summary.contract_kind import ContractKind, detect_contract_kind
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.9.9"
+EXTRACTION_VERSION = "1.9.11"
 
 _OBRA_RESIDUAL_CONTRACT_KINDS = frozenset(
     {ContractKind.EJECUCION_OBRA, ContractKind.ESTUDIOS_DISENOS_Y_OBRA}

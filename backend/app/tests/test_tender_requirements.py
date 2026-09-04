@@ -659,13 +659,14 @@ def test_extract_requisitos_legales_license():
 def test_extract_cce_legal_habilitantes():
     items = extract_requisitos_legales(CCE_LEGAL_PLIEGO_SAMPLE, "pliego_condiciones", None)
     keys = {item["key"] for item in items}
-    assert "capacidad_juridica_resumen" in keys
-    assert "existencia_representacion_resumen" in keys
-    assert "seguridad_social_resumen" in keys
+    assert any(key.startswith("capacidad_juridica_check_") for key in keys)
+    assert any(key.startswith("existencia_representacion_check_") for key in keys)
+    assert any(key.startswith("seguridad_social_check_") for key in keys)
     assert "rup_certificate_validity" in keys
-    assert len(items) <= 5
-    capacidad = next(item for item in items if item["key"] == "capacidad_juridica_resumen")
-    assert "redam" in capacidad["display_value"].lower()
+    assert len(items) <= 14
+    capacidad_items = [item for item in items if item["key"].startswith("capacidad_juridica_check_")]
+    combined = " ".join(item["display_value"] for item in capacidad_items).lower()
+    assert "redam" in combined
 
 
 INVIAS_PLIEGO_SAMPLE = """

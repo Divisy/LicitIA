@@ -604,6 +604,52 @@
   }
 }
 
+.tender-detail-panel__legal-checklist-intro {
+  @include type-style('body-compact-01');
+  margin: 0 0 $spacing-04;
+  color: var(--cds-text-secondary);
+}
+
+.tender-detail-panel__legal-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+}
+
+.tender-detail-panel__legal-checklist-group-title {
+  @include type-style('heading-compact-01');
+  margin: 0 0 $spacing-03;
+  color: var(--cds-text-primary);
+}
+
+.tender-detail-panel__legal-checklist-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+}
+
+.tender-detail-panel__legal-checklist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-03;
+  @include type-style('body-compact-01');
+  color: var(--cds-text-primary);
+  line-height: 1.45;
+}
+
+.tender-detail-panel__legal-checklist-box {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15rem;
+  border: 1.5px solid var(--cds-border-strong);
+  border-radius: 2px;
+  background: var(--cds-layer-01);
+}
+
 .tender-detail-panel__experience-citations {
   margin-top: $spacing-03;
   @include type-style('label-01');

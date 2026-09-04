@@ -11,9 +11,9 @@ RequirementItem = dict[str, Any]
 SECTION_DEFINITIONS: tuple[tuple[str, str, str], ...] = (
     ("experiencia_general", "Experiencia general", "pliego_condiciones"),
     ("experiencia_especifica", "Experiencia específica", "anexo_tecnico"),
-    ("indicadores_financieros", "Indicadores financieros y solvencia", "indicadores_financieros"),
+    ("indicadores_financieros", "Capacidad financiera y organizacional", "indicadores_financieros"),
     ("capacidad_residual", "Capacidad residual (K)", "pliego_condiciones"),
-    ("requisitos_legales", "Requisitos legales y habilitación", "pliego_condiciones"),
+    ("requisitos_legales", "Capacidad jurídica", "pliego_condiciones"),
     ("sistema_puntos", "Sistema de puntos", "pliego_condiciones"),
 )
 
@@ -2439,7 +2439,7 @@ def _extract_subsection_by_marker(
     return ""
 
 
-def _concise_legal_bullet(text: str, max_len: int = 160) -> str:
+def _concise_legal_bullet(text: str, max_len: int = 120) -> str:
     cleaned = _clean_requirement_text(text, max_len=900)
     for delimiter in (". ", "; "):
         if delimiter in cleaned:
@@ -2495,7 +2495,7 @@ def _extract_requirement_sentences(section_body: str, max_bullets: int = 6) -> l
         if "modalidades" in normalized and not re.search(r"\bdebe(?:r|n)?\b", normalized):
             continue
         if not re.search(
-            r"\bdebe(?:r|n)?\b|acreditar|presentar|certificado|no estar|no debera|informar",
+            r"\bdebe(?:r|n)?\b|acreditar|presentar|certificado|diligenciar|formato\s+\d|no estar|no debera|informar|aportar",
             normalized,
         ):
             continue
@@ -2540,7 +2540,12 @@ def _extract_topic_requirements(
     for marker, _sub_key, sub_label in subsection_markers:
         body = _extract_subsection_by_marker(section_body, marker, subsection_stops)
         if body:
-            bullets.append(f"{sub_label}: {_concise_legal_bullet(body, max_len=140)}")
+            sub_bullets = _extract_requirement_sentences(body, max_bullets=2)
+            if sub_bullets:
+                for sub_bullet in sub_bullets:
+                    bullets.append(f"{sub_label}: {sub_bullet}")
+            else:
+                bullets.append(f"{sub_label}: {_concise_legal_bullet(body, max_len=110)}")
 
     if not bullets:
         bullets.extend(_extract_requirement_sentences(section_body))
@@ -2556,11 +2561,20 @@ def _extract_topic_requirements(
         flags=re.IGNORECASE | re.DOTALL,
     )
     if antecedentes_match and key_prefix == "capacidad_juridica":
-        bullets.append(_concise_legal_bullet(antecedentes_match.group(0), max_len=160))
+        bullets.append(_concise_legal_bullet(antecedentes_match.group(0), max_len=120))
 
     if not bullets:
         return []
 
+    unique_bullets = _unique_legal_bullets(bullets)
+    prioritized = _prioritize_legal_bullets(unique_bullets)
+    return [
+        (f"{key_prefix}_check_{idx}", label, bullet)
+        for idx, bullet in enumerate(prioritized[:6])
+    ]
+
+
+def _unique_legal_bullets(bullets: list[str]) -> list[str]:
     unique_bullets: list[str] = []
     seen_bullets: set[str] = set()
     for bullet in bullets:
@@ -2569,9 +2583,38 @@ def _extract_topic_requirements(
             continue
         seen_bullets.add(normalized)
         unique_bullets.append(bullet)
+    return unique_bullets
 
-    display = "\n".join(f"• {bullet}" for bullet in unique_bullets[:6])
-    return [(f"{key_prefix}_resumen", label, display)]
+
+def _prioritize_legal_bullets(bullets: list[str]) -> list[str]:
+    priority_terms = (
+        "formato ",
+        "certificado",
+        "cedula",
+        "cédula",
+        "pasaporte",
+        "rup",
+        "redam",
+        "camara de comercio",
+        "cámaras de comercio",
+        "existencia y representacion",
+        "existencia y representación",
+        "seguridad social",
+        "matricula profesional",
+        "matrícula profesional",
+        "poder ",
+        "apoderado",
+    )
+
+    def score(bullet: str) -> tuple[int, int]:
+        normalized = normalize_text(bullet)
+        priority = next(
+            (idx for idx, term in enumerate(priority_terms) if term in normalized),
+            len(priority_terms),
+        )
+        return (priority, len(normalized))
+
+    return sorted(bullets, key=score)
 
 
 def _extract_simple_legal_clauses(
@@ -2647,12 +2690,15 @@ def _append_rup_validity_if_present(
 _LEGAL_ITEM_ORDER: tuple[str, ...] = (
     "rup_certificate_validity",
     "rup_vigente",
-    "capacidad_juridica_resumen",
-    "existencia_representacion_resumen",
-    "seguridad_social_resumen",
-    "requisitos_legales_resumen",
     "legal_capacity",
     "specific_license",
+    "requisitos_legales_resumen",
+)
+
+_LEGAL_CHECK_PREFIXES: tuple[str, ...] = (
+    "capacidad_juridica",
+    "existencia_representacion",
+    "seguridad_social",
 )
 
 
@@ -2667,11 +2713,28 @@ def _dedupe_legal_requirement_items(items: list[RequirementItem]) -> list[Requir
     if by_key.get("rup_certificate_validity"):
         by_key.pop("rup_vigente", None)
 
-    ordered = [by_key[key] for key in _LEGAL_ITEM_ORDER if key in by_key]
+    ordered: list[RequirementItem] = []
+    for key in _LEGAL_ITEM_ORDER:
+        if key in by_key:
+            ordered.append(by_key[key])
+
+    for prefix in _LEGAL_CHECK_PREFIXES:
+        check_items = sorted(
+            (item for item in filtered if item["key"].startswith(f"{prefix}_check_")),
+            key=lambda item: item["key"],
+        )
+        ordered.extend(check_items)
+
     for key, item in by_key.items():
-        if key not in _LEGAL_ITEM_ORDER:
-            ordered.append(item)
-    return ordered[:5]
+        if item in ordered:
+            continue
+        if any(key.startswith(f"{prefix}_check_") for prefix in _LEGAL_CHECK_PREFIXES):
+            continue
+        if key in _LEGAL_ITEM_ORDER:
+            continue
+        ordered.append(item)
+
+    return ordered[:14]
 
 
 def extract_requisitos_legales(
@@ -2730,7 +2793,7 @@ def extract_requisitos_legales(
                     items,
                     seen_keys,
                     key="requisitos_legales_resumen",
-                    label="Requisitos legales y habilitación",
+                    label="Resumen",
                     display_value=summary,
                     source_document=source_document,
                     source_document_id=source_document_id,
