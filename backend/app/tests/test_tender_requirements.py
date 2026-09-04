@@ -11,7 +11,10 @@ from app.services.tender_requirements.regex_extraction import (
     merge_financial_requirement_items,
     normalize_text,
 )
-from app.services.tender_requirements.scoring_extraction import extract_sistema_puntos
+from app.services.tender_requirements.scoring_extraction import (
+    extract_sistema_puntos,
+    reconcile_sistema_puntos_items,
+)
 from app.services.tender_requirements.text_selection import select_scoring_text_for_llm
 from app.services.tender_requirements.service import build_tender_requirements, requirements_cache_is_stale
 
@@ -847,3 +850,48 @@ CAPITULO IV. PRESENTACION DE LAS OFERTAS
 def test_select_scoring_text_for_llm_empty_without_scoring_signals():
     text = "3.2 CAPACIDAD JURIDICA. El proponente debera acreditar capacidad juridica."
     assert select_scoring_text_for_llm(None, text, 4000) == ""
+
+
+def _eval_points_sum(items: list[dict]) -> float:
+    total = 0.0
+    for item in items:
+        if item["key"] == "total_points":
+            continue
+        value = item.get("value") or {}
+        if value.get("criterion_type") != "evaluacion":
+            continue
+        total += float(value["max_points"])
+    return total
+
+
+def test_reconcile_sistema_puntos_restores_missing_criteria_from_regex():
+    regex_items = extract_sistema_puntos(LP_INFRA_SCORING_TABLE_SAMPLE, "pliego_condiciones", None)
+    llm_items = [item for item in regex_items if item["key"] != "mipyme"]
+
+    reconciled = reconcile_sistema_puntos_items(llm_items, regex_items=regex_items)
+    assert _eval_points_sum(reconciled) == 100
+    assert any(item["key"] == "mipyme" for item in reconciled)
+
+
+def test_reconcile_sistema_puntos_drops_spurious_rows_over_total():
+    regex_items = extract_sistema_puntos(LP_INFRA_SCORING_TABLE_SAMPLE, "pliego_condiciones", None)
+    llm_items = list(regex_items)
+    llm_items.insert(
+        -1,
+        {
+            "key": "factor_calidad_extra",
+            "label": "Factor de calidad duplicado",
+            "value": {
+                "max_points": 5.0,
+                "assignment_rule": "",
+                "criterion_type": "evaluacion",
+            },
+            "display_value": "5 puntos",
+            "confidence": 0.6,
+            "extraction_method": "llm",
+        },
+    )
+
+    reconciled = reconcile_sistema_puntos_items(llm_items, regex_items=regex_items)
+    assert _eval_points_sum(reconciled) == 100
+    assert not any(item["key"] == "factor_calidad_extra" for item in reconciled)

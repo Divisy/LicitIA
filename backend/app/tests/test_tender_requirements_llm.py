@@ -457,3 +457,115 @@ def test_llm_scoring_falls_back_to_regex_when_llm_empty(mock_settings, mock_clie
     )
 
     assert result["sistema_puntos"] == [regex_item]
+
+
+@patch("app.services.tender_requirements.llm_extraction._openai_client")
+@patch("app.services.tender_requirements.llm_extraction.settings")
+def test_llm_scoring_keeps_regex_criteria_missing_from_llm(mock_settings, mock_client):
+    mock_settings.TENDER_REQUIREMENTS_USE_LLM = True
+    mock_settings.OPENAI_MODEL_NAME = "gpt-4o-mini"
+    mock_settings.TENDER_REQUIREMENTS_LLM_MIN_CONFIDENCE = 0.70
+    mock_settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS = 8000
+    mock_client.chat.completions.create.return_value = _llm_response(
+        {
+            "sistema_puntos": [
+                {
+                    "key": "oferta_economica",
+                    "label": "Oferta económica",
+                    "max_points": 48.5,
+                    "criterion_type": "evaluacion",
+                    "display_value": "48.5 puntos",
+                    "evidence": "Oferta económica 48,5",
+                    "confidence": 0.92,
+                },
+                {
+                    "key": "factor_calidad",
+                    "label": "Factor de calidad",
+                    "max_points": 30.0,
+                    "criterion_type": "evaluacion",
+                    "display_value": "30 puntos",
+                    "evidence": "Factor de calidad 30",
+                    "confidence": 0.9,
+                },
+                {
+                    "key": "industria_nacional",
+                    "label": "Apoyo a la industria nacional",
+                    "max_points": 20.0,
+                    "criterion_type": "evaluacion",
+                    "display_value": "20 puntos",
+                    "evidence": "Industria nacional 20",
+                    "confidence": 0.88,
+                },
+                {
+                    "key": "discapacidad",
+                    "label": "Vinculación personas con discapacidad",
+                    "max_points": 1.0,
+                    "criterion_type": "evaluacion",
+                    "display_value": "1 puntos",
+                    "evidence": "Discapacidad 1",
+                    "confidence": 0.87,
+                },
+                {
+                    "key": "empresas_mujeres",
+                    "label": "Empresas de mujeres",
+                    "max_points": 0.25,
+                    "criterion_type": "evaluacion",
+                    "display_value": "0.25 puntos",
+                    "evidence": "Empresas de mujeres 0,25",
+                    "confidence": 0.86,
+                },
+                {
+                    "key": "total_points",
+                    "label": "Total",
+                    "max_points": 100.0,
+                    "criterion_type": "evaluacion",
+                    "display_value": "100 puntos",
+                    "evidence": "Total 100",
+                    "confidence": 0.95,
+                },
+            ]
+        }
+    )
+
+    regex_mipyme = {
+        "key": "mipyme",
+        "label": "MiPyme",
+        "value": {
+            "max_points": 0.25,
+            "assignment_rule": "",
+            "criterion_type": "evaluacion",
+            "sort_order": 6,
+        },
+        "display_value": "0.25 puntos",
+        "confidence": 0.88,
+        "extraction_method": "regex",
+    }
+    regex_total = {
+        "key": "total_points",
+        "label": "Total evaluación habilitante",
+        "value": {"max_points": 100.0, "assignment_rule": "", "criterion_type": "evaluacion"},
+        "display_value": "100 puntos",
+        "confidence": 0.9,
+        "extraction_method": "regex",
+    }
+    existing = {
+        "experiencia_general": [],
+        "experiencia_especifica": [],
+        "sistema_puntos": [regex_mipyme, regex_total],
+    }
+    result = enrich_requirements_with_llm(
+        tender_external_id="IDRD-SG-LP-020-2026",
+        object_text="Infraestructura",
+        context_excerpt="",
+        scoring_context_excerpt="Concepto Puntaje maximo Oferta economica 48,5 Mipyme 0,25 Total 100",
+        existing_sections=existing,
+    )
+
+    eval_items = [
+        item
+        for item in result["sistema_puntos"]
+        if item["key"] != "total_points" and item["value"]["criterion_type"] == "evaluacion"
+    ]
+    keys = {item["key"] for item in eval_items}
+    assert "mipyme" in keys
+    assert sum(float(item["value"]["max_points"]) for item in eval_items) == 100.0

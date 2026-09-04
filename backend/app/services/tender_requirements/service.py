@@ -18,6 +18,7 @@ from app.services.tender_requirements.document_selection import (
     select_indicadores_financieros_document,
     select_pliego_document,
 )
+from app.services.tender_requirements.scoring_extraction import reconcile_sistema_puntos_items
 from app.services.tender_requirements.llm_extraction import (
     enrich_requirements_with_llm,
     sanitize_experiencia_especifica_items,
@@ -35,7 +36,7 @@ from app.services.tender_requirements.text_selection import (
 from app.services.document_text import extract_document_text
 from app.services.tender_summary.pdf_text import extract_pdf_text
 
-EXTRACTION_VERSION = "1.9.1"
+EXTRACTION_VERSION = "1.9.3"
 
 _SECTION_SOURCE = {key: source for key, _, source in SECTION_DEFINITIONS}
 _SECTION_TITLE = {key: title for key, title, _ in SECTION_DEFINITIONS}
@@ -221,6 +222,7 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         pliego_raw or pliego_text,
         settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS,
     )
+    regex_scoring_items = list(extracted_by_section.get("sistema_puntos") or [])
     extracted_by_section = enrich_requirements_with_llm(
         tender_external_id=tender.external_id,
         object_text=tender.object_text or "",
@@ -230,6 +232,11 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
         legal_context_excerpt=llm_legal_context,
         existing_sections=extracted_by_section,
     )
+    if extracted_by_section.get("sistema_puntos") or regex_scoring_items:
+        extracted_by_section["sistema_puntos"] = reconcile_sistema_puntos_items(
+            extracted_by_section.get("sistema_puntos") or [],
+            regex_items=regex_scoring_items,
+        )
     if extracted_by_section.get("experiencia_especifica"):
         extracted_by_section["experiencia_especifica"] = sanitize_experiencia_especifica_items(
             extracted_by_section["experiencia_especifica"]

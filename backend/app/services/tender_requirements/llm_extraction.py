@@ -464,6 +464,16 @@ def _merge_scoring_with_regex_priority(
         merged_eval.append(item)
         seen_canonical.add(canonical)
 
+    regex_only: list[dict[str, Any]] = []
+    for canonical, regex_item in regex_eval.items():
+        if canonical in seen_canonical:
+            continue
+        regex_only.append(dict(regex_item))
+    regex_only.sort(
+        key=lambda item: int((item.get("value") or {}).get("sort_order", 99))
+    )
+    merged_eval.extend(regex_only)
+
     regex_total = next((item for item in regex_items if item["key"] == "total_points"), None)
     llm_total = next((item for item in llm_items if item["key"] == "total_points"), None)
     total_item = regex_total or llm_total

@@ -946,6 +946,248 @@ def _resolve_scoring_body(normalized: str) -> str:
     return ""
 
 
+_POINTS_TOLERANCE = 0.01
+_METHOD_PRIORITY = {"hybrid": 0, "regex": 1, "llm": 2}
+
+
+def _scoring_criterion_type(item: dict[str, Any]) -> str:
+    value = item.get("value")
+    if isinstance(value, dict):
+        return str(value.get("criterion_type") or "evaluacion")
+    return "evaluacion"
+
+
+def _scoring_item_points(item: dict[str, Any]) -> Optional[float]:
+    value = item.get("value")
+    if isinstance(value, dict) and value.get("max_points") is not None:
+        try:
+            return float(value["max_points"])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _points_equal(left: float, right: float) -> bool:
+    return abs(left - right) <= _POINTS_TOLERANCE
+
+
+def _item_rank(item: dict[str, Any]) -> tuple[int, float]:
+    method = str(item.get("extraction_method") or "regex")
+    confidence = float(item.get("confidence", 0))
+    return (_METHOD_PRIORITY.get(method, 3), -confidence)
+
+
+def _eval_sort_key(item: dict[str, Any]) -> tuple[int, int, str]:
+    value = item.get("value") if isinstance(item.get("value"), dict) else {}
+    order_map = {key: index for index, key in enumerate(_ITEM_ORDER)}
+    return (
+        int(value.get("sort_order", 99)),
+        order_map.get(item["key"], 50),
+        str(item.get("label") or ""),
+    )
+
+
+def _split_scoring_items(
+    items: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], Optional[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    eval_items: list[dict[str, Any]] = []
+    total_item: Optional[dict[str, Any]] = None
+    adjustments: list[dict[str, Any]] = []
+    desempate: list[dict[str, Any]] = []
+    for item in items:
+        if item.get("key") == "total_points":
+            total_item = item
+            continue
+        criterion_type = _scoring_criterion_type(item)
+        if criterion_type == "evaluacion":
+            eval_items.append(item)
+        elif criterion_type == "ajuste":
+            adjustments.append(item)
+        elif criterion_type == "desempate":
+            desempate.append(item)
+    return eval_items, total_item, adjustments, desempate
+
+
+def _dedupe_eval_by_canonical(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    best: dict[str, dict[str, Any]] = {}
+    for item in items:
+        canonical = _canonical_criterion_key(str(item.get("key") or ""), str(item.get("label") or ""))
+        existing = best.get(canonical)
+        if existing is None or _item_rank(item) < _item_rank(existing):
+            best[canonical] = item
+    return best
+
+
+def _combine_eval_items(
+    regex_item: Optional[dict[str, Any]],
+    merged_item: Optional[dict[str, Any]],
+) -> Optional[dict[str, Any]]:
+    if regex_item and merged_item:
+        item = dict(merged_item)
+        value = dict(item.get("value") or {})
+        regex_value = regex_item.get("value") if isinstance(regex_item.get("value"), dict) else {}
+        regex_points = regex_value.get("max_points")
+        if regex_points is not None:
+            value["max_points"] = regex_points
+        if regex_value.get("sort_order") is not None:
+            value["sort_order"] = regex_value["sort_order"]
+        value["criterion_type"] = "evaluacion"
+        item["value"] = value
+        points = _scoring_item_points(item)
+        if points is not None:
+            item["display_value"] = f"{points:g} pts" if points < 0 else f"{points:g} puntos"
+        if merged_item.get("extraction_method") == "llm" and regex_item.get("extraction_method") == "regex":
+            item["extraction_method"] = "hybrid"
+        return item
+    if regex_item:
+        return dict(regex_item)
+    if merged_item:
+        return dict(merged_item)
+    return None
+
+
+def _ordered_eval_canonical_keys(
+    regex_map: dict[str, dict[str, Any]],
+    merged_map: dict[str, dict[str, Any]],
+) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for item in sorted(regex_map.values(), key=_eval_sort_key):
+        canonical = _canonical_criterion_key(str(item.get("key") or ""), str(item.get("label") or ""))
+        if canonical in seen:
+            continue
+        ordered.append(canonical)
+        seen.add(canonical)
+    for item in sorted(merged_map.values(), key=_eval_sort_key):
+        canonical = _canonical_criterion_key(str(item.get("key") or ""), str(item.get("label") or ""))
+        if canonical in seen:
+            continue
+        ordered.append(canonical)
+        seen.add(canonical)
+    return ordered
+
+
+def _build_eval_list(
+    canonical_keys: list[str],
+    regex_map: dict[str, dict[str, Any]],
+    merged_map: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    eval_items: list[dict[str, Any]] = []
+    for canonical in canonical_keys:
+        combined = _combine_eval_items(regex_map.get(canonical), merged_map.get(canonical))
+        if combined is not None:
+            eval_items.append(combined)
+    return eval_items
+
+
+def _eval_points_sum(eval_items: list[dict[str, Any]]) -> float:
+    return sum(_scoring_item_points(item) or 0.0 for item in eval_items)
+
+
+def _sort_scoring_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not items:
+        return []
+
+    order_map = {key: index for index, key in enumerate(_ITEM_ORDER)}
+
+    def sort_key(item: dict[str, Any]) -> tuple[int, int, int, str]:
+        value = item.get("value") if isinstance(item.get("value"), dict) else {}
+        criterion_type = value.get("criterion_type", "evaluacion")
+        type_order = {"evaluacion": 0, "ajuste": 1, "desempate": 2}.get(str(criterion_type), 3)
+        if item["key"] == "total_points":
+            return (0, 0, 0, "")
+        sort_order = int(value.get("sort_order", 99))
+        return (type_order, order_map.get(item["key"], 50), sort_order, str(item.get("label") or ""))
+
+    sorted_items = sorted(items, key=sort_key)
+    if not any(item["key"] == "total_points" for item in sorted_items):
+        return sorted_items
+
+    total = next(item for item in sorted_items if item["key"] == "total_points")
+    others = [item for item in sorted_items if item["key"] != "total_points"]
+    eval_and_adjust = [item for item in others if _scoring_criterion_type(item) != "desempate"]
+    desempate = [item for item in others if _scoring_criterion_type(item) == "desempate"]
+    return eval_and_adjust + [total] + desempate
+
+
+def reconcile_sistema_puntos_items(
+    items: list[dict[str, Any]],
+    regex_items: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Ensure evaluation criteria sum exactly to the declared total (typically 100)."""
+    if not items and not regex_items:
+        return []
+
+    regex_eval, regex_total, regex_adjustments, regex_desempate = _split_scoring_items(regex_items or [])
+    merged_eval, merged_total, adjustments, desempate = _split_scoring_items(items or [])
+
+    target_total = _scoring_item_points(merged_total) if merged_total else None
+    if target_total is None and regex_total:
+        target_total = _scoring_item_points(regex_total)
+    if target_total is None:
+        return _sort_scoring_items(items or [])
+
+    regex_map = _dedupe_eval_by_canonical(regex_eval)
+    merged_map = _dedupe_eval_by_canonical(merged_eval)
+
+    canonical_keys = _ordered_eval_canonical_keys(regex_map, merged_map)
+    final_eval = _build_eval_list(canonical_keys, regex_map, merged_map)
+
+    if not _points_equal(_eval_points_sum(final_eval), target_total) and regex_map:
+        regex_only_keys = [key for key in canonical_keys if key in regex_map]
+        regex_only_eval = _build_eval_list(regex_only_keys, regex_map, merged_map)
+        if _points_equal(_eval_points_sum(regex_only_eval), target_total):
+            final_eval = regex_only_eval
+            canonical_keys = regex_only_keys
+
+    if _eval_points_sum(final_eval) < target_total - _POINTS_TOLERANCE and regex_map:
+        present = {_canonical_criterion_key(str(item.get("key") or ""), str(item.get("label") or "")) for item in final_eval}
+        for canonical, regex_item in sorted(regex_map.items(), key=lambda pair: _eval_sort_key(pair[1])):
+            if canonical in present:
+                continue
+            final_eval.append(dict(regex_item))
+            present.add(canonical)
+            if _eval_points_sum(final_eval) >= target_total - _POINTS_TOLERANCE:
+                break
+
+    if _eval_points_sum(final_eval) > target_total + _POINTS_TOLERANCE and regex_map:
+        present_keys = [
+            _canonical_criterion_key(str(item.get("key") or ""), str(item.get("label") or ""))
+            for item in final_eval
+        ]
+        merged_only = [key for key in present_keys if key not in regex_map]
+        merged_only.sort(key=lambda key: _item_rank(merged_map[key]), reverse=True)
+        for canonical in merged_only:
+            final_eval = [
+                item
+                for item in final_eval
+                if _canonical_criterion_key(str(item.get("key") or ""), str(item.get("label") or "")) != canonical
+            ]
+            if _eval_points_sum(final_eval) <= target_total + _POINTS_TOLERANCE:
+                break
+
+    if not _points_equal(_eval_points_sum(final_eval), target_total) and regex_map:
+        regex_only_eval = _build_eval_list(list(regex_map.keys()), regex_map, merged_map)
+        if _points_equal(_eval_points_sum(regex_only_eval), target_total):
+            final_eval = regex_only_eval
+
+    total_item = merged_total or regex_total
+    if total_item:
+        total_value = dict(total_item.get("value") or {})
+        total_value["max_points"] = target_total
+        total_value["criterion_type"] = "evaluacion"
+        total_item = dict(total_item)
+        total_item["value"] = total_value
+        total_item["display_value"] = f"{target_total:g} puntos"
+
+    reconciled = list(final_eval)
+    reconciled.extend(adjustments or regex_adjustments)
+    if total_item:
+        reconciled.append(total_item)
+    reconciled.extend(desempate or regex_desempate)
+    return _sort_scoring_items(reconciled)
+
+
 def extract_sistema_puntos(
     text: str,
     source_document: str,
@@ -1109,26 +1351,7 @@ def extract_sistema_puntos(
     if not items:
         return []
 
-    order_map = {key: index for index, key in enumerate(_ITEM_ORDER)}
-
-    def sort_key(item: RequirementItem) -> tuple[int, int, int, str]:
-        value = item.get("value") if isinstance(item.get("value"), dict) else {}
-        criterion_type = value.get("criterion_type", "evaluacion")
-        type_order = {"evaluacion": 0, "ajuste": 1, "desempate": 2}.get(str(criterion_type), 3)
-        if item["key"] == "total_points":
-            return (0, 0, 0, "")
-        sort_order = int(value.get("sort_order", 99))
-        return (type_order, order_map.get(item["key"], 50), sort_order, item["label"])
-
-    items.sort(key=sort_key)
-    if any(item["key"] == "total_points" for item in items):
-        total = next(item for item in items if item["key"] == "total_points")
-        others = [item for item in items if item["key"] != "total_points"]
-        eval_and_adjust = [item for item in others if item["value"].get("criterion_type") != "desempate"]
-        desempate = [item for item in others if item["value"].get("criterion_type") == "desempate"]
-        items = eval_and_adjust + [total] + desempate
-
-    return items
+    return reconcile_sistema_puntos_items(items)
 
 
 def extract_scoring_context_for_llm(text: str, max_chars: int) -> str:
