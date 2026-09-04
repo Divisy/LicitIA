@@ -1,0 +1,73 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/type' as *;
+
+.decision-summary-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+  margin-bottom: $spacing-06;
+  padding: $spacing-04 $spacing-05;
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-03;
+  background: var(--cds-layer-01);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.decision-summary-bar__eyebrow {
+  @include type-style('label-01');
+  margin: 0;
+  color: var(--cds-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.decision-summary-bar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-03;
+  margin: 0;
+  min-width: 0;
+}
+
+.decision-summary-bar__row--secondary {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+}
+
+.decision-summary-bar__row--crpc {
+  gap: $spacing-02;
+  padding-top: $spacing-02;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
+.decision-summary-bar__chip {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-primary);
+  white-space: nowrap;
+}
+
+.decision-summary-bar__chip--amount {
+  @include type-style('heading-compact-01');
+  font-weight: 600;
+}
+
+.decision-summary-bar__crpc-label {
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+}
+
+.decision-summary-bar__crpc-value {
+  @include type-style('heading-compact-01');
+  font-weight: 600;
+  color: var(--cds-text-primary);
+}
+
+@media (max-width: 42rem) {
+  .decision-summary-bar__chip {
+    white-space: normal;
+  }
+}

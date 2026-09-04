@@ -29,6 +29,14 @@ import {
   uploadTenderDocument,
 } from '../api/client'
 import { useFavoriteTenders } from '../hooks/useFavoriteTenders'
+import DecisionSummaryBar from './DecisionSummaryBar'
+import {
+  computeCrpcEstimated,
+  formatCopCurrency,
+  parseAdvancePaymentPercentage,
+  parseDurationMonths,
+  resolveSecopBudgetAmount,
+} from '../utils/tenderBudget'
 import './TenderDetailPanel.scss'
 
 const EXPERIENCE_SECTION_KEYS = new Set(['experiencia_general', 'experiencia_especifica'])
@@ -260,14 +268,6 @@ const parsePoPercentage = (item: TenderRequirementItem): number | null => {
   return Number.isFinite(percentage) ? percentage : null
 }
 
-const formatCopCurrency = (amount: number): string =>
-  new Intl.NumberFormat('es-CO', {
-    style: 'currency',
-    currency: 'COP',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
-
 const computePoMinimumAmount = (
   officialBudgetTotal: number | null,
   item: TenderRequirementItem
@@ -448,15 +448,6 @@ const formatFinancialThreshold = (indicator: FinancialIndicatorValue): string | 
   return indicator.threshold_note || null
 }
 
-const parseAdvancePaymentPercentage = (summary: TenderSummary | null): number | null => {
-  const field = summary?.fields?.find((entry) => entry.key === 'advance_payment_percentage')
-  if (!field?.value || typeof field.value !== 'object' || Array.isArray(field.value)) {
-    return null
-  }
-  const percentage = Number((field.value as { percentage?: number }).percentage)
-  return Number.isFinite(percentage) ? percentage : null
-}
-
 const computeCtdMinimumAmount = (
   officialBudgetTotal: number | null,
   advancePaymentPercentage: number | null,
@@ -470,25 +461,6 @@ const computeCtdMinimumAmount = (
       ? Math.round((officialBudgetTotal * advancePaymentPercentage) / 100)
       : 0
   return Math.round((officialBudgetTotal - advanceAmount) * (ctdPercentage / 100))
-}
-
-const computeCrpcEstimated = (
-  officialBudgetTotal: number | null,
-  advancePaymentPercentage: number | null,
-  executionMonths: number | null
-): number | null => {
-  if (officialBudgetTotal == null || officialBudgetTotal <= 0) {
-    return null
-  }
-  const advanceAmount =
-    advancePaymentPercentage != null
-      ? Math.round((officialBudgetTotal * advancePaymentPercentage) / 100)
-      : 0
-  const net = officialBudgetTotal - advanceAmount
-  if (executionMonths != null && executionMonths > 12) {
-    return Math.round((net / executionMonths) * 12)
-  }
-  return Math.round(net)
 }
 
 const sortRequirementItems = (
@@ -614,48 +586,6 @@ const SUMMARY_FIELD_LABELS: Record<string, string> = {
   execution_duration: 'Duración de la obra',
   advance_payment_percentage: 'Anticipo',
   monthly_cost: 'Flujo de caja',
-}
-
-function normalizeDurationText(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-}
-
-function parseDurationMonths(duration: string | null | undefined): number | null {
-  if (!duration) {
-    return null
-  }
-  const text = normalizeDurationText(duration)
-  const combo = text.match(/(\d+(?:[.,]\d+)?)\s*meses?\s+y\s+(\d+(?:[.,]\d+)?)\s*dias?/)
-  if (combo) {
-    const months = parseFloat(combo[1].replace(',', '.'))
-    const days = parseFloat(combo[2].replace(',', '.'))
-    return months + days / 30
-  }
-  const months = text.match(/(\d+(?:[.,]\d+)?)\s*meses?/)
-  if (months) {
-    return parseFloat(months[1].replace(',', '.'))
-  }
-  const days = text.match(/(\d+(?:[.,]\d+)?)\s*dias?/)
-  if (days) {
-    return parseFloat(days[1].replace(',', '.')) / 30
-  }
-  const years = text.match(/(\d+(?:[.,]\d+)?)\s*anos?/)
-  if (years) {
-    return parseFloat(years[1].replace(',', '.')) * 12
-  }
-  return null
-}
-
-function resolveSecopBudgetAmount(
-  tenderAmount: number | null | undefined
-): number | null {
-  if (tenderAmount != null && tenderAmount > 0) {
-    return tenderAmount
-  }
-  return null
 }
 
 function computeMonthlyCashFlow(
@@ -1764,6 +1694,8 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
               </p>
             )}
           </section>
+
+          <DecisionSummaryBar tender={tender} summary={summary} />
 
           <section className="tender-detail-panel__summary">
             <div className="tender-detail-panel__summary-header">
