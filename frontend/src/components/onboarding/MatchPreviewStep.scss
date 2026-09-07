@@ -1,0 +1,97 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.onboarding-match-preview-step {
+  padding: $spacing-06;
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.onboarding-match-preview-content {
+  display: flex;
+  flex-direction: column;
+  animation: fadeInUp 0.4s ease-out;
+}
+
+.onboarding-match-preview-header {
+  text-align: center;
+  margin-bottom: $spacing-06;
+}
+
+.onboarding-match-preview-icon {
+  fill: var(--cds-link-primary);
+  margin-bottom: $spacing-04;
+}
+
+.onboarding-match-preview-title {
+  @include type-style('heading-04');
+  color: var(--cds-text-primary);
+  margin: 0 0 $spacing-03;
+  font-weight: 600;
+}
+
+.onboarding-match-preview-description {
+  @include type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.onboarding-match-preview-loading {
+  padding: $spacing-09 0;
+  text-align: center;
+}
+
+.onboarding-match-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-04;
+  margin-bottom: $spacing-06;
+}
+
+.onboarding-match-preview-card {
+  padding: $spacing-05 !important;
+  border: 1px solid var(--cds-border-subtle);
+  text-align: left;
+
+  &__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $spacing-04;
+    margin-bottom: $spacing-03;
+  }
+
+  &__amount {
+    @include type-style('label-01');
+    color: var(--cds-text-secondary);
+    white-space: nowrap;
+  }
+
+  &__entity {
+    @include type-style('heading-compact-01');
+    color: var(--cds-text-primary);
+    margin: 0 0 $spacing-02;
+    font-weight: 600;
+  }
+
+  &__object {
+    @include type-style('body-compact-01');
+    color: var(--cds-text-secondary);
+    margin: 0;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+.onboarding-match-preview-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $spacing-03;
+}

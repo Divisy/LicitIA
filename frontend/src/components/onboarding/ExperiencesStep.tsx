@@ -2,6 +2,8 @@ import React, { useState, useRef } from 'react'
 import { Button, InlineNotification, FileUploader, FileUploaderItem, Loading } from '@carbon/react'
 import { ArrowLeft, ArrowRight, DocumentAdd, CheckmarkFilled } from '@carbon/icons-react'
 import { importExperiences } from '../../api/client'
+import { downloadExperienceTemplate } from '../../utils/portfolio'
+import { JTBD_0_DESCRIPTION, JTBD_0_TITLE } from '../../content/productMessaging'
 import './ExperiencesStep.scss'
 
 interface ExperiencesStepProps {
@@ -46,10 +48,6 @@ const ExperiencesStep: React.FC<ExperiencesStepProps> = ({
       } else {
         setExperiencesCount(result.imported)
         setUploadSuccess(true)
-        // Auto-advance after 1.5 seconds
-        setTimeout(() => {
-          onNext()
-        }, 1500)
       }
     } catch (error: any) {
       setUploadError(error.response?.data?.detail || 'Error al cargar el archivo')
@@ -88,11 +86,11 @@ const ExperiencesStep: React.FC<ExperiencesStepProps> = ({
 
       <div className="onboarding-experiences-content">
         <h2 className="onboarding-experiences-title">
-          Carga tus experiencias anteriores
+          {JTBD_0_TITLE}
         </h2>
         
         <p className="onboarding-experiences-description">
-          Esto ayuda a encontrar mejores coincidencias. Puedes agregar más experiencias después.
+          {JTBD_0_DESCRIPTION}
         </p>
 
         <div className="onboarding-experiences-upload">
@@ -158,8 +156,7 @@ const ExperiencesStep: React.FC<ExperiencesStepProps> = ({
               size="sm"
               onClick={(e) => {
                 e.preventDefault()
-                // TODO: Implementar descarga de plantilla
-                alert('Descarga de plantilla próximamente')
+                downloadExperienceTemplate()
               }}
               className="onboarding-download-template"
             >
@@ -181,7 +178,7 @@ const ExperiencesStep: React.FC<ExperiencesStepProps> = ({
           <Button
             size="lg"
             onClick={onNext}
-            disabled={isUploading}
+            disabled={isUploading || !uploadSuccess}
             className="onboarding-experiences-continue"
             renderIcon={ArrowRight}
           >

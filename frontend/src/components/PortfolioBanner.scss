@@ -1,0 +1,39 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.portfolio-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-05;
+  margin: 0 $spacing-05 $spacing-06;
+  padding: $spacing-04 $spacing-05;
+  background: var(--cds-layer-accent);
+  border: 1px solid var(--cds-border-interactive);
+  border-radius: $spacing-03;
+  flex-wrap: wrap;
+
+  &__content {
+    display: flex;
+    align-items: flex-start;
+    gap: $spacing-03;
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+    fill: var(--cds-link-primary);
+  }
+
+  &__text {
+    @include type-style('body-01');
+    color: var(--cds-text-primary);
+
+    strong {
+      font-weight: 600;
+    }
+  }
+}

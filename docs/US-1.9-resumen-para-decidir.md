@@ -38,7 +38,7 @@ Hoy LicitIA permite:
 | 1.4 Variables licitación | Fuente de POE, anticipo, plazo y `contract_kind_label` en la barra |
 | 1.7 Favoritas | Botón favorita visible junto al resumen (cabecera del modal) |
 | 1.8 Capacidad residual | CRPC estimada en la barra solo si `ejecucion_obra` / `estudios_disenos_y_obra` |
-| 1.10 (futura) | Panel *"¿Puedo ser hábil?"* — esta US no lo implementa |
+| 1.11 (futura) | Panel *"¿Puedo ser hábil?"* — esta US no lo implementa |
 | 1.11 (futura) | Tabs por capacidad — esta US no los implementa |
 | 1.14 (futura) | Encaje / fit score — fuera de alcance |
 
@@ -56,7 +56,7 @@ Añadir una **barra de resumen sticky** en el modal de detalle que responda en s
 | Días hasta cierre + fecha de cierre | Semáforo cumple / no cumple requisitos |
 | Monto SECOP + tipo de proceso (`contract_kind_label`) | Encaje / fit score (US 1.14) |
 | POE, anticipo %, plazo (si US 1.4 los tiene) | Cambios de backend o extracción |
-| CRPC estimada si obra y hay datos para calcularla | Panel *"¿Puedo ser hábil?"* (US 1.10) |
+| CRPC estimada si obra y hay datos para calcularla | Panel *"¿Puedo ser hábil?"* (US 1.11) |
 | Acceso rápido: favorita + enlace SECOP | Página dedicada `/tenders/:id` |
 | Reutilizar lógica existente (`computeCrpcEstimated`, summary US 1.4) | Gap analysis vs perfil empresa (US 1.5.3) |
 
@@ -188,7 +188,7 @@ type DecisionSummaryBarProps = {
 
 ## FUERA DE ALCANCE (MVP)
 
-- Tabs por capacidad, checklists adicionales, panel *"¿Puedo ser hábil?"* (US 1.10, 1.11, 1.12).
+- Tabs por capacidad, checklists adicionales, panel *"¿Puedo ser hábil?"* (US 1.11, 1.12, 1.13).
 - Backend nuevo o cambios en extracción / `EXTRACTION_VERSION`.
 - Comparación con datos de la empresa o semáforos de cumplimiento.
 - Página de detalle dedicada fuera del modal.

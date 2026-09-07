@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { clearPortfolioSkipped, getPortfolioCompanyName, markPortfolioSkipped } from '../utils/portfolio'
 
 export interface OnboardingState {
   isActive: boolean
@@ -89,10 +90,10 @@ export function useOnboarding() {
     }
   }, [state])
 
-  const startOnboarding = () => {
-    const newState = { ...INITIAL_STATE, isActive: true, currentStep: 0 }
+  const startOnboarding = (initialStep = 0) => {
+    const newState = { ...INITIAL_STATE, isActive: true, currentStep: initialStep }
     // Pre-fill company name if available from landing page
-    const savedCompany = localStorage.getItem('licitia_user_company')
+    const savedCompany = getPortfolioCompanyName()
     if (savedCompany) {
       newState.companyName = savedCompany
     }
@@ -100,6 +101,10 @@ export function useOnboarding() {
     // Persist immediately
     localStorage.setItem(ONBOARDING_STATE_KEY, JSON.stringify(newState))
     console.log('[useOnboarding] Started onboarding, state:', newState)
+  }
+
+  const startOnboardingAtStep = (step: number) => {
+    startOnboarding(step)
   }
 
   const nextStep = () => {
@@ -113,6 +118,13 @@ export function useOnboarding() {
     setState(prev => ({
       ...prev,
       currentStep: Math.max(0, prev.currentStep - 1),
+    }))
+  }
+
+  const goToStep = (step: number) => {
+    setState(prev => ({
+      ...prev,
+      currentStep: step,
     }))
   }
 
@@ -133,9 +145,18 @@ export function useOnboarding() {
 
   const setCompanyName = (name: string) => {
     setState(prev => ({ ...prev, companyName: name }))
+    localStorage.setItem('licitia_user_company', name)
     completeStep('company-name')
   }
 
+  const skipPortfolioSetup = () => {
+    markPortfolioSkipped()
+  }
+
+  const markExperiencesUploaded = () => {
+    clearPortfolioSkipped()
+    completeStep('experiences')
+  }
 
   const finishOnboarding = () => {
     setState(prev => ({ ...prev, isActive: false, hasSeenDashboard: true }))
@@ -152,11 +173,15 @@ export function useOnboarding() {
   return {
     state,
     startOnboarding,
+    startOnboardingAtStep,
     nextStep,
     previousStep,
+    goToStep,
     skipStep,
     completeStep,
     setCompanyName,
+    skipPortfolioSetup,
+    markExperiencesUploaded,
     finishOnboarding,
     resetOnboarding,
   }

@@ -1,0 +1,137 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+.first-session-home {
+  margin-bottom: $spacing-07;
+
+  &__card {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: $spacing-06;
+    background: var(--cds-layer);
+    border: 1px solid var(--cds-border-subtle);
+    border-radius: $spacing-04;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+
+    @media (max-width: 672px) {
+      padding: $spacing-05;
+    }
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    gap: $spacing-07;
+    align-items: center;
+
+    @media (max-width: 820px) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  &__title {
+    @include type-style('heading-04');
+    color: var(--cds-text-primary);
+    margin: $spacing-04 0 $spacing-05;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+  }
+
+  &__points {
+    list-style: none;
+    margin: 0 0 $spacing-05;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-03;
+
+    li {
+      display: flex;
+      align-items: flex-start;
+      gap: $spacing-03;
+      @include type-style('body-compact-01');
+      color: var(--cds-text-primary);
+      line-height: 1.45;
+
+      svg {
+        fill: var(--cds-link-primary);
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+
+      > span {
+        flex: 1;
+      }
+    }
+  }
+
+  &__jtbd {
+    @include type-style('label-01');
+    font-weight: 600;
+    color: var(--cds-text-secondary);
+    margin: 0 0 $spacing-05;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: $spacing-03;
+    flex-wrap: wrap;
+    margin-bottom: $spacing-03;
+  }
+
+  &__hint {
+    display: flex;
+    align-items: center;
+    gap: $spacing-02;
+    margin: 0;
+    @include type-style('label-01');
+    color: var(--cds-text-helper);
+
+    svg {
+      fill: currentColor;
+    }
+  }
+
+  &__visual {
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -10%;
+      background: radial-gradient(
+        ellipse at center,
+        rgba(15, 98, 254, 0.12) 0%,
+        transparent 70%
+      );
+      pointer-events: none;
+    }
+  }
+
+  &__secondary {
+    @include type-style('body-01');
+    color: var(--cds-text-secondary);
+    text-align: center;
+    margin: $spacing-05 0 0;
+  }
+
+  &__link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--cds-link-primary);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    font: inherit;
+
+    &:hover {
+      color: var(--cds-link-primary-hover);
+    }
+  }
+}
