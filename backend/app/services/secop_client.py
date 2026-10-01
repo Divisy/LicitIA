@@ -10,8 +10,8 @@ from app.services.secop_filters import (
     ESTADO_PUBLICADO,
     MODALITY_CONCURSO_MERITOS_ABIERTO,
     MODALITY_LICITACION_OBRA_PUBLICA,
-    UNSPSC_CODES_CONCURSO_MERITOS,
     is_dashboard_active_tender,
+    should_ingest_concurso_meritos,
 )
 
 logger = get_logger(__name__)
@@ -603,8 +603,9 @@ def fetch_recent_tenders(
 
 def fetch_mvp_secop_tenders(since_timestamp: datetime) -> List[SecopTenderDTO]:
     """
-    Fetch active MVP opportunities from SECOP:
-    - Concurso de méritos abierto + UNSPSC + Publicado + apertura Abierto
+    Fetch active MVP opportunities from SECOP (US 1.12):
+    - Concurso de méritos abierto + Publicado + Abierto, filtered by tipo
+      Interventoría / Consultoría de infra (UNSPSC is OR, not required)
     - Licitación pública Obra Publica + Publicado + apertura Abierto
     """
     all_tenders: List[SecopTenderDTO] = []
@@ -626,15 +627,22 @@ def fetch_mvp_secop_tenders(since_timestamp: datetime) -> List[SecopTenderDTO]:
         logger.info(f"{label}: fetched {len(batch)}, added {added} unique active")
         return added
 
-    for unspsc_code in UNSPSC_CODES_CONCURSO_MERITOS:
-        batch = fetch_recent_tenders(
-            since_timestamp=since_timestamp,
-            unspsc_code=unspsc_code,
-            contract_modality=MODALITY_CONCURSO_MERITOS_ABIERTO,
-            estado=ESTADO_PUBLICADO,
-            apertura_estado=ESTADO_APERTURA_ABIERTO,
+    cma_batch = fetch_recent_tenders(
+        since_timestamp=since_timestamp,
+        contract_modality=MODALITY_CONCURSO_MERITOS_ABIERTO,
+        estado=ESTADO_PUBLICADO,
+        apertura_estado=ESTADO_APERTURA_ABIERTO,
+    )
+    cma_kept = [
+        tender
+        for tender in cma_batch
+        if should_ingest_concurso_meritos(
+            contract_type=tender.contract_type,
+            object_text=tender.object_text,
+            unspsc_code=tender.unspsc_code,
         )
-        _add_unique(batch, f"Concurso méritos UNSPSC {unspsc_code}")
+    ]
+    _add_unique(cma_kept, "Concurso méritos (tipo Interventoría/Consultoría infra)")
 
     obra_batch = fetch_recent_tenders(
         since_timestamp=since_timestamp,

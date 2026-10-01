@@ -183,8 +183,8 @@ def fetch_and_store_new_tenders(lookback_days: Optional[int] = None) -> None:
     """
     Main background job: fetch MVP-filtered SECOP tenders and persist them.
 
-    User story 1.1:
-    - Concurso de méritos abierto + UNSPSC + estado Publicado
+    User story 1.1 / 1.12:
+    - Concurso de méritos abierto (Interventoría / Consultoría infra) + Publicado
     - Licitación pública Obra Publica + estado Publicado
     """
     db = SessionLocal()
