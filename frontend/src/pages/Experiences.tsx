@@ -104,7 +104,8 @@ const Experiences: React.FC = () => {
           </h2>
         </div>
         <p className="experiences-step-description">
-          El RUP no trae la experiencia específica (el objeto del contrato). En cada fila, carga el certificado o el acta de finalización para completar ese dato.
+          El RUP no incluye el objeto de cada contrato. En la columna de experiencia específica,
+          carga el certificado o el acta de finalización en PDF.
         </p>
         
         {loading && (

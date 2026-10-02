@@ -70,4 +70,16 @@ describe('ExperienceList UNSPSC preview', () => {
     expect(screen.getByText(/12\.290,89 SMMLV/)).toBeInTheDocument()
     expect(screen.queryByText(/2\.178\.220\.160/)).not.toBeInTheDocument()
   })
+
+  it('shows a compact upload action instead of repeating the missing-object copy', () => {
+    render(
+      <ExperienceList
+        experiences={[experience(), experience({ id: 'exp-2' })]}
+        companyName="BEC"
+      />
+    )
+    expect(screen.getAllByRole('button', { name: /Cargar certificado o acta/ })).toHaveLength(2)
+    expect(screen.queryByText(/El RUP no trae el objeto/)).not.toBeInTheDocument()
+    expect(screen.getByText(/2 contratos · 2 sin acta/)).toBeInTheDocument()
+  })
 })

@@ -21,6 +21,7 @@ import {
   Layers,
   Upload,
   CheckmarkFilled,
+  Renew,
 } from '@carbon/icons-react'
 import {
   CompanyExperience,
@@ -153,6 +154,10 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
       Boolean(experience.contract_kind) && experience.contract_kind !== 'desconocido'
   )
   const contractCount = experiences.length
+  const withSpecificCount = experiences.filter(
+    (experience) => Boolean((experience.specific_experience || '').trim())
+  ).length
+  const pendingSpecificCount = contractCount - withSpecificCount
 
   const getExperienceIcon = (kind: string | null | undefined) => {
     if (kind === 'interventoria') {
@@ -209,52 +214,12 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
           }
         : {}),
       specific: (
-        <div className="experience-list-specific">
-          {specificText ? (
-            <>
-              <p className="experience-list-specific-text">{specificText}</p>
-              {experience.specific_evidence_filename && (
-                <span className="experience-list-specific-file">
-                  <CheckmarkFilled size={14} />
-                  {experience.specific_evidence_filename}
-                </span>
-              )}
-              <Button
-                kind="ghost"
-                size="sm"
-                renderIcon={Upload}
-                disabled={uploading}
-                onClick={() => openEvidencePicker(experience.id)}
-              >
-                {uploading ? 'Cargando…' : 'Reemplazar PDF'}
-              </Button>
-            </>
-          ) : (
-            <>
-              <p className="experience-list-specific-missing">
-                El RUP no trae el objeto de este contrato.
-              </p>
-              {experience.specific_evidence_filename && (
-                <span className="experience-list-specific-file">
-                  Cargado: {experience.specific_evidence_filename}. No se leyó el objeto.
-                </span>
-              )}
-              <Button
-                kind="tertiary"
-                size="sm"
-                renderIcon={Upload}
-                disabled={uploading}
-                onClick={() => openEvidencePicker(experience.id)}
-              >
-                {uploading
-                  ? 'Cargando…'
-                  : experience.specific_evidence_filename
-                    ? 'Reemplazar PDF'
-                    : 'Cargar certificado o acta de finalización'}
-              </Button>
-            </>
-          )}
-        </div>
+        <SpecificExperienceCell
+          text={specificText}
+          filename={experience.specific_evidence_filename}
+          uploading={uploading}
+          onUpload={() => openEvidencePicker(experience.id)}
+        />
       ),
       entity: experience.contracting_entity || 'N/A',
       contract: experience.contract_number || 'N/A',
@@ -312,7 +277,10 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
         />
       )}
       <p className="experience-list-count">
-        {contractCount} {contractCount === 1 ? 'contrato' : 'contratos'} en la experiencia
+        {contractCount} {contractCount === 1 ? 'contrato' : 'contratos'}
+        {pendingSpecificCount > 0
+          ? ` · ${pendingSpecificCount} sin acta`
+          : ' · experiencia específica completa'}
       </p>
       {codesModal && (
         <Modal
@@ -374,3 +342,61 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
 }
 
 export default ExperienceList
+
+function SpecificExperienceCell({
+  text,
+  filename,
+  uploading,
+  onUpload,
+}: {
+  text: string
+  filename: string | null
+  uploading: boolean
+  onUpload: () => void
+}) {
+  if (text) {
+    return (
+      <div className="experience-list-specific experience-list-specific--filled">
+        <p className="experience-list-specific-text" title={text}>
+          {text}
+        </p>
+        {filename && (
+          <span className="experience-list-specific-file">
+            <CheckmarkFilled size={14} />
+            {filename}
+          </span>
+        )}
+        <button
+          type="button"
+          className="experience-list-specific-replace"
+          disabled={uploading}
+          onClick={onUpload}
+        >
+          <Renew size={14} />
+          {uploading ? 'Cargando…' : 'Reemplazar'}
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="experience-list-specific">
+      {filename && (
+        <span className="experience-list-specific-file">
+          {filename}
+        </span>
+      )}
+      <button
+        type="button"
+        className="experience-list-specific-upload"
+        disabled={uploading}
+        aria-label="Cargar certificado o acta de finalización en PDF"
+        title="PDF del certificado o acta de finalización"
+        onClick={onUpload}
+      >
+        <Upload size={16} />
+        {uploading ? 'Cargando…' : 'Cargar acta'}
+      </button>
+    </div>
+  )
+}
