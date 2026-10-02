@@ -1,5 +1,5 @@
 """US 1.11 — parse RUP text and reject empty/scanned PDFs."""
-from app.services.rup_parser import extract_text_from_pdf_bytes, parse_rup_text
+from app.services.rup_parser import extract_text_from_pdf_bytes, parse_rup_text, resolve_contractor_name
 
 SAMPLE_RUP = """
 CAMARA DE COMERCIO DE BOGOTA
@@ -100,6 +100,26 @@ def test_parse_sample_rup_extracts_contracts_and_capacity():
     assert result.contracts[0].amount_smmlv == 120
     assert result.contracts[0].amount_cop == 120 * 1_423_500
     assert result.contracts[1].entity and "INV" in result.contracts[1].entity.upper()
+    assert result.contracts[0].contract_kind == "ejecucion_obra"
+    assert result.contracts[1].contract_kind == "interventoria"
+
+
+def test_resolve_contractor_name_from_ccb_description():
+    name = resolve_contractor_name(
+        description="Contrato ejecutado para IDU (CONSORCIO SANTA MARIA 2014). Participación 42%."
+    )
+    assert name == "CONSORCIO SANTA MARIA 2014"
+
+
+def test_resolve_contractor_name_does_not_use_login_name():
+    assert (
+        resolve_contractor_name(
+            stored="RAFA",
+            account_name="RAFA",
+            razon_social="GV GARCIA VILLA S.A.S.",
+        )
+        == "GV GARCIA VILLA S.A.S."
+    )
 
 
 def test_insufficient_text_does_not_invent_contracts():
@@ -158,6 +178,7 @@ CONTRATO EJECUTADO IDENTIFICADO CON EL CLASIFICADOR DE BIENES Y
 SERVICIOS EN EL TERCER NIVEL:
 |SEGM|FAMI|CLAS|PROD|
 | 72 | 10 | 33 | 00 |
+| 81 | 10 | 15 | 00 |
 NUMERO CONSECUTIVO DEL REPORTE DEL CONTRATO EJECUTADO: 2
 CONTRATO CELEBRADO POR:
 PROPONENTE
@@ -203,12 +224,18 @@ def test_parse_ccb_rup_experience_and_capacity():
     assert first.participation_pct == 25
     assert first.amount_smmlv == round(12290.89 * 0.25, 4)
     assert "VIAS URBANAS" in first.object
-    assert "72103300" in (first.category or "")
+    assert first.contractor and "VIAS URBANAS" in first.contractor
+    assert first.unspsc_codes == ["72103300", "81101500"]
+    assert first.category is None
+    assert first.contract_kind == "estudios_disenos_y_obra"
 
     reported = [c for c in result.contracts if c.contract_number == "CTO-DE-OBRA-1129-2008"]
     assert reported
     assert reported[0].completion_date.year == 2009
     assert reported[0].amount_cop == 207_840_415
+    assert reported[0].contract_kind == "ejecucion_obra"
+    assert reported[0].contractor and "CONSTRUCTORA ANDINA" in reported[0].contractor
+    assert reported[0].unspsc_codes == []
 
 
 def test_extract_text_from_generated_pdf():

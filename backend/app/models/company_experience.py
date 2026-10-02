@@ -15,6 +15,7 @@ class CompanyExperience(Base):
     company_name = Column(String(255), nullable=False, index=True)
     contract_number = Column(String(100), nullable=True)
     project_description = Column(Text, nullable=False)  # OBRA
+    contractor_name = Column(String(500), nullable=True)
     contracting_entity = Column(String(500), nullable=True)  # ENTIDAD CONTRATANTE
     completion_date = Column(Date, nullable=True)  # FECHA FINALIZACIÓN
     amount = Column(Numeric(18, 2), nullable=True)  # VALOR ACTUAL
@@ -27,6 +28,12 @@ class CompanyExperience(Base):
     
     # Extracted keywords for matching (computed from project_description)
     keywords = Column(Text, nullable=True)  # JSON array of extracted keywords
+    unspsc_codes = Column(Text, nullable=True)  # JSON array of UNSPSC from the RUP
+
+    # Experiencia específica: no viene en el RUP; se carga con certificado o acta.
+    specific_experience = Column(Text, nullable=True)
+    specific_evidence_filename = Column(String(255), nullable=True)
+    specific_evidence_key = Column(String(500), nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

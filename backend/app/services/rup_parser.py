@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 from app.config import settings
 from app.core.logging import get_logger
+from app.services.rup_contract_kind import classify_rup_experience_kind, extract_unspsc_codes
 
 logger = get_logger(__name__)
 
@@ -83,11 +84,14 @@ class RupContract:
     contract_number: Optional[str] = None
     object: str = ""
     entity: Optional[str] = None
+    contractor: Optional[str] = None
     amount_cop: Optional[float] = None
     amount_smmlv: Optional[float] = None
     participation_pct: Optional[float] = None
     completion_date: Optional[date] = None
     category: Optional[str] = None
+    contract_kind: Optional[str] = None
+    unspsc_codes: list[str] = field(default_factory=list)
     department: Optional[str] = None
     municipality: Optional[str] = None
 
@@ -160,8 +164,17 @@ def parse_rup_text(text: str, *, use_llm: bool = True) -> RupParseResult:
             contract.amount_smmlv = claimed
         if contract.amount_cop is None and claimed is not None:
             contract.amount_cop = round(claimed * smmlv, 2)
+        if not contract.contract_kind:
+            contract.contract_kind = classify_rup_experience_kind(
+                object_text=contract.object or "",
+                category=contract.category or "",
+                contract_number=contract.contract_number or "",
+                unspsc_codes=contract.unspsc_codes,
+            ).value
         if not (contract.object or "").strip():
             continue
+        if not (contract.contractor or "").strip():
+            contract.contractor = result.razon_social
     result.contracts = [c for c in result.contracts if (c.object or "").strip()]
 
     if not result.looks_like_rup and not result.contracts:
@@ -286,17 +299,7 @@ def _field(label: str, text: str) -> Optional[str]:
 
 
 def _unspsc_codes(text: str) -> list[str]:
-    codes: list[str] = []
-    seen: set[str] = set()
-    for match in re.finditer(
-        r"\|\s*(\d{2})\s*\|\s*(\d{2})\s*\|\s*(\d{2})\s*\|\s*(\d{2})\s*\|",
-        text,
-    ):
-        code = "".join(match.groups())
-        if code not in seen:
-            seen.add(code)
-            codes.append(code)
-    return codes
+    return extract_unspsc_codes(text)
 
 
 def _apply_regex(text: str, result: RupParseResult) -> None:
@@ -445,9 +448,56 @@ def _build_ccb_description(
         description = "Contrato ejecutado reportado en el RUP"
     if participation is not None:
         description += f". Participación {participation:g}%"
-    if codes:
-        description += ". UNSPSC " + ", ".join(codes[:12])
     return description
+
+
+def resolve_contractor_name(
+    *,
+    stored: Optional[str] = None,
+    description: Optional[str] = None,
+    razon_social: Optional[str] = None,
+    account_name: Optional[str] = None,
+) -> Optional[str]:
+    """Return the RUP contractor (consorcio/UT/empresa), never the login name."""
+
+    def usable(value: Optional[str]) -> Optional[str]:
+        cleaned = re.sub(r"\s+", " ", value or "").strip(" :-")
+        if not cleaned:
+            return None
+        lowered = cleaned.lower()
+        if account_name and lowered == account_name.strip().lower():
+            return None
+        if lowered in {"proponente", "mi empresa"}:
+            return None
+        if lowered.startswith("consorcio, union temporal") or lowered.startswith(
+            "consorcio, unión temporal"
+        ):
+            return None
+        return cleaned
+
+    from_stored = usable(stored)
+    if from_stored:
+        return from_stored
+    text = description or ""
+    parenthetical = re.search(
+        r"contrato ejecutado para .+?\((.+?)\)",
+        text,
+        re.IGNORECASE,
+    )
+    if parenthetical:
+        from_desc = usable(parenthetical.group(1))
+        if from_desc:
+            return from_desc
+    by_contractor = re.search(
+        r"contrato ejecutado por ([^.]+)",
+        text,
+        re.IGNORECASE,
+    )
+    if by_contractor:
+        from_desc = usable(by_contractor.group(1))
+        if from_desc:
+            return from_desc
+    return usable(razon_social)
 
 
 def _extract_ccb_experience(text: str) -> list[RupContract]:
@@ -494,9 +544,17 @@ def _extract_ccb_experience(text: str) -> list[RupContract]:
                 contract_number=f"RUP-{match.group(1)}",
                 object=description,
                 entity=entity,
+                contractor=contractor,
                 amount_smmlv=amount_smmlv,
                 participation_pct=participation,
-                category=", ".join(codes[:8]) if codes else None,
+                category=None,
+                unspsc_codes=codes,
+                contract_kind=classify_rup_experience_kind(
+                    object_text=description,
+                    category=", ".join(codes),
+                    extra_text=block,
+                    unspsc_codes=codes,
+                ).value,
             )
         )
     return contracts
@@ -539,21 +597,38 @@ def _extract_entity_reported_contracts(text: str) -> list[RupContract]:
                 classification,
                 flags=re.IGNORECASE | re.DOTALL,
             )
+            classification = re.sub(
+                r"CONTRATO RELACIONADO CON LA CONSTRUCCI[OÓ]N[\s\S]*",
+                "",
+                classification,
+                flags=re.IGNORECASE,
+            )
             classification = _collapse(classification)
+        codes = _unspsc_codes(chunk)
+        contractor = _field("NOMBRE DEL CONTRATISTA", chunk)
         description = classification or _build_ccb_description(
             entity=entity,
-            contractor=None,
+            contractor=contractor,
             participation=None,
-            codes=[],
+            codes=codes,
         )
         contracts.append(
             RupContract(
                 contract_number=number,
                 object=description,
                 entity=entity,
+                contractor=contractor,
                 amount_cop=amount,
                 completion_date=completion,
                 category=classification,
+                unspsc_codes=codes,
+                contract_kind=classify_rup_experience_kind(
+                    object_text=description,
+                    category=classification or "",
+                    contract_number=number or "",
+                    extra_text=chunk,
+                    unspsc_codes=codes,
+                ).value,
                 municipality=municipality,
             )
         )
@@ -597,17 +672,27 @@ def _extract_contracts_regex(text: str) -> list[RupContract]:
             or ""
         )
         category = _first_match(r"(?:categor[ií]a|clasificador|c[oó]digo)[:\s]+([^\n]{2,120})", block)
+        codes = _unspsc_codes(block)
         department = _first_match(r"departamento[:\s]+([^\n]{3,80})", block)
         municipality = _first_match(r"municipio[:\s]+([^\n]{3,80})", block)
+        object_text = re.sub(r"\s+", " ", obj).strip()
         contracts.append(
             RupContract(
                 contract_number=number,
-                object=re.sub(r"\s+", " ", obj).strip(),
+                object=object_text,
                 entity=entity,
                 amount_cop=amount_cop,
                 amount_smmlv=amount_smmlv,
                 completion_date=completion,
-                category=category,
+                category=", ".join(codes) if codes else category,
+                unspsc_codes=codes,
+                contract_kind=classify_rup_experience_kind(
+                    object_text=object_text,
+                    category=category or "",
+                    contract_number=number or "",
+                    extra_text=block,
+                    unspsc_codes=codes,
+                ).value,
                 department=department,
                 municipality=municipality,
             )
@@ -720,16 +805,32 @@ def _merge_llm(result: RupParseResult, payload: dict[str, Any]) -> None:
                     contract_number=_as_str(item.get("contract_number")),
                     object=obj,
                     entity=_as_str(item.get("entity")),
+                    contractor=_as_str(item.get("contractor")),
                     amount_cop=_as_float(item.get("amount_cop")),
                     amount_smmlv=_as_float(item.get("amount_smmlv")),
                     completion_date=_parse_iso_date(item.get("completion_date")),
                     category=_as_str(item.get("category")),
+                    unspsc_codes=_codes_from_llm(item.get("unspsc_codes")),
+                    contract_kind=_as_str(item.get("contract_kind")),
                     department=_as_str(item.get("department")),
                     municipality=_as_str(item.get("municipality")),
                 )
             )
     if len(parsed) > len(result.contracts):
         result.contracts = parsed
+
+
+def _codes_from_llm(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    codes: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        digits = re.sub(r"\D", "", str(item))
+        if len(digits) == 8 and digits not in seen:
+            seen.add(digits)
+            codes.append(digits)
+    return codes
 
 
 def _as_str(value: Any) -> Optional[str]:

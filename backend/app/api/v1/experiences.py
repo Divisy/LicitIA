@@ -7,6 +7,7 @@ import tempfile
 import os
 
 from app.core.db import get_db
+from app.models.company_capacity import CompanyCapacity
 from app.models.company_experience import CompanyExperience
 from app.schemas.company_experience import (
     CompanyExperienceCreate,
@@ -15,10 +16,64 @@ from app.schemas.company_experience import (
     ExcelImportResponse
 )
 from app.services.excel_import import import_experiences_from_excel
+from app.services.rup_contract_kind import kind_payload_for_experience, unspsc_codes_from_stored
+from app.services.rup_parser import resolve_contractor_name
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+def _razon_social_for(db: Session, company_name: Optional[str]) -> Optional[str]:
+    if not company_name:
+        return None
+    row = (
+        db.query(CompanyCapacity)
+        .filter(CompanyCapacity.company_name.ilike(company_name.strip()))
+        .first()
+    )
+    return row.razon_social if row and row.razon_social else None
+
+
+def _experience_dict(
+    experience: CompanyExperience,
+    keywords,
+    *,
+    razon_social: Optional[str] = None,
+) -> dict:
+    kind, label = kind_payload_for_experience(
+        engineering_area=experience.engineering_area,
+        project_description=experience.project_description,
+        category=experience.category,
+        contract_number=experience.contract_number,
+    )
+    return {
+        "id": experience.id,
+        "company_name": experience.company_name,
+        "contract_number": experience.contract_number,
+        "project_description": experience.project_description,
+        "contracting_entity": experience.contracting_entity,
+        "contractor_name": resolve_contractor_name(
+            stored=getattr(experience, "contractor_name", None),
+            description=experience.project_description,
+            razon_social=razon_social,
+            account_name=experience.company_name,
+        ),
+        "completion_date": experience.completion_date,
+        "amount": float(experience.amount) if experience.amount else None,
+        "category": experience.category,
+        "engineering_area": experience.engineering_area,
+        "contract_kind": kind,
+        "contract_kind_label": label,
+        "specific_experience": experience.specific_experience,
+        "specific_evidence_filename": experience.specific_evidence_filename,
+        "unspsc_codes": unspsc_codes_from_stored(
+            stored_json=getattr(experience, "unspsc_codes", None),
+        ),
+        "keywords": keywords,
+        "created_at": experience.created_at,
+        "updated_at": experience.updated_at,
+    }
 
 
 @router.post("/experiences", response_model=CompanyExperienceResponse, status_code=201)
@@ -41,13 +96,13 @@ async def create_experience(
     db.add(db_experience)
     db.commit()
     db.refresh(db_experience)
-    
-    # Parse keywords for response
-    response_data = CompanyExperienceResponse.model_validate(db_experience)
-    if db_experience.keywords:
-        response_data.keywords = json.loads(db_experience.keywords)
-    
-    return response_data
+    return CompanyExperienceResponse.model_validate(
+        _experience_dict(
+            db_experience,
+            json.loads(db_experience.keywords) if db_experience.keywords else None,
+            razon_social=_razon_social_for(db, db_experience.company_name),
+        )
+    )
 
 
 @router.get("/experiences", response_model=CompanyExperienceListResponse)
@@ -58,6 +113,9 @@ async def list_experiences(
     db: Session = Depends(get_db),
 ):
     """List company experiences."""
+    from app.services.rup_import import ensure_specific_experience_columns
+
+    ensure_specific_experience_columns(db)
     query = db.query(CompanyExperience)
     
     if company_name:
@@ -73,23 +131,19 @@ async def list_experiences(
     
     # Parse keywords for response
     import json
+    razon_by: dict[str, str] = {}
+    names = {exp.company_name for exp in experiences if exp.company_name}
+    if names:
+        for row in db.query(CompanyCapacity).filter(CompanyCapacity.company_name.in_(names)).all():
+            if row.razon_social:
+                razon_by[(row.company_name or "").lower()] = row.razon_social
     items = []
     for exp in experiences:
-        # Create a dict from the model, parse keywords, then validate
-        exp_dict = {
-            "id": exp.id,
-            "company_name": exp.company_name,
-            "contract_number": exp.contract_number,
-            "project_description": exp.project_description,
-            "contracting_entity": exp.contracting_entity,
-            "completion_date": exp.completion_date,
-            "amount": float(exp.amount) if exp.amount else None,
-            "category": exp.category,
-            "engineering_area": exp.engineering_area,
-            "keywords": json.loads(exp.keywords) if exp.keywords else None,
-            "created_at": exp.created_at,
-            "updated_at": exp.updated_at,
-        }
+        exp_dict = _experience_dict(
+            exp,
+            json.loads(exp.keywords) if exp.keywords else None,
+            razon_social=razon_by.get((exp.company_name or "").lower()),
+        )
         exp_data = CompanyExperienceResponse.model_validate(exp_dict)
         items.append(exp_data)
     
@@ -107,23 +161,87 @@ async def get_experience(
         raise HTTPException(status_code=404, detail="Experience not found")
     
     import json
-    # Create a dict from the model, parse keywords, then validate
-    exp_dict = {
-        "id": experience.id,
-        "company_name": experience.company_name,
-        "contract_number": experience.contract_number,
-        "project_description": experience.project_description,
-        "contracting_entity": experience.contracting_entity,
-        "completion_date": experience.completion_date,
-        "amount": float(experience.amount) if experience.amount else None,
-        "category": experience.category,
-        "engineering_area": experience.engineering_area,
-        "keywords": json.loads(experience.keywords) if experience.keywords else None,
-        "created_at": experience.created_at,
-        "updated_at": experience.updated_at,
-    }
+    exp_dict = _experience_dict(
+        experience,
+        json.loads(experience.keywords) if experience.keywords else None,
+        razon_social=_razon_social_for(db, experience.company_name),
+    )
     response_data = CompanyExperienceResponse.model_validate(exp_dict)
     return response_data
+
+
+@router.post(
+    "/experiences/{experience_id}/specific-evidence",
+    response_model=CompanyExperienceResponse,
+)
+async def upload_specific_evidence(
+    experience_id: UUID,
+    file: UploadFile = File(..., description="Certificado o acta de finalización en PDF"),
+    db: Session = Depends(get_db),
+):
+    """Attach the certificate or completion acta that states the specific experience."""
+    import json
+    from datetime import datetime
+
+    from app.config import settings
+    from app.services.document_storage import get_document_storage
+    from app.services.experience_matching import extract_keywords
+    from app.services.rup_import import (
+        ensure_specific_experience_columns,
+        persist_pdf_bytes,
+        slugify_company,
+    )
+    from app.services.rup_parser import extract_text_from_pdf_bytes
+    from app.services.specific_experience import extract_specific_experience_from_text
+
+    ensure_specific_experience_columns(db)
+    experience = db.query(CompanyExperience).filter(CompanyExperience.id == experience_id).first()
+    if not experience:
+        raise HTTPException(status_code=404, detail="Experience not found")
+
+    filename = (file.filename or "").strip()
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=400,
+            detail="Sube el certificado o el acta de finalización en PDF.",
+        )
+
+    content = await file.read()
+    max_bytes = min(getattr(settings, "RUP_UPLOAD_MAX_BYTES", 26_214_400), 26_214_400)
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=413, detail="El archivo supera el tamaño máximo (25 MB).")
+    if not content:
+        raise HTTPException(status_code=400, detail="El archivo está vacío.")
+
+    storage = get_document_storage()
+    slug = slugify_company(experience.company_name or "empresa")
+    object_key = f"rup/{slug}/experiences/{experience.id}/acta.pdf"
+    try:
+        persist_pdf_bytes(storage, object_key=object_key, content=content)
+    except Exception as exc:
+        logger.exception("Failed to store specific evidence for %s", experience_id)
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo guardar el certificado o el acta.",
+        ) from exc
+
+    extracted = extract_specific_experience_from_text(extract_text_from_pdf_bytes(content))
+    experience.specific_evidence_filename = filename[:255]
+    experience.specific_evidence_key = object_key[:500]
+    if extracted:
+        experience.specific_experience = extracted
+        keywords = extract_keywords(extracted)
+        experience.keywords = json.dumps(keywords) if keywords else experience.keywords
+    experience.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(experience)
+    return CompanyExperienceResponse.model_validate(
+        _experience_dict(
+            experience,
+            json.loads(experience.keywords) if experience.keywords else None,
+            razon_social=_razon_social_for(db, experience.company_name),
+        )
+    )
 
 
 @router.post("/experiences/import", response_model=ExcelImportResponse)

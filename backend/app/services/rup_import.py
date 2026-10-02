@@ -17,7 +17,7 @@ from app.models.company_capacity import CompanyCapacity
 from app.models.company_experience import CompanyExperience
 from app.services.document_storage import DocumentStorageService
 from app.services.experience_matching import extract_keywords
-from app.services.rup_parser import RupParseResult
+from app.services.rup_parser import RupParseResult, resolve_contractor_name
 
 _CREATE_CAPACITY_SQL = """
 CREATE TABLE IF NOT EXISTS company_capacity (
@@ -85,6 +85,64 @@ def ensure_company_capacity_table(db: Session) -> None:
     db.commit()
 
 
+def ensure_specific_experience_columns(db: Session) -> None:
+    db.execute(
+        text(
+            "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS specific_experience TEXT"
+        )
+    )
+    db.execute(
+        text(
+            "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS "
+            "specific_evidence_filename VARCHAR(255)"
+        )
+    )
+    db.execute(
+        text(
+            "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS "
+            "specific_evidence_key VARCHAR(500)"
+        )
+    )
+    db.execute(
+        text(
+            "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS "
+            "contractor_name VARCHAR(500)"
+        )
+    )
+    db.execute(
+        text("ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS unspsc_codes TEXT")
+    )
+    db.commit()
+
+
+
+def persist_pdf_bytes(
+    storage: DocumentStorageService,
+    *,
+    object_key: str,
+    content: bytes,
+) -> str:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+    try:
+        try:
+            return storage.persist_local_file(tmp_path, object_key)
+        except Exception as exc:
+            dest = storage.local_path(object_key)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(tmp_path, dest)
+            try:
+                storage.upload_local_copy(object_key)
+            except Exception:
+                pass
+            if not dest.is_file():
+                raise exc
+            return object_key
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
+
 
 def persist_rup_pdf(
     storage: DocumentStorageService,
@@ -95,25 +153,7 @@ def persist_rup_pdf(
 ) -> str:
     slug = slugify_company(company_name)
     object_key = f"rup/{slug}/rup.pdf"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-    try:
-        return storage.persist_local_file(tmp_path, object_key)
-    except Exception as exc:
-        dest = storage.local_path(object_key)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(tmp_path, dest)
-        try:
-            storage.upload_local_copy(object_key)
-        except Exception:
-            pass
-        if not dest.is_file():
-            raise exc
-        return object_key
-    finally:
-        if tmp_path.exists():
-            tmp_path.unlink(missing_ok=True)
+    return persist_pdf_bytes(storage, object_key=object_key, content=content)
 
 
 def replace_experiences_from_rup(
@@ -122,6 +162,22 @@ def replace_experiences_from_rup(
     company_name: str,
     parsed: RupParseResult,
 ) -> int:
+    existing = (
+        db.query(CompanyExperience)
+        .filter(CompanyExperience.company_name == company_name)
+        .all()
+    )
+    evidence_by_contract: dict[str, tuple[Optional[str], Optional[str], Optional[str]]] = {}
+    for row in existing:
+        number = (row.contract_number or "").strip().upper()
+        if not number:
+            continue
+        if getattr(row, "specific_experience", None) or getattr(row, "specific_evidence_key", None):
+            evidence_by_contract[number] = (
+                getattr(row, "specific_experience", None),
+                getattr(row, "specific_evidence_filename", None),
+                getattr(row, "specific_evidence_key", None),
+            )
     db.query(CompanyExperience).filter(CompanyExperience.company_name == company_name).delete(
         synchronize_session=False
     )
@@ -132,18 +188,37 @@ def replace_experiences_from_rup(
         if not description:
             continue
         keywords = extract_keywords(description)
+        previous = evidence_by_contract.get((contract.contract_number or "").strip().upper())
+        specific_text = previous[0] if previous else None
+        specific_name = previous[1] if previous else None
+        specific_key = previous[2] if previous else None
         experience = CompanyExperience(
             id=uuid.uuid4(),
             company_name=_clip(company_name, 255) or "Mi Empresa",
             contract_number=_clip(contract.contract_number, 100),
             project_description=description,
+            contractor_name=_clip(
+                resolve_contractor_name(
+                    stored=contract.contractor,
+                    description=description,
+                    razon_social=parsed.razon_social,
+                ),
+                500,
+            ),
             contracting_entity=_clip(contract.entity, 500),
             completion_date=contract.completion_date,
             amount=_money(contract.amount_cop),
             category=_clip(contract.category, 200),
+            engineering_area=_clip(contract.contract_kind, 200),
             department=_clip(contract.department, 100),
             municipality=_clip(contract.municipality, 100),
             keywords=json.dumps(keywords) if keywords else None,
+            unspsc_codes=json.dumps(contract.unspsc_codes, ensure_ascii=False)
+            if contract.unspsc_codes
+            else None,
+            specific_experience=specific_text,
+            specific_evidence_filename=_clip(specific_name, 255),
+            specific_evidence_key=_clip(specific_key, 500),
             created_at=now,
             updated_at=now,
         )

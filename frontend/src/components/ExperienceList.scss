@@ -13,10 +13,30 @@
 }
 
 .experience-list-count {
-  @include type-style('body-01');
+  @include type-style('heading-compact-01');
+  color: var(--cds-text-primary);
+  margin: 0 0 $spacing-04;
+  font-weight: 600;
+}
+
+.experience-list-number {
+  @include type-style('heading-compact-01');
   color: var(--cds-text-secondary);
-  margin: 0;
-  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.experience-list-contractor {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-primary);
+  font-weight: 600;
+  max-width: 280px;
+}
+
+.experience-list-unspsc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-02;
+  max-width: 220px;
 }
 
 .experience-list-table-container {
@@ -43,11 +63,37 @@
   font-weight: 500;
 }
 
-.experience-list-name {
-  max-width: 300px;
-  @include type-style('body-01');
+.experience-list-file-input {
+  display: none;
+}
+
+.experience-list-specific {
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: $spacing-03;
+}
+
+.experience-list-specific-text {
+  @include type-style('body-compact-01');
   color: var(--cds-text-primary);
-  line-height: 1.5;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.experience-list-specific-missing {
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin: 0;
+}
+
+.experience-list-specific-file {
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-02;
 }
 
 .experience-list-amount {

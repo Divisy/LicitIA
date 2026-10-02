@@ -1,7 +1,5 @@
-import React from 'react'
-import { 
-  Tile, 
-  Button, 
+import React, { useRef, useState } from 'react'
+import {
   Tag,
   DataTable,
   Table,
@@ -10,31 +8,55 @@ import {
   TableHeader,
   TableBody,
   TableCell,
-  Link
+  Button,
+  InlineNotification,
 } from '@carbon/react'
-import { TrashCan, Document, Building, DocumentAdd, WatsonMachineLearning } from '@carbon/icons-react'
-import { CompanyExperience } from '../api/client'
-import { deleteExperience } from '../api/client'
+import {
+  Document,
+  Building,
+  DocumentAdd,
+  WatsonMachineLearning,
+  Edit,
+  Layers,
+  Upload,
+  CheckmarkFilled,
+} from '@carbon/icons-react'
+import {
+  CompanyExperience,
+  formatApiError,
+  uploadSpecificExperienceEvidence,
+} from '../api/client'
+import {
+  experienceContractKindLabel,
+  experienceContractKindTag,
+} from '../utils/companySectors'
 import './ExperienceList.scss'
 
 interface ExperienceListProps {
   experiences: CompanyExperience[]
   companyName: string
   onDelete?: () => void
+  onUpdated?: (experience: CompanyExperience) => void
 }
 
-const ExperienceList: React.FC<ExperienceListProps> = ({ 
-  experiences, 
-  companyName, 
-  onDelete 
+const ExperienceList: React.FC<ExperienceListProps> = ({
+  experiences,
+  companyName,
+  onDelete,
+  onUpdated,
 }) => {
+  const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [pendingId, setPendingId] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const formatDate = (dateString: string | null): string => {
     if (!dateString) return 'N/A'
     try {
       return new Date(dateString).toLocaleDateString('es-CO', {
         day: '2-digit',
         month: '2-digit',
-        year: 'numeric'
+        year: 'numeric',
       })
     } catch {
       return 'N/A'
@@ -51,18 +73,33 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
     }).format(amount)
   }
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('¿Estás seguro de que deseas eliminar esta experiencia?')) {
+  const openEvidencePicker = (experienceId: string) => {
+    setPendingId(experienceId)
+    setUploadError(null)
+    fileInputRef.current?.click()
+  }
+
+  const handleEvidenceSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    const experienceId = pendingId
+    event.target.value = ''
+    setPendingId(null)
+    if (!file || !experienceId) return
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setUploadError('Sube el certificado o el acta de finalización en PDF.')
       return
     }
 
+    setUploadingId(experienceId)
+    setUploadError(null)
     try {
-      await deleteExperience(id)
-      if (onDelete) {
-        onDelete()
-      }
+      const updated = await uploadSpecificExperienceEvidence(experienceId, file)
+      onUpdated?.(updated)
     } catch (error) {
-      alert('Error al eliminar la experiencia: ' + (error instanceof Error ? error.message : 'Error desconocido'))
+      setUploadError(formatApiError(error, 'No se pudo cargar el certificado o el acta.'))
+    } finally {
+      setUploadingId(null)
     }
   }
 
@@ -80,101 +117,159 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
     )
   }
 
-  const getExperienceIcon = (experience: CompanyExperience) => {
-    const desc = (experience.project_description || '').toLowerCase()
-    const category = (experience.category || '').toLowerCase()
-    const area = (experience.engineering_area || '').toLowerCase()
-    
-    if (desc.includes('interventoría') || desc.includes('supervisión') || category.includes('interventoría')) {
+  const showKindColumn = experiences.some(
+    (experience) =>
+      Boolean(experience.contract_kind) && experience.contract_kind !== 'desconocido'
+  )
+  const contractCount = experiences.length
+
+  const getExperienceIcon = (kind: string | null | undefined) => {
+    if (kind === 'interventoria') {
       return <WatsonMachineLearning size={20} className="experience-list-service-icon" />
     }
-    if (desc.includes('construcción') || category.includes('construcción')) {
+    if (kind === 'ejecucion_obra') {
       return <Building size={20} className="experience-list-service-icon" />
+    }
+    if (kind === 'estudios_disenos_y_obra') {
+      return <Layers size={20} className="experience-list-service-icon" />
+    }
+    if (kind === 'estudios_disenos') {
+      return <Edit size={20} className="experience-list-service-icon" />
     }
     return <DocumentAdd size={20} className="experience-list-service-icon" />
   }
 
   const headers = [
-    { key: 'service', header: 'Experiencia' },
-    { key: 'name', header: 'Nombre' },
-    { key: 'entity', header: 'Entidad Contratante' },
+    { key: 'number', header: '#' },
+    { key: 'contractor', header: 'Contratista' },
+    ...(showKindColumn ? [{ key: 'kind', header: 'Tipo de contrato' }] : []),
+    { key: 'specific', header: 'Experiencia específica' },
+    { key: 'entity', header: 'Entidad contratante' },
     { key: 'contract', header: 'Contrato' },
-    { key: 'date', header: 'Fecha Finalización' },
+    { key: 'date', header: 'Fecha finalización' },
     { key: 'amount', header: 'Valor' },
-    { key: 'category', header: 'Categoría' },
-    { key: 'details', header: '' },
+    { key: 'unspsc', header: 'UNSPSC' },
   ]
 
-  const rows = experiences.map((experience) => ({
-    id: experience.id,
-    service: (
-      <div className="experience-list-service">
-        {getExperienceIcon(experience)}
-        <span className="experience-list-service-name">
-          {experience.category || experience.engineering_area || 'Experiencia'}
-        </span>
-      </div>
-    ),
-    name: (
-      <div className="experience-list-name">
-        {experience.project_description.length > 60
-          ? `${experience.project_description.substring(0, 60)}...`
-          : experience.project_description}
-      </div>
-    ),
-    entity: experience.contracting_entity || 'N/A',
-    contract: experience.contract_number || 'N/A',
-    date: formatDate(experience.completion_date),
-    amount: experience.amount ? (
-      <span className="experience-list-amount">{formatCurrency(experience.amount)}</span>
-    ) : 'N/A',
-    category: experience.category ? (
-      <Tag type="blue" size="sm">{experience.category}</Tag>
-    ) : experience.engineering_area ? (
-      <Tag type="cyan" size="sm">{experience.engineering_area}</Tag>
-    ) : 'N/A',
-    details: (
-      <div className="experience-list-details">
-        <Link
-          href="#"
-          onClick={(e) => {
-            e.preventDefault()
-            const details = [
-              `Proyecto: ${experience.project_description}`,
-              `Entidad: ${experience.contracting_entity || 'N/A'}`,
-              `Contrato: ${experience.contract_number || 'N/A'}`,
-              `Fecha: ${formatDate(experience.completion_date)}`,
-              `Valor: ${formatCurrency(experience.amount)}`,
-              `Categoría: ${experience.category || 'N/A'}`,
-              `Área: ${experience.engineering_area || 'N/A'}`,
-            ].join('\n')
-            
-            const confirmDelete = window.confirm(
-              `Detalles de la experiencia:\n\n${details}\n\n¿Desea eliminar esta experiencia?`
-            )
-            
-            if (confirmDelete) {
-              handleDelete(experience.id)
-            }
-          }}
-          className="experience-list-details-link"
-        >
-          Ver detalles
-        </Link>
-      </div>
-    ),
-  }))
+  const rows = experiences.map((experience, index) => {
+    const kind = experience.contract_kind
+    const kindLabel = experienceContractKindLabel(kind, experience.contract_kind_label)
+    const unspscCodes = (experience.unspsc_codes || []).filter(Boolean)
+    const specificText = (experience.specific_experience || '').trim()
+    const uploading = uploadingId === experience.id
+    const contractor = (experience.contractor_name || '').trim()
+
+    return {
+      id: experience.id,
+      number: <span className="experience-list-number">{index + 1}</span>,
+      contractor: (
+        <div className="experience-list-contractor">{contractor || '—'}</div>
+      ),
+      ...(showKindColumn
+        ? {
+            kind: (
+              <div className="experience-list-service">
+                {getExperienceIcon(kind)}
+                <Tag type={experienceContractKindTag(kind)} size="sm">
+                  {kindLabel}
+                </Tag>
+              </div>
+            ),
+          }
+        : {}),
+      specific: (
+        <div className="experience-list-specific">
+          {specificText ? (
+            <>
+              <p className="experience-list-specific-text">{specificText}</p>
+              {experience.specific_evidence_filename && (
+                <span className="experience-list-specific-file">
+                  <CheckmarkFilled size={14} />
+                  {experience.specific_evidence_filename}
+                </span>
+              )}
+              <Button
+                kind="ghost"
+                size="sm"
+                renderIcon={Upload}
+                disabled={uploading}
+                onClick={() => openEvidencePicker(experience.id)}
+              >
+                {uploading ? 'Cargando…' : 'Reemplazar PDF'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="experience-list-specific-missing">
+                El RUP no trae el objeto de este contrato.
+              </p>
+              {experience.specific_evidence_filename && (
+                <span className="experience-list-specific-file">
+                  Cargado: {experience.specific_evidence_filename}. No se leyó el objeto.
+                </span>
+              )}
+              <Button
+                kind="tertiary"
+                size="sm"
+                renderIcon={Upload}
+                disabled={uploading}
+                onClick={() => openEvidencePicker(experience.id)}
+              >
+                {uploading
+                  ? 'Cargando…'
+                  : experience.specific_evidence_filename
+                    ? 'Reemplazar PDF'
+                    : 'Cargar certificado o acta de finalización'}
+              </Button>
+            </>
+          )}
+        </div>
+      ),
+      entity: experience.contracting_entity || 'N/A',
+      contract: experience.contract_number || 'N/A',
+      date: formatDate(experience.completion_date),
+      amount: experience.amount ? (
+        <span className="experience-list-amount">{formatCurrency(experience.amount)}</span>
+      ) : (
+        'N/A'
+      ),
+      unspsc: unspscCodes.length ? (
+        <div className="experience-list-unspsc">
+          {unspscCodes.map((code) => (
+            <Tag key={code} type="gray" size="sm">
+              {code}
+            </Tag>
+          ))}
+        </div>
+      ) : (
+        '—'
+      ),
+    }
+  })
 
   return (
     <div className="experience-list">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        className="experience-list-file-input"
+        onChange={handleEvidenceSelected}
+      />
+      {uploadError && (
+        <InlineNotification
+          kind="error"
+          title="Error"
+          subtitle={uploadError}
+          lowContrast
+          onClose={() => setUploadError(null)}
+        />
+      )}
+      <p className="experience-list-count">
+        {contractCount} {contractCount === 1 ? 'contrato' : 'contratos'} en la experiencia
+      </p>
       <div className="experience-list-table-container">
-        <DataTable
-          rows={rows}
-          headers={headers}
-          isSortable
-          size="md"
-          useZebraStyles
-        >
+        <DataTable rows={rows} headers={headers} isSortable size="md" useZebraStyles>
           {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
             <Table {...getTableProps()}>
               <TableHead>
@@ -190,9 +285,7 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
                 {rows.map((row) => (
                   <TableRow {...getRowProps({ row })} key={row.id}>
                     {row.cells.map((cell) => (
-                      <TableCell key={cell.id}>
-                        {cell.value}
-                      </TableCell>
+                      <TableCell key={cell.id}>{cell.value}</TableCell>
                     ))}
                   </TableRow>
                 ))}

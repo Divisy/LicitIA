@@ -204,25 +204,22 @@ const Profile: React.FC = () => {
         specialties.add(exp.engineering_area)
       }
 
-      // Determine tender types based on category and area
-      const categoryLower = (exp.category || '').toLowerCase()
-      const areaLower = (exp.engineering_area || '').toLowerCase()
-      const descriptionLower = (exp.project_description || '').toLowerCase()
+      if (exp.contract_kind_label && exp.contract_kind && exp.contract_kind !== 'desconocido') {
+        tenderTypes.add(exp.contract_kind_label)
+      } else {
+        const categoryLower = (exp.category || '').toLowerCase()
+        const areaLower = (exp.engineering_area || '').toLowerCase()
+        const descriptionLower = (exp.project_description || '').toLowerCase()
 
-      if (categoryLower.includes('interventoría') || areaLower.includes('interventoría') || descriptionLower.includes('interventoría')) {
-        tenderTypes.add('Interventoría y Supervisión')
-      }
-      if (categoryLower.includes('construcción') || areaLower.includes('construcción') || descriptionLower.includes('construcción')) {
-        tenderTypes.add('Construcción')
-      }
-      if (areaLower.includes('vial') || areaLower.includes('vías') || descriptionLower.includes('vial')) {
-        tenderTypes.add('Infraestructura Vial')
-      }
-      if (descriptionLower.includes('supervisión') || descriptionLower.includes('supervision')) {
-        tenderTypes.add('Supervisión de Obras')
-      }
-      if (descriptionLower.includes('estudio') || descriptionLower.includes('diseño')) {
-        tenderTypes.add('Estudios y Diseños')
+        if (categoryLower.includes('interventoría') || areaLower.includes('interventoria') || descriptionLower.includes('interventoría')) {
+          tenderTypes.add('Interventoría')
+        }
+        if (categoryLower.includes('construcción') || areaLower.includes('ejecucion_obra') || descriptionLower.includes('construcción')) {
+          tenderTypes.add('Ejecución de obra')
+        }
+        if (descriptionLower.includes('estudio') || descriptionLower.includes('diseño') || areaLower.includes('estudios_disenos')) {
+          tenderTypes.add('Estudios y diseños')
+        }
       }
 
       // Extract regions from contracting entity

@@ -17,6 +17,7 @@ from app.schemas.rup import RupCapacityPayload, RupImportResponse, RupProfileRes
 from app.services.document_storage import get_document_storage
 from app.services.rup_import import (
     ensure_company_capacity_table,
+    ensure_specific_experience_columns,
     persist_rup_pdf,
     replace_experiences_from_rup,
     upsert_capacity,
@@ -121,6 +122,7 @@ async def import_rup(
 
     try:
         ensure_company_capacity_table(db)
+        ensure_specific_experience_columns(db)
         imported = replace_experiences_from_rup(db, company_name=name, parsed=parsed)
         capacity = upsert_capacity(
             db,

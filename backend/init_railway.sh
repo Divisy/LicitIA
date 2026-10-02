@@ -161,6 +161,21 @@ with engine.begin() as conn:
         ON company_capacity (company_name);
         """
     ))
+    conn.execute(text(
+        "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS specific_experience TEXT"
+    ))
+    conn.execute(text(
+        "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS specific_evidence_filename VARCHAR(255)"
+    ))
+    conn.execute(text(
+        "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS specific_evidence_key VARCHAR(500)"
+    ))
+    conn.execute(text(
+        "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS contractor_name VARCHAR(500)"
+    ))
+    conn.execute(text(
+        "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS unspsc_codes TEXT"
+    ))
 
 EOF
 

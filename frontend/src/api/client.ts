@@ -462,10 +462,16 @@ export interface CompanyExperience {
   contract_number: string | null;
   project_description: string;
   contracting_entity: string | null;
+  contractor_name: string | null;
   completion_date: string | null;
   amount: number | null;
   category: string | null;
   engineering_area: string | null;
+  contract_kind: string | null;
+  contract_kind_label: string | null;
+  specific_experience: string | null;
+  specific_evidence_filename: string | null;
+  unspsc_codes: string[] | null;
   keywords: string[] | null;
   created_at: string;
   updated_at: string;
@@ -487,6 +493,19 @@ export async function getExperiences(
 
 export async function deleteExperience(id: string): Promise<void> {
   await client.delete(`/experiences/${id}`);
+}
+
+export async function uploadSpecificExperienceEvidence(
+  experienceId: string,
+  file: File
+): Promise<CompanyExperience> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  const response = await client.post<CompanyExperience>(
+    `/experiences/${experienceId}/specific-evidence`,
+    formData
+  );
+  return response.data;
 }
 
 export interface CompanyExperienceCreate {

@@ -11,10 +11,15 @@ class CompanyExperienceBase(BaseModel):
     contract_number: Optional[str] = None
     project_description: str = Field(..., description="Project/work description (OBRA)")
     contracting_entity: Optional[str] = None
+    contractor_name: Optional[str] = None
     completion_date: Optional[date] = None
     amount: Optional[float] = None
     category: Optional[str] = None
     engineering_area: Optional[str] = None
+    contract_kind: Optional[str] = None
+    contract_kind_label: Optional[str] = None
+    specific_experience: Optional[str] = None
+    specific_evidence_filename: Optional[str] = None
 
 
 class CompanyExperienceCreate(CompanyExperienceBase):
@@ -26,6 +31,7 @@ class CompanyExperienceResponse(CompanyExperienceBase):
     """Schema for experience response."""
     id: UUID
     keywords: Optional[List[str]] = None
+    unspsc_codes: List[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     

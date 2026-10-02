@@ -104,7 +104,7 @@ const Experiences: React.FC = () => {
           </h2>
         </div>
         <p className="experiences-step-description">
-          Visualice y gestione todas sus experiencias guardadas. Puede eliminar experiencias que ya no sean relevantes.
+          El RUP no trae la experiencia específica (el objeto del contrato). En cada fila, carga el certificado o el acta de finalización para completar ese dato.
         </p>
         
         {loading && (
@@ -129,6 +129,11 @@ const Experiences: React.FC = () => {
               experiences={experiences}
               companyName={companyName}
               onDelete={handleDeleteSuccess}
+              onUpdated={(updated) => {
+                setExperiences((current) =>
+                  current.map((item) => (item.id === updated.id ? updated : item))
+                )
+              }}
             />
             <div className="experiences-step-footer">
               <Button
