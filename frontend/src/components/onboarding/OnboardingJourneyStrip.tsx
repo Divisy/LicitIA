@@ -4,7 +4,7 @@ import './OnboardingJourneyStrip.scss'
 
 export const ONBOARDING_JOURNEY_STEPS = [
   { id: 'value', label: 'Conoce el valor' },
-  { id: 'portfolio', label: 'Sube tu portafolio' },
+  { id: 'portfolio', label: 'Sube tu RUP' },
   { id: 'opportunities', label: 'Ve tus oportunidades' },
 ] as const
 

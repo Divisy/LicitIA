@@ -10,7 +10,6 @@ import {
 } from '@carbon/icons-react'
 import {
   PREGUNTA_0_HEADLINE,
-  PREGUNTA_0_LEAD_SHORT,
   PREGUNTA_0_VALUE_POINTS,
   PRODUCT_WHY,
   WELCOME_CTA_LABEL,
@@ -19,15 +18,15 @@ import OnboardingProductPreview from './OnboardingProductPreview'
 import './WelcomeStep.scss'
 
 const VALUE_POINT_ICONS = {
+  experience: Flash,
+  updates: Renew,
   partners: Partnership,
-  profile: Flash,
-  radar: Renew,
 } as const
 
 const VALUE_POINT_TONES = {
+  experience: 'speed',
+  updates: 'sector',
   partners: 'partners',
-  profile: 'speed',
-  radar: 'sector',
 } as const
 
 interface WelcomeStepProps {
@@ -51,8 +50,6 @@ const WelcomeStep: React.FC<WelcomeStepProps> = ({ onNext, onSkip }) => {
             </p>
 
             <h1 className="onboarding-welcome-step__headline">{PREGUNTA_0_HEADLINE}</h1>
-
-            <p className="onboarding-welcome-step__lead">{PREGUNTA_0_LEAD_SHORT}</p>
 
             <ul className="onboarding-welcome-step__points">
               {PREGUNTA_0_VALUE_POINTS.map((point) => {

@@ -6,39 +6,36 @@
 
 export const PRODUCT_WHY = {
   audience: 'empresas de construcción, ingeniería e interventoría',
-  pillarPartners:
-    'encontrar el socio que te falta para presentarte a más licitaciones',
-  pillarProfile: 'conocer tu capacidad y en qué procesos necesitas aliado',
-  pillarRadar: 'licitaciones de obra pública filtradas para tu sector',
+  pillarFast: 'encontrar licitaciones relevantes mucho más rápido',
+  pillarPartners: 'encontrar socios para presentarse juntas y acceder a más oportunidades',
 } as const
 
 /** Respuesta a Pregunta 0 — comprensión en < 30 s */
 export const PREGUNTA_0_HEADLINE =
-  'Participa en más licitaciones — con el socio que te falta.'
+  'Encuentra licitaciones relevantes para tu empresa en solo segundos.'
 
 export const PREGUNTA_0_PROMISE =
-  'En obra pública, sin el aliado adecuado las oportunidades son pocas. LicitIA conoce tu capacidad y te ayuda a encontrar socios para consorcios y uniones temporales — y a abrir procesos que sola no alcanzarías.'
+  'LicitIA ayuda a empresas de construcción, ingeniería e interventoría a descubrir oportunidades de obra pública que encajan con su experiencia — sin perder horas en SECOP.'
 
-/** Versión escaneable bajo el titular en onboarding */
+/** Versión escaneable para onboarding (menos carga cognitiva) */
 export const PREGUNTA_0_LEAD_SHORT =
-  'Sube tu portafolio, identifica en qué licitaciones necesitas socio y con quién presentarte.'
+  'Oportunidades de obra pública filtradas por tu experiencia — sin perder horas en SECOP.'
 
 export const PREGUNTA_0_PROMISE_EXTENDED =
-  'Hoy activamos tu radar y match %. Próximamente, recomendación directa de socios complementarios para cada proceso.'
+  'Próximamente podrás identificar socios para armar consorcios y presentarte a procesos que solas no alcanzarías.'
 
 export const PREGUNTA_0_VALUE_POINTS = [
   {
+    id: 'experience',
+    label: 'Filtrado por tu experiencia general, específica e indicadores financieros.',
+  },
+  {
+    id: 'updates',
+    label: 'Actualización diaria de licitaciones para el sector de la construcción.',
+  },
+  {
     id: 'partners',
-    label: 'Encuentra socios para consorcios y presentarte a más licitaciones.',
-    badge: 'Próximamente',
-  },
-  {
-    id: 'profile',
-    label: 'Tu portafolio define qué aportas y dónde necesitas un aliado.',
-  },
-  {
-    id: 'radar',
-    label: 'Licitaciones de obra pública actualizadas para construcción e ingeniería.',
+    label: 'Socios para consorcios',
   },
 ] as const
 
@@ -46,14 +43,14 @@ export const PREGUNTA_0_VALUE_POINTS = [
 export const JTBD_0_TITLE = 'Primero, cuéntale a LicitIA en qué es buena tu empresa'
 
 export const JTBD_0_DESCRIPTION =
-  'Sube tu portafolio de contratos en obra pública. Con eso sabemos qué puedes aportar a un consorcio, tu match % en cada licitación y en cuáles te falta un socio.'
+  'Sube tu RUP. Con eso sabemos qué puedes aportar a un consorcio, tu match % en cada licitación y en cuáles te falta un socio.'
 
-export const WELCOME_CTA_LABEL = 'Continuar — subir portafolio'
+export const WELCOME_CTA_LABEL = 'Continuar — subir RUP'
 
 export const PORTFOLIO_BANNER_TITLE = 'Tu perfil aún no está activo'
 
 export const PORTFOLIO_BANNER_TEXT =
-  'Sube tu portafolio para ver en qué licitaciones puedes ir sola y en cuáles necesitas un socio para participar.'
+  'Sube tu RUP para ver en qué licitaciones puedes ir sola y en cuáles necesitas un socio para participar.'
 
 export const DASHBOARD_SUBTITLE_READY =
   'Licitaciones donde encajas — y dónde podrías necesitar un socio'

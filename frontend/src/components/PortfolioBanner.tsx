@@ -1,6 +1,7 @@
 import React from 'react'
 import { Button } from '@carbon/react'
-import { Radar } from '@carbon/icons-react'
+import { Partnership } from '@carbon/icons-react'
+import { PORTFOLIO_BANNER_TEXT, PORTFOLIO_BANNER_TITLE } from '../content/productMessaging'
 import './PortfolioBanner.scss'
 
 interface PortfolioBannerProps {
@@ -11,18 +12,14 @@ const PortfolioBanner: React.FC<PortfolioBannerProps> = ({ onUpload }) => {
   return (
     <div className="portfolio-banner">
       <div className="portfolio-banner__content">
-        <Radar size={20} className="portfolio-banner__icon" />
+        <Partnership size={20} className="portfolio-banner__icon" />
         <div className="portfolio-banner__text">
-          <strong>Tu radar aún no está activo</strong>
-          <span>
-            {' '}
-            Sube tu portafolio para ver licitaciones relevantes en construcción, ingeniería e
-            interventoría — en minutos, no horas.
-          </span>
+          <strong>{PORTFOLIO_BANNER_TITLE}</strong>
+          <span> {PORTFOLIO_BANNER_TEXT}</span>
         </div>
       </div>
       <Button kind="primary" size="sm" onClick={onUpload}>
-        Activar radar
+        Subir RUP
       </Button>
     </div>
   )
