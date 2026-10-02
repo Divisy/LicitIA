@@ -5,6 +5,7 @@ import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from sqlalchemy.exc import ProgrammingError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -58,7 +59,7 @@ def _warnings(row: Optional[CompanyCapacity]) -> list[str]:
 @router.post("/rup/import", response_model=RupImportResponse)
 async def import_rup(
     file: UploadFile = File(..., description="Certificado RUP en PDF"),
-    company_name: str = Query(..., min_length=1, description="Company name"),
+    company_name: str = Query("Mi Empresa", min_length=1, description="Company name"),
     db: Session = Depends(get_db),
 ):
     filename = (file.filename or "").strip()
@@ -101,28 +102,43 @@ async def import_rup(
         )
         raise HTTPException(status_code=400, detail=detail)
 
+    name = (company_name or "").strip() or "Mi Empresa"
     try:
         source_key = persist_rup_pdf(
             get_document_storage(),
-            company_name=company_name.strip(),
+            company_name=name,
             filename=filename,
             content=content,
         )
     except Exception as exc:
-        logger.warning("Failed to store RUP PDF for %s: %s", company_name, exc)
+        logger.warning("Failed to store RUP PDF for %s: %s", name, exc)
         raise HTTPException(status_code=500, detail="No se pudo guardar el certificado RUP.") from exc
 
-    name = company_name.strip()
-    imported = replace_experiences_from_rup(db, company_name=name, parsed=parsed)
-    capacity = upsert_capacity(
-        db,
-        company_name=name,
-        parsed=parsed,
-        source_pdf_key=source_key,
-        source_pdf_filename=filename,
-    )
-    db.commit()
-    db.refresh(capacity)
+    try:
+        imported = replace_experiences_from_rup(db, company_name=name, parsed=parsed)
+        capacity = upsert_capacity(
+            db,
+            company_name=name,
+            parsed=parsed,
+            source_pdf_key=source_key,
+            source_pdf_filename=filename,
+        )
+        db.commit()
+        db.refresh(capacity)
+    except ProgrammingError as exc:
+        db.rollback()
+        logger.exception("RUP schema missing for %s: %s", name, exc)
+        raise HTTPException(
+            status_code=500,
+            detail="El perfil RUP aún no está listo en la base de datos. Espera un minuto e inténtalo de nuevo.",
+        ) from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("RUP persist failed for %s: %s", name, exc)
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo guardar la experiencia extraída del RUP.",
+        ) from exc
 
     return RupImportResponse(
         imported_experiences=imported,

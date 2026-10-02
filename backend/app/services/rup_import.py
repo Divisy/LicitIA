@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import tempfile
 import uuid
 from datetime import datetime
@@ -36,6 +37,17 @@ def persist_rup_pdf(
         tmp_path = Path(tmp.name)
     try:
         return storage.persist_local_file(tmp_path, object_key)
+    except Exception as exc:
+        dest = storage.local_path(object_key)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(tmp_path, dest)
+        try:
+            storage.upload_local_copy(object_key)
+        except Exception:
+            pass
+        if not dest.is_file():
+            raise exc
+        return object_key
     finally:
         if tmp_path.exists():
             tmp_path.unlink(missing_ok=True)

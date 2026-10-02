@@ -14,15 +14,24 @@ if (import.meta.env.DEV) {
 
 const client = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
   timeout: 120000, // 2 minutes timeout for experience matching (can take time with AI)
 });
 
 // Add request interceptor for debugging
 client.interceptors.request.use(
   (config) => {
+    const isFormData =
+      typeof FormData !== "undefined" && config.data instanceof FormData;
+    if (isFormData) {
+      // Let the browser set multipart boundary. A JSON default breaks file uploads.
+      if (config.headers && typeof config.headers.delete === "function") {
+        config.headers.delete("Content-Type");
+      } else if (config.headers) {
+        delete (config.headers as Record<string, unknown>)["Content-Type"];
+      }
+    } else if (config.headers && !config.headers["Content-Type"]) {
+      config.headers["Content-Type"] = "application/json";
+    }
     if (import.meta.env.DEV) {
       console.log('[API Request]', config.method?.toUpperCase(), config.url, config.baseURL);
     }
@@ -50,6 +59,31 @@ client.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export function formatApiError(error: unknown, fallback = "Error al cargar el RUP"): string {
+  const err = error as {
+    message?: string;
+    response?: { data?: { detail?: unknown } };
+  };
+  const detail = err.response?.data?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object" && "msg" in item) {
+          return String((item as { msg: unknown }).msg);
+        }
+        return "";
+      })
+      .filter(Boolean);
+    if (parts.length) return parts.join(" · ");
+  }
+  if (!err.response) {
+    return "No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.";
+  }
+  return fallback;
+}
 
 export interface LeadCreate {
   email: string;
@@ -354,16 +388,11 @@ export async function importExperiences(
   companyName: string
 ): Promise<ExcelImportResponse> {
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", file, file.name);
 
   const response = await client.post<ExcelImportResponse>(
-    `/experiences/import?company_name=${encodeURIComponent(companyName)}`,
-    formData,
-    {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    }
+    `/experiences/import?company_name=${encodeURIComponent(companyName.trim() || "Mi Empresa")}`,
+    formData
   );
   return response.data;
 }
@@ -409,16 +438,11 @@ export async function importRup(
   companyName: string
 ): Promise<RupImportResponse> {
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", file, file.name);
 
   const response = await client.post<RupImportResponse>(
-    `/rup/import?company_name=${encodeURIComponent(companyName)}`,
-    formData,
-    {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    }
+    `/rup/import?company_name=${encodeURIComponent(companyName.trim() || "Mi Empresa")}`,
+    formData
   );
   return response.data;
 }

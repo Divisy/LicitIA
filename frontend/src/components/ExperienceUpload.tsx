@@ -7,19 +7,13 @@ import {
   Loading,
 } from '@carbon/react'
 import { Upload } from '@carbon/icons-react'
-import { importRup } from '../api/client'
+import { formatApiError, importRup } from '../api/client'
 import './ExperienceUpload.scss'
 
 interface ExperienceUploadProps {
   onUploadSuccess?: (count?: number) => void
   defaultCompanyName?: string
   showValueProposition?: boolean
-}
-
-function apiErrorMessage(error: unknown): string {
-  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
-  if (typeof detail === 'string') return detail
-  return 'Error al cargar el RUP'
 }
 
 const ExperienceUpload: React.FC<ExperienceUploadProps> = ({
@@ -86,7 +80,7 @@ const ExperienceUpload: React.FC<ExperienceUploadProps> = ({
       setFile(null)
       onUploadSuccess?.(result.imported_experiences)
     } catch (error) {
-      setMessage({ type: 'error', text: apiErrorMessage(error) })
+      setMessage({ type: 'error', text: formatApiError(error) })
     } finally {
       setUploading(false)
     }

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Button, InlineNotification, FileUploader, FileUploaderItem, Loading } from '@carbon/react'
 import { ArrowLeft, ArrowRight, CheckmarkFilled } from '@carbon/icons-react'
-import { importRup } from '../../api/client'
+import { formatApiError, importRup } from '../../api/client'
 import { JTBD_0_DESCRIPTION, JTBD_0_TITLE } from '../../content/productMessaging'
 import './ExperiencesStep.scss'
 
@@ -10,12 +10,6 @@ interface RupUploadStepProps {
   onBack: () => void
   onSkip: () => void
   companyName: string
-}
-
-function apiErrorMessage(error: unknown): string {
-  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
-  if (typeof detail === 'string') return detail
-  return 'Error al cargar el RUP'
 }
 
 const RupUploadStep: React.FC<RupUploadStepProps> = ({
@@ -56,7 +50,7 @@ const RupUploadStep: React.FC<RupUploadStepProps> = ({
       setCapacitySummary(bits.join(' · '))
       setUploadSuccess(true)
     } catch (error) {
-      setUploadError(apiErrorMessage(error))
+      setUploadError(formatApiError(error))
       setFiles([])
     } finally {
       setIsUploading(false)
