@@ -2,40 +2,82 @@
 @use '@carbon/react/scss/type' as *;
 
 .rup-capacity-card {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: $spacing-06;
-  grid-template-columns: 1fr;
-
-  @media (min-width: 672px) {
-    grid-template-columns: 1fr 1fr;
-  }
 }
 
-.rup-capacity-card-title {
+.rup-capacity-group-head {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  margin-bottom: $spacing-04;
+  min-height: 1.5rem;
+}
+
+.rup-capacity-group-title {
   @include type-style('heading-compact-01');
-  margin: 0 0 $spacing-04;
+  margin: 0;
   color: var(--cds-text-primary);
   font-weight: 600;
+  white-space: nowrap;
 }
 
-.rup-capacity-card-grid {
+.rup-capacity-metrics {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: $spacing-04 $spacing-05;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-03;
+
+  @media (min-width: 672px) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.rup-capacity-group:last-child .rup-capacity-metrics {
+  @media (min-width: 672px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.rup-capacity-metric {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: $spacing-03;
+  min-height: 5.5rem;
+  padding: $spacing-04;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-03;
+}
+
+.rup-capacity-metric-label {
+  @include type-style('label-01');
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-03;
   margin: 0;
+  color: var(--cds-text-secondary);
+  line-height: 1.3;
+}
 
-  dt {
-    @include type-style('label-01');
-    color: var(--cds-text-secondary);
-    margin: 0 0 $spacing-01;
-  }
+.rup-capacity-metric-abbr {
+  @include type-style('label-01');
+  flex-shrink: 0;
+  color: var(--cds-text-helper);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
 
-  dd {
-    @include type-style('heading-compact-01');
-    color: var(--cds-text-primary);
-    margin: 0;
-    font-weight: 600;
-  }
+.rup-capacity-metric-value {
+  @include type-style('heading-03');
+  margin: 0;
+  color: var(--cds-text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  word-break: break-word;
 }
 
 .rup-capacity-card-empty {

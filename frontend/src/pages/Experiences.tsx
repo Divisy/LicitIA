@@ -110,7 +110,7 @@ const Experiences: React.FC = () => {
             </h2>
           </div>
           <p className="experiences-step-description">
-            Capacidad financiera y organizacional extraída del certificado. Se usarán para el match con las licitaciones.
+            Extraídos del certificado para habilitar el match con las licitaciones.
           </p>
           <RupCapacityCard capacity={rupProfile.capacity} />
         </Tile>
