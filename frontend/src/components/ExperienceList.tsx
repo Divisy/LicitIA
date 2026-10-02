@@ -84,6 +84,26 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
     }).format(amount)
   }
 
+  const formatSmmlv = (amount: number): string =>
+    `${new Intl.NumberFormat('es-CO', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(amount)} SMMLV`
+
+  const formatExperienceValue = (experience: CompanyExperience) => {
+    if (experience.amount_smmlv) {
+      return (
+        <span className="experience-list-amount">{formatSmmlv(experience.amount_smmlv)}</span>
+      )
+    }
+    if (experience.amount) {
+      return (
+        <span className="experience-list-amount">{formatCurrency(experience.amount)}</span>
+      )
+    }
+    return 'N/A'
+  }
+
   const openEvidencePicker = (experienceId: string) => {
     setPendingId(experienceId)
     setUploadError(null)
@@ -158,7 +178,7 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
     { key: 'entity', header: 'Entidad contratante' },
     { key: 'contract', header: 'Contrato' },
     { key: 'date', header: 'Fecha finalización' },
-    { key: 'amount', header: 'Valor' },
+    { key: 'amount', header: 'Valor (SMMLV)' },
     { key: 'unspsc', header: 'UNSPSC' },
   ]
 
@@ -239,11 +259,7 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
       entity: experience.contracting_entity || 'N/A',
       contract: experience.contract_number || 'N/A',
       date: formatDate(experience.completion_date),
-      amount: experience.amount ? (
-        <span className="experience-list-amount">{formatCurrency(experience.amount)}</span>
-      ) : (
-        'N/A'
-      ),
+      amount: formatExperienceValue(experience),
       unspsc: unspscCodes.length ? (
         <div className="experience-list-unspsc">
           {unspscCodes.slice(0, UNSPSC_PREVIEW_LIMIT).map((code) => (

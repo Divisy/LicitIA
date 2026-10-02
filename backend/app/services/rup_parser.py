@@ -159,11 +159,11 @@ def parse_rup_text(text: str, *, use_llm: bool = True) -> RupParseResult:
     smmlv = result.smmlv or _SMMLV_BY_YEAR.get(result.cut_year or 0, DEFAULT_SMMLV_COP)
     for contract in result.contracts:
         claimed = contract.amount_smmlv
+        accredited = claimed
         if claimed is not None and contract.participation_pct is not None:
-            claimed = round(claimed * (contract.participation_pct / 100.0), 4)
-            contract.amount_smmlv = claimed
-        if contract.amount_cop is None and claimed is not None:
-            contract.amount_cop = round(claimed * smmlv, 2)
+            accredited = round(claimed * (contract.participation_pct / 100.0), 4)
+        if contract.amount_cop is None and accredited is not None:
+            contract.amount_cop = round(accredited * smmlv, 2)
         if not contract.contract_kind:
             contract.contract_kind = classify_rup_experience_kind(
                 object_text=contract.object or "",

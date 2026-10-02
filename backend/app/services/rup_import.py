@@ -76,6 +76,18 @@ def _money(value: Optional[float]) -> Optional[float]:
     return round(number, 2)
 
 
+def _smmlv(value: Optional[float]) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number in (float("inf"), float("-inf")) or number <= 0:
+        return None
+    return round(number, 4)
+
+
 def ensure_company_capacity_table(db: Session) -> None:
     db.execute(text(_CREATE_CAPACITY_SQL))
     db.execute(
@@ -115,6 +127,12 @@ def ensure_specific_experience_columns(db: Session) -> None:
     )
     db.execute(
         text("ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS unspsc_codes TEXT")
+    )
+    db.execute(
+        text(
+            "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS "
+            "amount_smmlv NUMERIC(18, 4)"
+        )
     )
     db.commit()
 
@@ -212,6 +230,7 @@ def replace_experiences_from_rup(
             contracting_entity=_clip(contract.entity, 500),
             completion_date=contract.completion_date,
             amount=_money(contract.amount_cop),
+            amount_smmlv=_smmlv(contract.amount_smmlv),
             category=_clip(contract.category, 200),
             engineering_area=_clip(contract.contract_kind, 200),
             department=_clip(contract.department, 100),
@@ -266,16 +285,21 @@ def upsert_capacity(
     return row
 
 
-def backfill_unspsc_from_stored_rup(
+def backfill_rup_fields_from_stored_pdf(
     db: Session,
     experiences: list[CompanyExperience],
 ) -> None:
-    """Re-read the saved RUP PDF when imported rows have no clasificador codes."""
-    missing = [
-        row
-        for row in experiences
-        if not unspsc_codes_from_stored(stored_json=getattr(row, "unspsc_codes", None))
-    ]
+    """Re-read the saved RUP PDF when imported rows lack UNSPSC or SMMLV."""
+
+    def needs_unspsc(row: CompanyExperience) -> bool:
+        return not unspsc_codes_from_stored(stored_json=getattr(row, "unspsc_codes", None))
+
+    def needs_smmlv(row: CompanyExperience) -> bool:
+        if getattr(row, "amount_smmlv", None) is not None:
+            return False
+        return (row.contract_number or "").upper().startswith("RUP-")
+
+    missing = [row for row in experiences if needs_unspsc(row) or needs_smmlv(row)]
     if not missing:
         return
 
@@ -287,7 +311,7 @@ def backfill_unspsc_from_stored_rup(
     )
     capacity_by_name = {(row.company_name or "").lower(): row for row in capacities}
     storage = get_document_storage()
-    codes_by_company: dict[str, dict[str, list[str]]] = {}
+    parsed_by_company: dict[str, dict[str, object]] = {}
     for name in names:
         capacity = capacity_by_name.get((name or "").lower())
         if not capacity or not capacity.source_pdf_key:
@@ -296,22 +320,27 @@ def backfill_unspsc_from_stored_rup(
             content = b"".join(storage.iter_file_chunks(capacity.source_pdf_key))
             parsed = parse_rup_text(extract_text_from_pdf_bytes(content), use_llm=False)
         except Exception as exc:
-            logger.warning("No se pudo reextraer UNSPSC del RUP de %s: %s", name, exc)
+            logger.warning("No se pudo reextraer campos del RUP de %s: %s", name, exc)
             continue
-        codes_by_company[name.lower()] = {
-            (contract.contract_number or "").strip().upper(): contract.unspsc_codes
+        parsed_by_company[name.lower()] = {
+            (contract.contract_number or "").strip().upper(): contract
             for contract in parsed.contracts
-            if contract.unspsc_codes and contract.contract_number
+            if contract.contract_number
         }
 
     updated = False
     for row in missing:
-        codes = (codes_by_company.get((row.company_name or "").lower()) or {}).get(
+        contract = (parsed_by_company.get((row.company_name or "").lower()) or {}).get(
             (row.contract_number or "").strip().upper()
         )
-        if not codes:
+        if not contract:
             continue
-        row.unspsc_codes = json.dumps(codes, ensure_ascii=False)
-        updated = True
+        if needs_unspsc(row) and contract.unspsc_codes:
+            row.unspsc_codes = json.dumps(contract.unspsc_codes, ensure_ascii=False)
+            updated = True
+        smmlv = _smmlv(contract.amount_smmlv)
+        if needs_smmlv(row) and smmlv is not None:
+            row.amount_smmlv = smmlv
+            updated = True
     if updated:
         db.commit()

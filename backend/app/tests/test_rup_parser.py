@@ -222,7 +222,7 @@ def test_parse_ccb_rup_experience_and_capacity():
     first = consecutives[0]
     assert first.entity and "IDU" in first.entity
     assert first.participation_pct == 25
-    assert first.amount_smmlv == round(12290.89 * 0.25, 4)
+    assert first.amount_smmlv == 12290.89
     assert "VIAS URBANAS" in first.object
     assert first.contractor and "VIAS URBANAS" in first.contractor
     assert first.unspsc_codes == ["72103300", "81101500"]

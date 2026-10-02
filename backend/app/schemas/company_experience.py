@@ -14,6 +14,7 @@ class CompanyExperienceBase(BaseModel):
     contractor_name: Optional[str] = None
     completion_date: Optional[date] = None
     amount: Optional[float] = None
+    amount_smmlv: Optional[float] = None
     category: Optional[str] = None
     engineering_area: Optional[str] = None
     contract_kind: Optional[str] = None

@@ -463,9 +463,10 @@ export interface CompanyExperience {
   project_description: string;
   contracting_entity: string | null;
   contractor_name: string | null;
-  completion_date: string | null;
-  amount: number | null;
-  category: string | null;
+    completion_date: string | null;
+    amount: number | null;
+    amount_smmlv: number | null;
+    category: string | null;
   engineering_area: string | null;
   contract_kind: string | null;
   contract_kind_label: string | null;

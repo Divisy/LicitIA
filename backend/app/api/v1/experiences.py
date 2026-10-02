@@ -17,7 +17,7 @@ from app.schemas.company_experience import (
 )
 from app.services.excel_import import import_experiences_from_excel
 from app.services.rup_contract_kind import kind_payload_for_experience, unspsc_codes_from_stored
-from app.services.rup_import import backfill_unspsc_from_stored_rup, ensure_specific_experience_columns
+from app.services.rup_import import backfill_rup_fields_from_stored_pdf, ensure_specific_experience_columns
 from app.services.rup_parser import resolve_contractor_name
 from app.core.logging import get_logger
 
@@ -62,6 +62,9 @@ def _experience_dict(
         ),
         "completion_date": experience.completion_date,
         "amount": float(experience.amount) if experience.amount else None,
+        "amount_smmlv": float(experience.amount_smmlv)
+        if getattr(experience, "amount_smmlv", None)
+        else None,
         "category": experience.category,
         "engineering_area": experience.engineering_area,
         "contract_kind": kind,
@@ -127,7 +130,7 @@ async def list_experiences(
         case((CompanyExperience.completion_date.is_(None), 1), else_=0),
         CompanyExperience.completion_date.desc()
     ).offset(offset).limit(limit).all()
-    backfill_unspsc_from_stored_rup(db, experiences)
+    backfill_rup_fields_from_stored_pdf(db, experiences)
 
     # Parse keywords for response
     import json

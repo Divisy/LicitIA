@@ -176,6 +176,9 @@ with engine.begin() as conn:
     conn.execute(text(
         "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS unspsc_codes TEXT"
     ))
+    conn.execute(text(
+        "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS amount_smmlv NUMERIC(18, 4)"
+    ))
 
 EOF
 

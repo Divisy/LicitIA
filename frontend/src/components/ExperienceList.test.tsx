@@ -14,6 +14,7 @@ function experience(overrides: Partial<CompanyExperience> = {}): CompanyExperien
     contractor_name: 'CONSTRUCTORA',
     completion_date: null,
     amount: 2178220160,
+    amount_smmlv: 12290.89,
     category: null,
     engineering_area: 'estudios_disenos_y_obra',
     contract_kind: 'estudios_disenos_y_obra',
@@ -62,5 +63,11 @@ describe('ExperienceList UNSPSC preview', () => {
       />
     )
     expect(screen.queryByRole('button', { name: /Ver códigos/ })).not.toBeInTheDocument()
+  })
+
+  it('shows the RUP SMMLV value instead of converted pesos', () => {
+    render(<ExperienceList experiences={[experience()]} companyName="BEC" />)
+    expect(screen.getByText(/12\.290,89 SMMLV/)).toBeInTheDocument()
+    expect(screen.queryByText(/2\.178\.220\.160/)).not.toBeInTheDocument()
   })
 })

@@ -18,7 +18,8 @@ class CompanyExperience(Base):
     contractor_name = Column(String(500), nullable=True)
     contracting_entity = Column(String(500), nullable=True)  # ENTIDAD CONTRATANTE
     completion_date = Column(Date, nullable=True)  # FECHA FINALIZACIÓN
-    amount = Column(Numeric(18, 2), nullable=True)  # VALOR ACTUAL
+    amount = Column(Numeric(18, 2), nullable=True)  # pesos if the RUP reported COP
+    amount_smmlv = Column(Numeric(18, 4), nullable=True)  # SMMLV printed on the RUP
     category = Column(String(200), nullable=True)  # CATEGORÍA
     engineering_area = Column(String(200), nullable=True)  # ÁREA DE LA INGENIERÍA CIVIL
     
