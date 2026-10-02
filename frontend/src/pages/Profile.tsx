@@ -40,6 +40,7 @@ import {
 } from '@carbon/icons-react'
 import { useTheme } from '../theme/ThemeProvider'
 import Logo from '../components/Logo'
+import RupCapacityCard from '../components/RupCapacityCard'
 import { getExperiences, getRupProfile, CompanyExperience, RupProfileResponse } from '../api/client'
 import './Profile.scss'
 
@@ -512,19 +513,8 @@ const Profile: React.FC = () => {
                     <div className="profile-analysis-stat-number">{rupProfile.experiences_count}</div>
                     <div className="profile-analysis-stat-label">contratos</div>
                   </div>
-                  {rupProfile.capacity.liquidez != null && (
-                    <div className="profile-analysis-stat-item">
-                      <div className="profile-analysis-stat-number">{rupProfile.capacity.liquidez}</div>
-                      <div className="profile-analysis-stat-label">liquidez</div>
-                    </div>
-                  )}
-                  {rupProfile.capacity.endeudamiento != null && (
-                    <div className="profile-analysis-stat-item">
-                      <div className="profile-analysis-stat-number">{rupProfile.capacity.endeudamiento}</div>
-                      <div className="profile-analysis-stat-label">endeudamiento</div>
-                    </div>
-                  )}
                 </div>
+                <RupCapacityCard capacity={rupProfile.capacity} />
                 <Button kind="tertiary" size="md" onClick={() => navigate('/experiences')} renderIcon={ArrowRight}>
                   Volver a cargar RUP
                 </Button>

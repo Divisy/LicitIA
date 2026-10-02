@@ -16,6 +16,7 @@ from app.models.company_experience import CompanyExperience
 from app.schemas.rup import RupCapacityPayload, RupImportResponse, RupProfileResponse
 from app.services.document_storage import get_document_storage
 from app.services.rup_import import (
+    backfill_capacity_from_stored_rup,
     ensure_company_capacity_table,
     ensure_specific_experience_columns,
     persist_rup_pdf,
@@ -174,6 +175,7 @@ def get_rup_profile(
     )
     if not row:
         raise HTTPException(status_code=404, detail="Esta empresa aún no tiene un RUP cargado.")
+    row = backfill_capacity_from_stored_rup(db, row)
 
     experiences_count = (
         db.query(CompanyExperience)

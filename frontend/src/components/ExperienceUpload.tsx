@@ -73,6 +73,9 @@ const ExperienceUpload: React.FC<ExperienceUploadProps> = ({
       const extras: string[] = []
       if (result.capacity.liquidez != null) extras.push(`liquidez ${result.capacity.liquidez}`)
       if (result.capacity.endeudamiento != null) extras.push(`endeudamiento ${result.capacity.endeudamiento}`)
+      if (result.capacity.rentabilidad_patrimonio != null) {
+        extras.push(`RP ${result.capacity.rentabilidad_patrimonio}`)
+      }
       setMessage({
         type: 'success',
         text: `${result.imported_experiences} contratos leídos del RUP${extras.length ? ` · ${extras.join(' · ')}` : ''}.`,

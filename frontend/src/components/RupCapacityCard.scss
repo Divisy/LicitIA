@@ -1,0 +1,45 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/type' as *;
+
+.rup-capacity-card {
+  display: grid;
+  gap: $spacing-06;
+  grid-template-columns: 1fr;
+
+  @media (min-width: 672px) {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.rup-capacity-card-title {
+  @include type-style('heading-compact-01');
+  margin: 0 0 $spacing-04;
+  color: var(--cds-text-primary);
+  font-weight: 600;
+}
+
+.rup-capacity-card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-04 $spacing-05;
+  margin: 0;
+
+  dt {
+    @include type-style('label-01');
+    color: var(--cds-text-secondary);
+    margin: 0 0 $spacing-01;
+  }
+
+  dd {
+    @include type-style('heading-compact-01');
+    color: var(--cds-text-primary);
+    margin: 0;
+    font-weight: 600;
+  }
+}
+
+.rup-capacity-card-empty {
+  @include type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  margin: 0;
+}

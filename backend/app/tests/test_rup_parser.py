@@ -214,8 +214,10 @@ def test_parse_ccb_rup_experience_and_capacity():
     assert result.indebtedness == 0.57
     assert result.interest_coverage == 6.5
     assert result.return_on_equity == 0.05
+    assert result.return_on_assets == 0.02
     assert result.working_capital == 4_501_799_399 - 2_769_645_477
     assert result.organizational.get("company_size") == "microempresa"
+    assert result.organizational.get("rentabilidad_patrimonio") == 0.05
 
     consecutives = [c for c in result.contracts if (c.contract_number or "").startswith("RUP-")]
     assert len(consecutives) == 2
@@ -236,6 +238,30 @@ def test_parse_ccb_rup_experience_and_capacity():
     assert reported[0].contract_kind == "ejecucion_obra"
     assert reported[0].contractor and "CONSTRUCTORA ANDINA" in reported[0].contractor
     assert reported[0].unspsc_codes == []
+
+
+def test_extract_capacity_from_glued_ccb_pdf_text():
+    glued = """
+    CAMARA DE COMERCIO CERTIFICADO RUP IDENTIFICACION QUE: EMPRESA SAS NIT: 900123456-1
+    CERTIFICA: INFORMACION FINANCIERA FECHA DE CORTE DE LA INFORMACIÓN FINANCIERA: 31/12/2024
+    ACTIVO CORRIENTE:$1.200.000.000,00PASIVO CORRIENTE:$400.000.000,00
+    CAPACIDAD FINANCIERAINDICE DE LIQUIDEZ:1,50INDICE DE ENDEUDAMIENTO:0,33
+    RAZON DE CORBERTURA DE INTERESES:4,20
+    CAPACIDAD ORGANIZACIONALRENTABILIDAD DEL PATRIMONIO:0,12RENTABILIDAD DEL ACTIVO:0,08
+    QUE EL INSCRITO SE CLASIFICO COMO:PEQUEÑA EMPRESA
+    NUMERO CONSECUTIVO DEL REPORTE DEL CONTRATO EJECUTADO: 1
+    NOMBRE DEL CONTRATISTA: EMPRESA SAS
+    NOMBRE DEL CONTRATANTE: IDU
+    VALOR DEL CONTRATO EJECUTADO EXPRESADO EN SMMLV: 10,00
+    """
+    result = parse_rup_text(glued, use_llm=False)
+    assert result.liquidity == 1.5
+    assert result.indebtedness == 0.33
+    assert result.interest_coverage == 4.2
+    assert result.return_on_equity == 0.12
+    assert result.return_on_assets == 0.08
+    assert result.working_capital == 800_000_000
+    assert "peque" in (result.organizational.get("company_size") or "")
 
 
 def test_extract_text_from_generated_pdf():

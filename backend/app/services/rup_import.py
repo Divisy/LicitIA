@@ -285,6 +285,42 @@ def upsert_capacity(
     return row
 
 
+def backfill_capacity_from_stored_rup(db: Session, row: CompanyCapacity) -> CompanyCapacity:
+    """Re-read the saved RUP when financial/organizational indicators were not stored."""
+    missing = (
+        row.liquidity is None
+        and row.indebtedness is None
+        and row.interest_coverage is None
+        and row.return_on_equity is None
+        and row.return_on_assets is None
+    )
+    if not missing or not row.source_pdf_key:
+        return row
+    try:
+        content = b"".join(get_document_storage().iter_file_chunks(row.source_pdf_key))
+        parsed = parse_rup_text(extract_text_from_pdf_bytes(content), use_llm=False)
+    except Exception as exc:
+        logger.warning("No se pudo reextraer indicadores del RUP de %s: %s", row.company_name, exc)
+        return row
+    if (
+        parsed.liquidity is None
+        and parsed.indebtedness is None
+        and parsed.return_on_equity is None
+        and parsed.return_on_assets is None
+    ):
+        return row
+    upsert_capacity(
+        db,
+        company_name=row.company_name,
+        parsed=parsed,
+        source_pdf_key=row.source_pdf_key,
+        source_pdf_filename=row.source_pdf_filename or "rup.pdf",
+    )
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 def backfill_rup_fields_from_stored_pdf(
     db: Session,
     experiences: list[CompanyExperience],

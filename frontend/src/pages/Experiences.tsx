@@ -12,12 +12,14 @@ import {
 } from '@carbon/icons-react'
 import ExperienceUpload from '../components/ExperienceUpload'
 import ExperienceList from '../components/ExperienceList'
+import RupCapacityCard from '../components/RupCapacityCard'
 import Logo from '../components/Logo'
-import { getExperiences, CompanyExperience } from '../api/client'
+import { getExperiences, getRupProfile, CompanyExperience, RupProfileResponse } from '../api/client'
 import './Experiences.scss'
 
 const Experiences: React.FC = () => {
   const [experiences, setExperiences] = useState<CompanyExperience[]>([])
+  const [rupProfile, setRupProfile] = useState<RupProfileResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string>('BEC')
@@ -48,8 +50,12 @@ const Experiences: React.FC = () => {
     setError(null)
 
     try {
-      const data = await getExperiences(companyName.trim())
+      const [data, profile] = await Promise.all([
+        getExperiences(companyName.trim()),
+        getRupProfile(companyName.trim()).catch(() => null),
+      ])
       setExperiences(data.items)
+      setRupProfile(profile)
     } catch (err: any) {
       const errorMessage = err?.response?.data?.detail || err?.message || 'Error al cargar experiencias'
       setError(errorMessage)
@@ -94,6 +100,21 @@ const Experiences: React.FC = () => {
           />
         </div>
       </Tile>
+
+      {rupProfile && (
+        <Tile className="experiences-step-tile">
+          <div className="experiences-step-header">
+            <h2 className="experiences-step-title">
+              Indicadores del RUP
+              <Information size={16} className="experiences-step-info-icon" />
+            </h2>
+          </div>
+          <p className="experiences-step-description">
+            Capacidad financiera y organizacional extraída del certificado. Se usarán para el match con las licitaciones.
+          </p>
+          <RupCapacityCard capacity={rupProfile.capacity} />
+        </Tile>
+      )}
 
       {/* Step 2: View Experiences */}
       <Tile className="experiences-step-tile">

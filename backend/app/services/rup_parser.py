@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
 from io import BytesIO
@@ -304,6 +305,83 @@ def _unspsc_codes(text: str) -> list[str]:
     return extract_unspsc_codes(text)
 
 
+def _fold(text: str) -> str:
+    folded = unicodedata.normalize("NFKD", text or "")
+    return "".join(ch for ch in folded if not unicodedata.combining(ch))
+
+
+def _ratio_after(text: str, *labels: str) -> Optional[float]:
+    """Read a RUP ratio that pypdf may glue to the next label."""
+    haystack = _fold(text)
+    for label in labels:
+        match = re.search(
+            rf"{label}\s*[:\-]?\s*(\d+(?:[.,]\d+)?)",
+            haystack,
+            re.IGNORECASE,
+        )
+        if not match:
+            continue
+        number = _parse_number(match.group(1))
+        if number is not None:
+            return number
+    return None
+
+
+def _apply_capacity_indicators(text: str, result: RupParseResult) -> None:
+    """Financial + organizational indicators printed on the CCB RUP."""
+    result.liquidity = _ratio_after(
+        text,
+        r"indice\s+de\s+liquidez",
+        r"liquidez\s+corriente",
+        r"\bindice\s+liquidez\b",
+        r"\bliquidez\b",
+    )
+    result.indebtedness = _ratio_after(
+        text,
+        r"indice\s+de\s+endeudamiento",
+        r"nivel\s+de\s+endeudamiento",
+        r"\bendeudamiento\b",
+    )
+    result.interest_coverage = _ratio_after(
+        text,
+        r"razon\s+de\s+corbertura\s+de\s+intereses",
+        r"razon\s+de\s+cobertura\s+de\s+intereses",
+        r"cobertura\s+de\s+intereses",
+    )
+    result.return_on_equity = _ratio_after(text, r"rentabilidad\s+del\s+patrimonio")
+    result.return_on_assets = _ratio_after(text, r"rentabilidad\s+del\s+activo")
+
+    current_assets = _parse_number(
+        _first_match(r"activo corriente[:\s]+\$?\s*([\d.,]+)", text) or ""
+    )
+    current_liabilities = _parse_number(
+        _first_match(r"pasivo corriente[:\s]+\$?\s*([\d.,]+)", text) or ""
+    )
+    working = _parse_number(_first_match(r"capital de trabajo[:\s]+\$?\s*([\d.,]+)", text) or "")
+    if working is None and current_assets is not None and current_liabilities is not None:
+        working = current_assets - current_liabilities
+    result.working_capital = working
+
+    staff = _first_match(
+        r"(?:personal|planta de personal|n[uú]mero de empleados)[:\s]+(\d{1,6})",
+        text,
+    )
+    if staff:
+        result.organizational["staff_count"] = int(staff)
+    size = re.search(
+        r"(?:clasifico\s+como|tamano(?:\s+de(?:\s+la)?\s+empresa)?)[:\s]*"
+        r"(microempresa|pequena empresa|mediana empresa|gran empresa)",
+        _fold(text),
+        re.IGNORECASE,
+    )
+    if size:
+        result.organizational["company_size"] = size.group(1).lower().replace("pequena", "pequeña")
+    if result.return_on_equity is not None:
+        result.organizational["rentabilidad_patrimonio"] = result.return_on_equity
+    if result.return_on_assets is not None:
+        result.organizational["rentabilidad_activo"] = result.return_on_assets
+
+
 def _apply_regex(text: str, result: RupParseResult) -> None:
     ident = re.search(
         r"IDENTIFICACION\s*QUE:\s*(.+?)\s*NIT:\s*(\d{5,12})\s*[-]?\s*(\d)?",
@@ -360,49 +438,7 @@ def _apply_regex(text: str, result: RupParseResult) -> None:
     if parsed_smmlv and parsed_smmlv > 100_000:
         result.smmlv = parsed_smmlv
 
-    result.liquidity = _parse_number(
-        _first_match(r"(?:[ií]ndice de )?liquidez[:\s]+([\d.,]+)", text) or ""
-    )
-    result.indebtedness = _parse_number(
-        _first_match(r"(?:[ií]ndice de )?endeudamiento[:\s]+([\d.,]+)", text) or ""
-    )
-    result.interest_coverage = _parse_number(
-        _first_match(
-            r"(?:raz[oó]n de )?(?:cobertura|corbertura)(?:\s+de)?\s+intereses[:\s]+([\d.,]+)",
-            text,
-        )
-        or ""
-    )
-    result.return_on_equity = _parse_number(
-        _first_match(r"rentabilidad del patrimonio[:\s]+([\d.,]+)", text) or ""
-    )
-    result.return_on_assets = _parse_number(
-        _first_match(r"rentabilidad del activo[:\s]+([\d.,]+)", text) or ""
-    )
-
-    current_assets = _parse_number(
-        _first_match(r"activo corriente[:\s]+\$?\s*([\d.,]+)", text) or ""
-    )
-    current_liabilities = _parse_number(
-        _first_match(r"pasivo corriente[:\s]+\$?\s*([\d.,]+)", text) or ""
-    )
-    working = _parse_number(_first_match(r"capital de trabajo[:\s]+\$?\s*([\d.,]+)", text) or "")
-    if working is None and current_assets is not None and current_liabilities is not None:
-        working = current_assets - current_liabilities
-    result.working_capital = working
-
-    staff = _first_match(
-        r"(?:personal|planta de personal|n[uú]mero de empleados)[:\s]+(\d{1,6})",
-        text,
-    )
-    if staff:
-        result.organizational["staff_count"] = int(staff)
-    size = _first_match(
-        r"clasific[oó]\s+como:\s*(microempresa|pequeña empresa|mediana empresa|gran empresa)",
-        text,
-    )
-    if size:
-        result.organizational["company_size"] = size.lower()
+    _apply_capacity_indicators(text, result)
 
     cut = _first_match(
         r"(?:fecha de corte[^\n]{0,40}|corte a|corte de la informaci[oó]n financiera)[:\s]+(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{4})",
