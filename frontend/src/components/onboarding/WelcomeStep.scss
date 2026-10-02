@@ -67,15 +67,23 @@
   &__headline {
     @include type-style('heading-05');
     color: var(--cds-text-primary);
-    margin: 0 0 $spacing-06;
+    margin: 0 0 $spacing-04;
     font-weight: 600;
     line-height: 1.12;
     letter-spacing: -0.03em;
 
     @media (max-width: 672px) {
       @include type-style('heading-04');
-      margin-bottom: $spacing-05;
+      margin-bottom: $spacing-04;
     }
+  }
+
+  &__lead {
+    @include type-style('body-compact-01');
+    color: var(--cds-text-secondary);
+    margin: 0 0 $spacing-06;
+    line-height: 1.5;
+    max-width: 38ch;
   }
 
   &__points {

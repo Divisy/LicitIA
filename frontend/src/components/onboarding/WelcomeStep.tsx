@@ -10,22 +10,24 @@ import {
 } from '@carbon/icons-react'
 import {
   PREGUNTA_0_HEADLINE,
+  PREGUNTA_0_LEAD_SHORT,
   PREGUNTA_0_VALUE_POINTS,
   PRODUCT_WHY,
+  WELCOME_CTA_LABEL,
 } from '../../content/productMessaging'
 import OnboardingProductPreview from './OnboardingProductPreview'
 import './WelcomeStep.scss'
 
 const VALUE_POINT_ICONS = {
-  experience: Flash,
-  updates: Renew,
   partners: Partnership,
+  profile: Flash,
+  radar: Renew,
 } as const
 
 const VALUE_POINT_TONES = {
-  experience: 'speed',
-  updates: 'sector',
   partners: 'partners',
+  profile: 'speed',
+  radar: 'sector',
 } as const
 
 interface WelcomeStepProps {
@@ -50,10 +52,12 @@ const WelcomeStep: React.FC<WelcomeStepProps> = ({ onNext, onSkip }) => {
 
             <h1 className="onboarding-welcome-step__headline">{PREGUNTA_0_HEADLINE}</h1>
 
+            <p className="onboarding-welcome-step__lead">{PREGUNTA_0_LEAD_SHORT}</p>
+
             <ul className="onboarding-welcome-step__points">
               {PREGUNTA_0_VALUE_POINTS.map((point) => {
-                const Icon = VALUE_POINT_ICONS[point.id]
-                const tone = VALUE_POINT_TONES[point.id]
+                const Icon = VALUE_POINT_ICONS[point.id] ?? Flash
+                const tone = VALUE_POINT_TONES[point.id] ?? 'speed'
                 const badge = 'badge' in point ? point.badge : undefined
 
                 return (
@@ -90,7 +94,7 @@ const WelcomeStep: React.FC<WelcomeStepProps> = ({ onNext, onSkip }) => {
             className="onboarding-welcome-step__cta"
             renderIcon={ArrowRight}
           >
-            Continuar — subir portafolio
+            {WELCOME_CTA_LABEL}
           </Button>
           <p className="onboarding-welcome-step__hint">
             <Time size={16} aria-hidden="true" />
