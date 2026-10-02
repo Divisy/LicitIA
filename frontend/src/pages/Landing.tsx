@@ -848,8 +848,8 @@ const Landing: React.FC = () => {
                     <div className="landing-step-number">1</div>
                     <div className="landing-step-number-ring"></div>
                   </div>
-                  <h3>Carga tus Experiencias</h3>
-                  <p>Sube un Excel con tus proyectos anteriores o agrégalos manualmente. Toma 2 minutos.</p>
+                  <h3>Carga tu RUP</h3>
+                  <p>Sube el certificado RUP de la cámara de comercio. Toma 2 minutos.</p>
                   <div className="landing-step-time">
                     <Time size={16} />
                     <span>2 minutos</span>
@@ -1395,7 +1395,7 @@ const Landing: React.FC = () => {
                       <ul>
                         <li>Mejoran significativamente la precisión del matching con IA</li>
                         <li>Te muestran licitaciones más relevantes para tu perfil</li>
-                        <li>Puedes subirlos en 2 minutos desde un Excel</li>
+                        <li>Puedes cargarlos en 2 minutos con tu certificado RUP</li>
                       </ul>
                     </div>
                   </div>

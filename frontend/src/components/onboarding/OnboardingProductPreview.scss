@@ -103,6 +103,21 @@
     color: var(--cds-text-helper);
   }
 
+  &__partner {
+    display: inline-flex;
+    align-items: center;
+    gap: $spacing-02;
+    margin-top: $spacing-02;
+    @include type-style('label-01');
+    color: var(--cds-link-primary);
+    font-weight: 500;
+
+    svg {
+      fill: currentColor;
+      flex-shrink: 0;
+    }
+  }
+
   &__match {
     flex-shrink: 0;
     display: inline-flex !important;

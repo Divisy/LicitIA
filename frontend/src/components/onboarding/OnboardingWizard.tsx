@@ -2,7 +2,7 @@ import React from 'react'
 import { useOnboarding } from '../../hooks/useOnboarding'
 import { getPortfolioCompanyName } from '../../utils/portfolio'
 import WelcomeStep from './WelcomeStep'
-import ExperiencesStep from './ExperiencesStep'
+import RupUploadStep from './RupUploadStep'
 import MatchPreviewStep from './MatchPreviewStep'
 import MarketingInfoStep, { MarketingData } from './MarketingInfoStep'
 import OnboardingJourneyStrip from './OnboardingJourneyStrip'
@@ -79,7 +79,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
 
       case STEP.EXPERIENCES:
         return (
-          <ExperiencesStep
+          <RupUploadStep
             onNext={handleExperiencesNext}
             onBack={previousStep}
             onSkip={handleExperiencesSkip}

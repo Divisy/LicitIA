@@ -2,7 +2,6 @@ import React from 'react'
 import { Button, Tag } from '@carbon/react'
 import {
   ArrowRight,
-  Download,
   Flash,
   Partnership,
   Renew,
@@ -12,10 +11,10 @@ import OnboardingProductPreview from './onboarding/OnboardingProductPreview'
 import {
   JTBD_0_TITLE,
   PREGUNTA_0_HEADLINE,
+  PREGUNTA_0_LEAD_SHORT,
   PREGUNTA_0_VALUE_POINTS,
   PRODUCT_WHY,
 } from '../content/productMessaging'
-import { downloadExperienceTemplate } from '../utils/portfolio'
 import './FirstSessionHome.scss'
 
 const VALUE_POINT_ICONS = {
@@ -37,6 +36,7 @@ const FirstSessionHome: React.FC<FirstSessionHomeProps> = ({ onUpload, onViewAll
           <div className="first-session-home__copy">
             <Tag type="blue" size="sm">{PRODUCT_WHY.audience}</Tag>
             <h2 className="first-session-home__title">{PREGUNTA_0_HEADLINE}</h2>
+            <p className="first-session-home__lead">{PREGUNTA_0_LEAD_SHORT}</p>
 
             <ul className="first-session-home__points">
               {PREGUNTA_0_VALUE_POINTS.map((point) => {
@@ -57,15 +57,7 @@ const FirstSessionHome: React.FC<FirstSessionHomeProps> = ({ onUpload, onViewAll
 
             <div className="first-session-home__actions">
               <Button size="lg" onClick={onUpload} renderIcon={ArrowRight}>
-                Activar mi radar
-              </Button>
-              <Button
-                kind="tertiary"
-                size="md"
-                onClick={downloadExperienceTemplate}
-                renderIcon={Download}
-              >
-                Plantilla Excel
+                Cargar RUP
               </Button>
             </div>
 

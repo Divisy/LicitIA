@@ -38,8 +38,9 @@ Hoy LicitIA permite:
 | 1.4 Variables licitación | Fuente de POE, anticipo, plazo y `contract_kind_label` en la barra |
 | 1.7 Favoritas | Botón favorita visible junto al resumen (cabecera del modal) |
 | 1.8 Capacidad residual | CRPC estimada en la barra solo si `ejecucion_obra` / `estudios_disenos_y_obra` |
-| 1.11 (futura) | Panel *"¿Puedo ser hábil?"* — esta US no lo implementa |
-| 1.11 (futura) | Tabs por capacidad — esta US no los implementa |
+| 1.11 Cargar RUP | Perfil empresa (experiencia + indicadores); prerequisito del semáforo |
+| 1.12 (futura) | Panel *"¿Puedo ser hábil?"* — esta US no lo implementa |
+| 1.12 (futura) | Tabs por capacidad — esta US no los implementa |
 | 1.14 (futura) | Encaje / fit score — fuera de alcance |
 
 ---
@@ -52,11 +53,11 @@ Añadir una **barra de resumen sticky** en el modal de detalle que responda en s
 
 | Incluye | No incluye (futuro) |
 |---------|---------------------|
-| Barra sticky bajo cabecera del modal | Tabs de requisitos (US 1.11) |
+| Barra sticky bajo cabecera del modal | Tabs de requisitos (US 1.12) |
 | Días hasta cierre + fecha de cierre | Semáforo cumple / no cumple requisitos |
 | Monto SECOP + tipo de proceso (`contract_kind_label`) | Encaje / fit score (US 1.14) |
 | POE, anticipo %, plazo (si US 1.4 los tiene) | Cambios de backend o extracción |
-| CRPC estimada si obra y hay datos para calcularla | Panel *"¿Puedo ser hábil?"* (US 1.11) |
+| CRPC estimada si obra y hay datos para calcularla | Panel *"¿Puedo ser hábil?"* (US 1.12) |
 | Acceso rápido: favorita + enlace SECOP | Página dedicada `/tenders/:id` |
 | Reutilizar lógica existente (`computeCrpcEstimated`, summary US 1.4) | Gap analysis vs perfil empresa (US 1.5.3) |
 

@@ -74,7 +74,7 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
           No se encontraron experiencias para <strong>{companyName}</strong>.
         </p>
         <p className="experience-list-empty-hint">
-          Sube un archivo Excel para comenzar.
+          Sube el certificado RUP en PDF para comenzar.
         </p>
       </div>
     )

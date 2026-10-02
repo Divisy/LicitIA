@@ -66,7 +66,7 @@
     "experiences": {
       "title": "Experiencias",
       "add": "Agregar experiencia",
-      "upload": "Subir Excel",
+      "upload": "Cargar RUP",
       "empty": "No hay experiencias registradas",
       "emptyDescription": "Agrega tus experiencias para mejorar el matching de licitaciones"
     }
@@ -83,7 +83,7 @@
     },
     "experiences": {
       "title": "Agrega tus experiencias",
-      "description": "Sube un Excel con tus proyectos anteriores o agrégalos manualmente"
+      "description": "Sube tu certificado RUP para activar el match"
     }
   },
   "landing": {

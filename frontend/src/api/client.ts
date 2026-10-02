@@ -368,6 +368,70 @@ export async function importExperiences(
   return response.data;
 }
 
+export interface RupCapacity {
+  liquidez: number | null;
+  endeudamiento: number | null;
+  cobertura_intereses: number | null;
+  rentabilidad_patrimonio: number | null;
+  rentabilidad_activo: number | null;
+  capital_trabajo: number | null;
+  cut_year: number | null;
+  organizacional: Record<string, unknown> | null;
+}
+
+export interface RupImportResponse {
+  imported_experiences: number;
+  capacity: RupCapacity;
+  issued_at: string | null;
+  valid_until: string | null;
+  nit: string | null;
+  razon_social: string | null;
+  warnings: string[];
+  message: string;
+}
+
+export interface RupProfileResponse {
+  company_name: string;
+  nit: string | null;
+  razon_social: string | null;
+  camara: string | null;
+  issued_at: string | null;
+  valid_until: string | null;
+  capacity: RupCapacity;
+  source_pdf_filename: string | null;
+  experiences_count: number;
+  updated_at: string | null;
+  warnings: string[];
+}
+
+export async function importRup(
+  file: File,
+  companyName: string
+): Promise<RupImportResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await client.post<RupImportResponse>(
+    `/rup/import?company_name=${encodeURIComponent(companyName)}`,
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
+  return response.data;
+}
+
+export async function getRupProfile(
+  companyName: string
+): Promise<RupProfileResponse> {
+  const response = await client.get<RupProfileResponse>(
+    `/rup/profile?company_name=${encodeURIComponent(companyName)}`
+  );
+  return response.data;
+}
+
 export interface CompanyExperience {
   id: string;
   company_name: string;

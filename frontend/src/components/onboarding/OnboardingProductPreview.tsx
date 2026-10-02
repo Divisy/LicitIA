@@ -1,6 +1,6 @@
 import React from 'react'
 import { Tag } from '@carbon/react'
-import { WatsonMachineLearning } from '@carbon/icons-react'
+import { Partnership, WatsonMachineLearning } from '@carbon/icons-react'
 import './OnboardingProductPreview.scss'
 
 const PREVIEW_TENDERS = [
@@ -11,6 +11,7 @@ const PREVIEW_TENDERS = [
     entity: 'IDU — Interventoría vial',
     amount: '$ 4.200M',
     closing: 'Cierra en 5 días',
+    partnerHint: null,
   },
   {
     id: '2',
@@ -19,6 +20,7 @@ const PREVIEW_TENDERS = [
     entity: 'Municipio de Envigado — Diseños',
     amount: '$ 890M',
     closing: 'Cierra en 12 días',
+    partnerHint: null,
   },
   {
     id: '3',
@@ -27,6 +29,7 @@ const PREVIEW_TENDERS = [
     entity: 'INVIAS — Estudios y diseños',
     amount: '$ 2.100M',
     closing: 'Cierra en 8 días',
+    partnerHint: 'Socio sugerido: experiencia vial',
   },
 ]
 
@@ -57,6 +60,12 @@ const OnboardingProductPreview: React.FC = () => {
               <span className="onboarding-product-preview__meta">
                 {tender.amount} · {tender.closing}
               </span>
+              {tender.partnerHint && (
+                <span className="onboarding-product-preview__partner">
+                  <Partnership size={12} aria-hidden="true" />
+                  {tender.partnerHint}
+                </span>
+              )}
             </div>
             <Tag type={tender.matchType} size="sm" className="onboarding-product-preview__match">
               <WatsonMachineLearning size={12} />
@@ -67,7 +76,7 @@ const OnboardingProductPreview: React.FC = () => {
       </div>
 
       <p className="onboarding-product-preview__caption">
-        Vista previa con tu portafolio activado
+        Con tu portafolio: match por licitación y dónde necesitas socio
       </p>
     </div>
   )

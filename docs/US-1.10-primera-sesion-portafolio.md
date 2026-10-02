@@ -26,7 +26,7 @@ Sin JTBD 0, el usuario solo ve un listado SECOP y el WHY no se cumple.
 
 **Estado previo:** onboarding skippable, tabla como hero, `ExperiencesStep` desconectado. **Esta US** implementa welcome + experiencias + `FirstSessionHome` + `MatchPreviewStep` + `usePortfolioStatus`.
 
-**Nota de numeración:** el panel «¿Puedo ser hábil?» en detalle de licitación es **US 1.11** en el mapa JTBD (no confundir con esta US).
+**Nota de numeración:** el panel «¿Puedo ser hábil?» es **US 1.12**. El JTBD 0 se completa con **US 1.11** (cargar RUP), no con Excel.
 
 ---
 

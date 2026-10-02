@@ -4,7 +4,7 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.scheduler import start_scheduler, shutdown_scheduler
 from app.core.logging import setup_logging, get_logger
-from app.api.v1 import health, tenders, subscriptions, experiences, leads, support, feedback
+from app.api.v1 import health, tenders, subscriptions, experiences, leads, support, feedback, rup
 from app.services.tender_ingestion import fetch_and_store_new_tenders
 from app.config import settings
 
@@ -130,6 +130,7 @@ app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(tenders.router, prefix="/api/v1", tags=["tenders"])
 app.include_router(subscriptions.router, prefix="/api/v1", tags=["subscriptions"])
 app.include_router(experiences.router, prefix="/api/v1", tags=["experiences"])
+app.include_router(rup.router, prefix="/api/v1", tags=["rup"])
 app.include_router(leads.router, prefix="/api/v1", tags=["leads"])
 app.include_router(support.router, prefix="/api/v1", tags=["support"])
 app.include_router(feedback.router, prefix="/api/v1", tags=["feedback"])

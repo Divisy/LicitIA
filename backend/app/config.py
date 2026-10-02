@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     # Manual key document upload (US 1.2.6 MVP)
     MANUAL_DOCUMENT_UPLOAD_ENABLED: bool = True
     MANUAL_DOCUMENT_UPLOAD_MAX_BYTES: int = 52_428_800  # 50 MB
+    RUP_UPLOAD_MAX_BYTES: int = 26_214_400  # 25 MB — certificado RUP (US 1.11)
 
     # Document storage backend: local (Railway Volume) or r2 (Cloudflare R2)
     DOCUMENT_STORAGE_BACKEND: str = "local"

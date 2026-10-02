@@ -40,7 +40,7 @@ import {
 } from '@carbon/icons-react'
 import { useTheme } from '../theme/ThemeProvider'
 import Logo from '../components/Logo'
-import { getExperiences, CompanyExperience } from '../api/client'
+import { getExperiences, getRupProfile, CompanyExperience, RupProfileResponse } from '../api/client'
 import './Profile.scss'
 
 interface CompanyProfile {
@@ -78,6 +78,7 @@ const Profile: React.FC = () => {
     department: ''
   })
   const [experiences, setExperiences] = useState<CompanyExperience[]>([])
+  const [rupProfile, setRupProfile] = useState<RupProfileResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -126,6 +127,12 @@ const Profile: React.FC = () => {
     try {
       const data = await getExperiences(name.trim())
       setExperiences(data.items)
+      try {
+        const rup = await getRupProfile(name.trim())
+        setRupProfile(rup)
+      } catch {
+        setRupProfile(null)
+      }
     } catch (err: any) {
       console.error('Error fetching experiences:', err)
       setError('Error al cargar experiencias')
@@ -476,7 +483,7 @@ const Profile: React.FC = () => {
               onClick={() => navigate('/experiences')}
               renderIcon={DocumentAdd}
             >
-              Gestionar Experiencias
+              Gestionar RUP
             </Button>
             <Button
               kind="ghost"
@@ -491,6 +498,51 @@ const Profile: React.FC = () => {
 
         {/* Right Column - Profile Analysis */}
         <Column lg={8} md={4} sm={4}>
+
+          <Tile className="profile-analysis-tile">
+            <div className="profile-analysis-header">
+              <DocumentAdd size={20} className="profile-analysis-icon" />
+              <h2 className="profile-analysis-title">RUP de la empresa</h2>
+            </div>
+            {rupProfile ? (
+              <div className="profile-analysis-content">
+                <p>
+                  RUP cargado{rupProfile.valid_until ? ` · vigente hasta ${rupProfile.valid_until}` : ''}
+                  {rupProfile.nit ? ` · NIT ${rupProfile.nit}` : ''}
+                </p>
+                <div className="profile-analysis-stats-card">
+                  <div className="profile-analysis-stat-item">
+                    <div className="profile-analysis-stat-number">{rupProfile.experiences_count}</div>
+                    <div className="profile-analysis-stat-label">contratos</div>
+                  </div>
+                  {rupProfile.capacity.liquidez != null && (
+                    <div className="profile-analysis-stat-item">
+                      <div className="profile-analysis-stat-number">{rupProfile.capacity.liquidez}</div>
+                      <div className="profile-analysis-stat-label">liquidez</div>
+                    </div>
+                  )}
+                  {rupProfile.capacity.endeudamiento != null && (
+                    <div className="profile-analysis-stat-item">
+                      <div className="profile-analysis-stat-number">{rupProfile.capacity.endeudamiento}</div>
+                      <div className="profile-analysis-stat-label">endeudamiento</div>
+                    </div>
+                  )}
+                </div>
+                <Button kind="tertiary" size="md" onClick={() => navigate('/experiences')} renderIcon={ArrowRight}>
+                  Volver a cargar RUP
+                </Button>
+              </div>
+            ) : (
+              <div className="profile-analysis-empty">
+                <p className="profile-analysis-empty-text">
+                  Aún no hay un certificado RUP. Cárgalo para activar el match % y los indicadores.
+                </p>
+                <Button kind="primary" size="md" onClick={() => navigate('/experiences')} renderIcon={ArrowRight}>
+                  Cargar RUP
+                </Button>
+              </div>
+            )}
+          </Tile>
 
           {/* Profile Analysis */}
           {loading ? (
@@ -585,7 +637,7 @@ const Profile: React.FC = () => {
                 <WatsonMachineLearning size={48} className="profile-analysis-empty-icon" />
                 <h3 className="profile-analysis-empty-title">Sin análisis disponible</h3>
                 <p className="profile-analysis-empty-text">
-                  Carga experiencias para generar un análisis automático de tu perfil
+                  Carga el RUP para generar un análisis automático de tu perfil
                 </p>
                 <Button
                   kind="primary"
@@ -593,7 +645,7 @@ const Profile: React.FC = () => {
                   onClick={() => navigate('/experiences')}
                   renderIcon={ArrowRight}
                 >
-                  Cargar Experiencias
+                  Cargar RUP
                 </Button>
               </div>
             </Tile>

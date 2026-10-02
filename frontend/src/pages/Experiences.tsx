@@ -113,20 +113,19 @@ const Experiences: React.FC = () => {
       {/* Page Header */}
       <div className="experiences-page-header">
         <Logo size="md" showText={true} />
-        <h1 className="experiences-page-title">Gestionar Experiencias</h1>
+        <h1 className="experiences-page-title">RUP de la empresa</h1>
       </div>
 
       {/* Step 1: Upload Experiences */}
       <Tile className="experiences-step-tile">
         <div className="experiences-step-header">
           <h2 className="experiences-step-title">
-            Paso 1: Cargar experiencias
+            Paso 1: Cargar RUP
             <Information size={16} className="experiences-step-info-icon" />
           </h2>
         </div>
         <p className="experiences-step-description">
-          Carga tus proyectos anteriores para que el sistema pueda encontrar licitaciones que coincidan con tu experiencia. 
-          Puedes subir un archivo Excel o agregar experiencias manualmente.
+          Carga el certificado RUP vigente (PDF de la cámara de comercio). Con eso activamos el match % y los indicadores financieros.
         </p>
         <div className="experiences-step-content">
           <ExperienceUpload 
@@ -190,7 +189,7 @@ const Experiences: React.FC = () => {
           <div className="experiences-empty-state">
             <DocumentAdd size={48} className="experiences-empty-icon" />
             <p className="experiences-empty-text">
-              Aún no tiene experiencias guardadas. Complete el Paso 1 para comenzar.
+              Aún no hay un RUP cargado. Completa el Paso 1 para activar el perfil.
             </p>
           </div>
         )}

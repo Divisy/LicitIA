@@ -45,7 +45,7 @@ export const JTBD_0_TITLE = 'Primero, cuéntale a LicitIA en qué es buena tu em
 export const JTBD_0_DESCRIPTION =
   'Sube tu RUP. Con eso sabemos qué puedes aportar a un consorcio, tu match % en cada licitación y en cuáles te falta un socio.'
 
-export const WELCOME_CTA_LABEL = 'Continuar — subir RUP'
+export const WELCOME_CTA_LABEL = 'Continuar — cargar RUP'
 
 export const PORTFOLIO_BANNER_TITLE = 'Tu perfil aún no está activo'
 

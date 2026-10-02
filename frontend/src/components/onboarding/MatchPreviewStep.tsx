@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Button, Loading, Tag, Tile } from '@carbon/react'
 import { ArrowRight, WatsonMachineLearning } from '@carbon/icons-react'
 import { getTenders, Tender } from '../../api/client'
+import { MATCH_PREVIEW_EMPTY, MATCH_PREVIEW_TITLE } from '../../content/productMessaging'
 import './MatchPreviewStep.scss'
 
 interface MatchPreviewStepProps {
@@ -78,9 +79,9 @@ const MatchPreviewStep: React.FC<MatchPreviewStepProps> = ({
   const subtitle = useMemo(() => {
     if (loading) return 'Buscando licitaciones relevantes para tu empresa...'
     if (tenders.length === 0) {
-      return 'Tu radar está activo. En el dashboard verás las licitaciones que encajan con tu experiencia en construcción, ingeniería e interventoría.'
+      return MATCH_PREVIEW_EMPTY
     }
-    return 'Estas son las licitaciones con mayor encaje según tu portafolio:'
+    return 'Estas licitaciones encajan con tu portafolio — y te muestran dónde podrías necesitar un socio:'
   }, [loading, tenders.length])
 
   return (
@@ -88,7 +89,7 @@ const MatchPreviewStep: React.FC<MatchPreviewStepProps> = ({
       <div className="onboarding-match-preview-content">
         <div className="onboarding-match-preview-header">
           <WatsonMachineLearning size={32} className="onboarding-match-preview-icon" />
-          <h2 className="onboarding-match-preview-title">Tus primeras oportunidades</h2>
+          <h2 className="onboarding-match-preview-title">{MATCH_PREVIEW_TITLE}</h2>
           <p className="onboarding-match-preview-description">{subtitle}</p>
         </div>
 

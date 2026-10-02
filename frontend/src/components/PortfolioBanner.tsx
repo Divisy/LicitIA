@@ -19,7 +19,7 @@ const PortfolioBanner: React.FC<PortfolioBannerProps> = ({ onUpload }) => {
         </div>
       </div>
       <Button kind="primary" size="sm" onClick={onUpload}>
-        Subir RUP
+        Cargar RUP
       </Button>
     </div>
   )

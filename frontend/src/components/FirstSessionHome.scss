@@ -33,10 +33,18 @@
   &__title {
     @include type-style('heading-04');
     color: var(--cds-text-primary);
-    margin: $spacing-04 0 $spacing-05;
+    margin: $spacing-04 0 $spacing-03;
     font-weight: 600;
     line-height: 1.2;
     letter-spacing: -0.02em;
+  }
+
+  &__lead {
+    @include type-style('body-compact-01');
+    color: var(--cds-text-secondary);
+    margin: 0 0 $spacing-05;
+    line-height: 1.5;
+    max-width: 42ch;
   }
 
   &__points {

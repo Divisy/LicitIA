@@ -92,7 +92,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const navigationItems = [
     { id: 'dashboard', label: 'Inicio', icon: DashboardIcon, path: '/dashboard', exact: true },
     { id: 'favorites', label: 'Favoritas', icon: Star, path: '/favorites' },
-    { id: 'experiences', label: 'Experiencias', icon: DocumentAdd, path: '/experiences' },
+    { id: 'experiences', label: 'RUP', icon: DocumentAdd, path: '/experiences' },
     { id: 'profile', label: 'Perfil', icon: User, path: '/profile' },
     { id: 'feedback', label: 'Feedback', icon: Chat, path: '/feedback' },
     { id: 'help', label: 'Soporte', icon: Help, path: '/help' },
@@ -198,7 +198,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             onClick={() => navigate('/experiences')}
             className="app-header__primary-button"
           >
-            Actualizar Experiencias
+            Cargar RUP
           </Button>
 
           {/* User Menu */}
