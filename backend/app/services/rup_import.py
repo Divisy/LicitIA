@@ -13,11 +13,15 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.logging import get_logger
 from app.models.company_capacity import CompanyCapacity
 from app.models.company_experience import CompanyExperience
-from app.services.document_storage import DocumentStorageService
+from app.services.document_storage import DocumentStorageService, get_document_storage
 from app.services.experience_matching import extract_keywords
-from app.services.rup_parser import RupParseResult, resolve_contractor_name
+from app.services.rup_contract_kind import unspsc_codes_from_stored
+from app.services.rup_parser import RupParseResult, extract_text_from_pdf_bytes, parse_rup_text, resolve_contractor_name
+
+logger = get_logger(__name__)
 
 _CREATE_CAPACITY_SQL = """
 CREATE TABLE IF NOT EXISTS company_capacity (
@@ -260,3 +264,54 @@ def upsert_capacity(
     row.warnings_json = json.dumps(parsed.warnings or [], ensure_ascii=False)
     row.updated_at = now
     return row
+
+
+def backfill_unspsc_from_stored_rup(
+    db: Session,
+    experiences: list[CompanyExperience],
+) -> None:
+    """Re-read the saved RUP PDF when imported rows have no clasificador codes."""
+    missing = [
+        row
+        for row in experiences
+        if not unspsc_codes_from_stored(stored_json=getattr(row, "unspsc_codes", None))
+    ]
+    if not missing:
+        return
+
+    names = {row.company_name for row in missing if row.company_name}
+    if not names:
+        return
+    capacities = (
+        db.query(CompanyCapacity).filter(CompanyCapacity.company_name.in_(names)).all()
+    )
+    capacity_by_name = {(row.company_name or "").lower(): row for row in capacities}
+    storage = get_document_storage()
+    codes_by_company: dict[str, dict[str, list[str]]] = {}
+    for name in names:
+        capacity = capacity_by_name.get((name or "").lower())
+        if not capacity or not capacity.source_pdf_key:
+            continue
+        try:
+            content = b"".join(storage.iter_file_chunks(capacity.source_pdf_key))
+            parsed = parse_rup_text(extract_text_from_pdf_bytes(content), use_llm=False)
+        except Exception as exc:
+            logger.warning("No se pudo reextraer UNSPSC del RUP de %s: %s", name, exc)
+            continue
+        codes_by_company[name.lower()] = {
+            (contract.contract_number or "").strip().upper(): contract.unspsc_codes
+            for contract in parsed.contracts
+            if contract.unspsc_codes and contract.contract_number
+        }
+
+    updated = False
+    for row in missing:
+        codes = (codes_by_company.get((row.company_name or "").lower()) or {}).get(
+            (row.contract_number or "").strip().upper()
+        )
+        if not codes:
+            continue
+        row.unspsc_codes = json.dumps(codes, ensure_ascii=False)
+        updated = True
+    if updated:
+        db.commit()

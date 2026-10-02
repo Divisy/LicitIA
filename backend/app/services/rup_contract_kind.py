@@ -82,52 +82,63 @@ def extract_unspsc_codes(*parts: Optional[str]) -> list[str]:
 
 
 def extract_rup_clasificador_unspsc(block: str) -> list[str]:
-    """Codes listed under the CCB clasificador table of one executed contract."""
+    """Codes listed under the CCB clasificador of one executed contract."""
     if not (block or "").strip():
         return []
     marker = re.search(
-        r"CLASIFICADOR DE BIENES Y SERVICIOS|IDENTIFICADO CON EL CLASIFICADOR|"
-        r"SEGM\s*[\| ]\s*FAMI",
+        r"clasificador\s+de\s+bienes|"
+        r"identificado\s+con\s+el\s+clasificador|"
+        r"tercer\s+nivel|"
+        r"segm[\s\|]*fami[\s\|]*clas[\s\|]*prod|"
+        r"\bsegm\b|"
+        r"clasificacion\s+contrato",
         block,
-        re.IGNORECASE,
+        re.IGNORECASE | re.DOTALL,
     )
     section = block[marker.start() :] if marker else ""
     if not section:
         return []
     stop = re.search(
         r"NUMERO CONSECUTIVO|CERTIFICA:|CONTRATOS ADJUDICADOS|ENTIDAD CONTRATANTE:"
-        r"|FECHA DE INSCRIPCION|CONTRATO RELACIONADO CON LA CONSTRUCCI",
-        section[40:],
+        r"|FECHA DE INSCRIPCION",
+        section[30:],
         re.IGNORECASE,
     )
     if stop:
-        section = section[: 40 + stop.start()]
+        section = section[: 30 + stop.start()]
 
     codes: list[str] = []
     seen: set[str] = set()
 
     def add(code: str) -> None:
-        if code and code not in seen and len(code) == 8 and code.isdigit():
-            seen.add(code)
-            codes.append(code)
+        if not _looks_like_unspsc(code) or code in seen:
+            return
+        seen.add(code)
+        codes.append(code)
 
     for match in re.finditer(
         r"\|\s*(\d{2})\s*\|\s*(\d{2})\s*\|\s*(\d{2})\s*\|\s*(\d{2})\s*\|",
         section,
     ):
         add("".join(match.groups()))
+    for match in re.finditer(r"(?<!\d)(\d{8})(?!\d)", section):
+        add(match.group(1))
     for match in re.finditer(
-        r"(?<!\d)(\d{2})(?:\s+)(\d{2})(?:\s+)(\d{2})(?:\s+)(\d{2})(?!\d)",
+        r"(?<!\d)(\d{2})(?:[\s\|]+)(\d{2})(?:[\s\|]+)(\d{2})(?:[\s\|]+)(\d{2})(?!\d)",
         section,
     ):
         groups = match.groups()
         if _unspsc_groups_look_like_date(groups):
             continue
         add("".join(groups))
-    # 8-digit UNSPSC next to the clasificador, not contract numbers elsewhere.
-    for match in re.finditer(r"\b(\d{8})\b", section):
-        add(match.group(1))
     return codes
+
+
+def _looks_like_unspsc(code: str) -> bool:
+    if not code or len(code) != 8 or not code.isdigit():
+        return False
+    segment = int(code[:2])
+    return 10 <= segment <= 95
 
 
 def unspsc_codes_from_stored(

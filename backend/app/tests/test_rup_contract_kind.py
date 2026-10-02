@@ -59,6 +59,29 @@ def test_extract_unspsc_from_ccb_table_and_spaced_pdf_text():
     ]
 
 
+def test_extract_unspsc_when_pdf_splits_clasificador_and_glues_code():
+    stacked = extract_unspsc_codes(
+        """
+        CONTRATO EJECUTADO IDENTIFICADO CON EL
+        CLASIFICADOR DE BIENES Y SERVICIOS EN EL TERCER NIVEL:
+        CONTRATO RELACIONADO CON LA CONSTRUCCIÓN (LEY 1537 DE 2012) (SI O NO): SI
+        SEGM
+        FAMI
+        CLAS
+        PROD
+        72
+        10
+        33
+        00
+        """
+    )
+    assert stacked == ["72103300"]
+    glued = extract_unspsc_codes(
+        "CLASIFICACION CONTRATO 72103300SERVICIOS DE MANTENIMIENTO Y REPARACIÓN"
+    )
+    assert glued == ["72103300"]
+
+
 def test_kind_payload_reclassifies_legacy_rows():
     kind, label = kind_payload_for_experience(
         engineering_area=None,
