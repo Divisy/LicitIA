@@ -73,12 +73,24 @@
   min-height: 48px;
 }
 
-.onboarding-marketing-skip {
-  width: 100%;
+.onboarding-marketing-sectors {
+  margin: 0;
+  padding: 0;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+}
+
+.onboarding-marketing-sectors-legend {
+  @include type-style('label-01');
   color: var(--cds-text-secondary);
-  
-  &:hover {
-    color: var(--cds-link-primary);
-  }
+  margin-bottom: $spacing-02;
+}
+
+.onboarding-marketing-sectors-hint {
+  @include type-style('helper-text-01');
+  color: var(--cds-text-secondary);
+  margin: 0 0 $spacing-02;
 }
 

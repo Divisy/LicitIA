@@ -14,6 +14,11 @@ import {
   ArrowLeft
 } from '@carbon/icons-react'
 import { checkLeadExists } from '../api/client'
+import {
+  serializeSectors,
+  USER_SECTORS_STORAGE_KEY,
+  type CompanySector,
+} from '../utils/companySectors'
 import './Login.scss'
 
 const Login: React.FC = () => {
@@ -49,6 +54,15 @@ const Login: React.FC = () => {
         }
         if (checkResult.lead.role) {
           localStorage.setItem('licitia_user_role', checkResult.lead.role)
+        }
+        if (checkResult.lead.phone) {
+          localStorage.setItem('licitia_user_phone', checkResult.lead.phone)
+        }
+        if (checkResult.lead.sectors?.length) {
+          localStorage.setItem(
+            USER_SECTORS_STORAGE_KEY,
+            serializeSectors(checkResult.lead.sectors as CompanySector[])
+          )
         }
         
         // No iniciar onboarding para usuarios existentes

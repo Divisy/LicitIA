@@ -21,6 +21,15 @@ import { usePortfolioStatus } from '../hooks/usePortfolioStatus'
 import { useFavoriteTenders } from '../hooks/useFavoriteTenders'
 import { getTenders, Tender, TenderFilters, ContractKindFilter } from '../api/client'
 import { isPortfolioSkipped } from '../utils/portfolio'
+import {
+  defaultContractKindFromSectors,
+  parseStoredSectors,
+  USER_SECTORS_STORAGE_KEY,
+} from '../utils/companySectors'
+import {
+  DASHBOARD_SUBTITLE_EMPTY,
+  DASHBOARD_SUBTITLE_READY,
+} from '../content/productMessaging'
 import './Dashboard.scss'
 
 const EXPERIENCES_ONBOARDING_STEP = 1
@@ -49,7 +58,11 @@ const Dashboard: React.FC = () => {
   const [dateTo, setDateTo] = useState<string>('')
   const [department, setDepartment] = useState<string>('')
   const [companyName, setCompanyName] = useState<string>('')
-  const [contractKind, setContractKind] = useState<ContractKindFilter>('')
+  const [contractKind, setContractKind] = useState<ContractKindFilter>(() =>
+    defaultContractKindFromSectors(
+      parseStoredSectors(localStorage.getItem(USER_SECTORS_STORAGE_KEY))
+    )
+  )
   const [showAll, setShowAll] = useState<boolean>(false)
   const [selectedTender, setSelectedTender] = useState<Tender | null>(null)
 
@@ -174,11 +187,15 @@ const Dashboard: React.FC = () => {
   }
   
   const handleOnboardingComplete = () => {
+    const nextKind = defaultContractKindFromSectors(
+      parseStoredSectors(localStorage.getItem(USER_SECTORS_STORAGE_KEY))
+    )
+    setContractKind(nextKind)
     refreshPortfolio()
     if (isPortfolioSkipped()) {
       setShowAllTenders(true)
     }
-    fetchTenders()
+    fetchTenders(false, nextKind)
   }
 
   const handleStartPortfolioUpload = () => {
@@ -206,9 +223,7 @@ const Dashboard: React.FC = () => {
             <div className="dashboard-header__content">
               <h1 className="dashboard-title">Dashboard</h1>
               <p className="dashboard-subtitle">
-                {portfolioReady
-                  ? 'Licitaciones relevantes para tu empresa en construcción, ingeniería e interventoría'
-                  : 'Encuentra licitaciones de obra pública mucho más rápido que en SECOP'}
+                {portfolioReady ? DASHBOARD_SUBTITLE_READY : DASHBOARD_SUBTITLE_EMPTY}
               </p>
             </div>
           </div>

@@ -6,6 +6,7 @@ import ExperiencesStep from './ExperiencesStep'
 import MatchPreviewStep from './MatchPreviewStep'
 import MarketingInfoStep, { MarketingData } from './MarketingInfoStep'
 import OnboardingJourneyStrip from './OnboardingJourneyStrip'
+import { parseStoredSectors, USER_SECTORS_STORAGE_KEY } from '../../utils/companySectors'
 import './OnboardingWizard.scss'
 
 const STEP = {
@@ -25,7 +26,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
     nextStep,
     previousStep,
     skipStep,
-    setCompanyName,
     skipPortfolioSetup,
     markExperiencesUploaded,
     finishOnboarding,
@@ -67,13 +67,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
     nextStep()
   }
 
-  const handleMarketingComplete = (data: MarketingData) => {
-    setCompanyName(data.companyName)
-    finishOnboarding()
-    onComplete()
-  }
-
-  const handleMarketingSkip = () => {
+  const handleMarketingComplete = (_data: MarketingData) => {
     finishOnboarding()
     onComplete()
   }
@@ -99,13 +93,10 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
             <MarketingInfoStep
               onNext={handleMarketingComplete}
               onBack={previousStep}
-              onSkip={handleMarketingSkip}
               initialData={{
-                companyName: resolvedCompanyName,
-                fullName: localStorage.getItem('licitia_user_name') || undefined,
-                industry: localStorage.getItem('licitia_user_industry') || undefined,
-                companySize: localStorage.getItem('licitia_user_company_size') || undefined,
-                role: localStorage.getItem('licitia_user_role') || undefined,
+                contactName: localStorage.getItem('licitia_user_name') || undefined,
+                phone: localStorage.getItem('licitia_user_phone') || undefined,
+                sectors: parseStoredSectors(localStorage.getItem(USER_SECTORS_STORAGE_KEY)),
               }}
             />
           )
@@ -123,13 +114,10 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
           <MarketingInfoStep
             onNext={handleMarketingComplete}
             onBack={() => goToStep(hasUploadedExperiences ? STEP.MATCH_PREVIEW : STEP.EXPERIENCES)}
-            onSkip={handleMarketingSkip}
             initialData={{
-              companyName: resolvedCompanyName,
-              fullName: localStorage.getItem('licitia_user_name') || undefined,
-              industry: localStorage.getItem('licitia_user_industry') || undefined,
-              companySize: localStorage.getItem('licitia_user_company_size') || undefined,
-              role: localStorage.getItem('licitia_user_role') || undefined,
+              contactName: localStorage.getItem('licitia_user_name') || undefined,
+              phone: localStorage.getItem('licitia_user_phone') || undefined,
+              sectors: parseStoredSectors(localStorage.getItem(USER_SECTORS_STORAGE_KEY)),
             }}
           />
         )

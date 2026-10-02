@@ -59,6 +59,8 @@ export interface LeadCreate {
   industry?: string;
   company_size?: string;
   role?: string;
+  phone?: string;
+  sectors?: string[];
 }
 
 export interface MatchingExperience {
@@ -426,11 +428,16 @@ export interface LeadResponse {
   name?: string;
   company?: string;
   source?: string;
+  industry?: string;
+  company_size?: string;
+  role?: string;
+  phone?: string;
+  sectors?: string[];
   created_at: string;
 }
 
 export async function captureLead(lead: LeadCreate): Promise<LeadResponse> {
-  const response = await client.post<LeadResponse>("/leads", lead);
+  const response = await client.post<LeadResponse>("/leads", lead, { timeout: 8000 });
   return response.data;
 }
 

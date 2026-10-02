@@ -48,7 +48,6 @@ const Landing: React.FC = () => {
   const { t } = useTranslation()
   const [formData, setFormData] = useState({
     email: '',
-    name: '',
     company: '',
   })
   const [loading, setLoading] = useState(false)
@@ -63,15 +62,24 @@ const Landing: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+
+    if (!formData.company.trim() || formData.company.trim().length < 2) {
+      setError('Ingresa la razón social de tu empresa')
+      return
+    }
+    if (!formData.email.trim()) {
+      setError('Ingresa el correo empresarial')
+      return
+    }
+
     setLoading(true)
 
     try {
       // Intentar capturar el lead en el backend
       try {
         const leadResponse = await captureLead({
-          email: formData.email,
-          name: formData.name || undefined,
-          company: formData.company || undefined,
+          email: formData.email.trim(),
+          company: formData.company.trim(),
           source: 'landing_page',
         })
         console.log('[Landing] Lead captured in backend:', leadResponse)
@@ -100,13 +108,8 @@ const Landing: React.FC = () => {
       
       // Guardar información del lead en localStorage para el onboarding
       localStorage.setItem('licitia_new_user', 'true')
-      localStorage.setItem('licitia_user_email', formData.email)
-      if (formData.name) {
-        localStorage.setItem('licitia_user_name', formData.name)
-      }
-      if (formData.company) {
-        localStorage.setItem('licitia_user_company', formData.company)
-      }
+      localStorage.setItem('licitia_user_email', formData.email.trim())
+      localStorage.setItem('licitia_user_company', formData.company.trim())
       // Marcar que debe iniciar onboarding automáticamente
       localStorage.setItem('licitia_start_onboarding', 'true')
       
@@ -427,9 +430,9 @@ const Landing: React.FC = () => {
                 scrollToSection('landing-hero')
                 // Focus on email input after scroll
                 setTimeout(() => {
-                  const emailInput = document.getElementById('email') as HTMLInputElement
-                  if (emailInput) {
-                    emailInput.focus()
+                  const companyInput = document.getElementById('company') as HTMLInputElement
+                  if (companyInput) {
+                    companyInput.focus()
                   }
                 }, 500)
               }}
@@ -482,33 +485,24 @@ const Landing: React.FC = () => {
                 <form className="landing-hero__form" onSubmit={handleSubmit}>
                   <div className="landing-hero__form-container">
                     <TextInput
-                      id="email"
-                      type="email"
+                      id="company"
+                      type="text"
                       labelText=""
-                      placeholder="Tu email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      placeholder="Razón social"
+                      value={formData.company}
+                      onChange={(e) => setFormData({ ...formData, company: e.target.value })}
                       required
                       size="lg"
                       className="landing-hero__input"
                     />
                     <TextInput
-                      id="name"
-                      type="text"
+                      id="email"
+                      type="email"
                       labelText=""
-                      placeholder="Tu nombre (opcional)"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      size="lg"
-                      className="landing-hero__input"
-                    />
-                    <TextInput
-                      id="company"
-                      type="text"
-                      labelText=""
-                      placeholder="Empresa (opcional)"
-                      value={formData.company}
-                      onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                      placeholder="Correo empresarial"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      required
                       size="lg"
                       className="landing-hero__input"
                     />
@@ -518,7 +512,7 @@ const Landing: React.FC = () => {
                       disabled={loading}
                       className="landing-hero__cta"
                     >
-                      {loading ? 'Registrando...' : t('landing.hero.cta')}
+                      {loading ? 'Entrando...' : 'Log in'}
                       {!loading && <ArrowRight size={20} className="landing-hero__cta-icon" />}
                     </CarbonButton>
                   </div>
@@ -1193,7 +1187,7 @@ const Landing: React.FC = () => {
               <p className="landing-pricing__subtitle">
                 Sin tarjeta de crédito. Sin compromiso. Cancela cuando quieras.
                 <br />
-                <strong>Después de la prueba: desde $199.000/mes</strong> (oferta de lanzamiento)
+                <strong>Después de la prueba: Pro+ $316.000/mes + IVA</strong> · match de socios incluido
               </p>
             </div>
             
@@ -1259,19 +1253,14 @@ const Landing: React.FC = () => {
                   <span>Oferta de Lanzamiento</span>
                 </div>
                 <div className="landing-pricing-card__header">
-                  <h3 className="landing-pricing-card__name">LicitIA Pro</h3>
+                  <h3 className="landing-pricing-card__name">LicitIA Pro+</h3>
                   <div className="landing-pricing-card__price">
-                    <span className="landing-pricing-card__price-old">$399.000</span>
-                    <span className="landing-pricing-card__price-amount">$199.000</span>
-                    <span className="landing-pricing-card__price-period">/mes</span>
+                    <span className="landing-pricing-card__price-amount">$316.000</span>
+                    <span className="landing-pricing-card__price-period">/mes + IVA</span>
                   </div>
                   <p className="landing-pricing-card__description">
-                    <strong>50% descuento</strong> primeros 3 meses • Luego $299.000/mes
+                    Radar, pliego y match de socios incluido. Sin cobro por cada match.
                   </p>
-                  <div className="landing-pricing-card__urgency">
-                    <Time size={16} />
-                    <span>Solo para primeros 100 usuarios</span>
-                  </div>
                 </div>
                 <ul className="landing-pricing-card__features">
                   <li>
@@ -1310,7 +1299,7 @@ const Landing: React.FC = () => {
                 </CarbonButton>
                 <p className="landing-pricing-card__note">
                   <CheckmarkFilled size={16} />
-                  <span>30 días gratis, luego $199.000/mes</span>
+                  <span>30 días gratis, luego $316.000/mes + IVA</span>
                 </p>
               </Card>
             </div>
@@ -1370,7 +1359,7 @@ const Landing: React.FC = () => {
                     <div className="landing-faq-answer__content">
                       <p>Una vez finalizada tu prueba gratuita, puedes:</p>
                       <ul>
-                        <li>Continuar con <strong>LicitIA Pro a $49.50/mes</strong> (50% descuento por los primeros 3 meses)</li>
+                        <li>Continuar con <strong>LicitIA Pro+ a $316.000/mes + IVA</strong> (match de socios incluido)</li>
                         <li>Cancelar sin compromiso en cualquier momento</li>
                       </ul>
                       <p><strong>No hay renovación automática</strong> sin tu consentimiento explícito.</p>
