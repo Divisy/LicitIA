@@ -10,6 +10,7 @@ import {
   TableCell,
   Button,
   InlineNotification,
+  Modal,
 } from '@carbon/react'
 import {
   Document,
@@ -39,6 +40,15 @@ interface ExperienceListProps {
   onUpdated?: (experience: CompanyExperience) => void
 }
 
+const UNSPSC_PREVIEW_LIMIT = 3
+
+type UnspscModalState = {
+  contract: string
+  contractor: string
+  entity: string
+  codes: string[]
+}
+
 const ExperienceList: React.FC<ExperienceListProps> = ({
   experiences,
   companyName,
@@ -48,6 +58,7 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
   const [uploadingId, setUploadingId] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [pendingId, setPendingId] = useState<string | null>(null)
+  const [codesModal, setCodesModal] = useState<UnspscModalState | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const formatDate = (dateString: string | null): string => {
@@ -235,11 +246,30 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
       ),
       unspsc: unspscCodes.length ? (
         <div className="experience-list-unspsc">
-          {unspscCodes.map((code) => (
+          {unspscCodes.slice(0, UNSPSC_PREVIEW_LIMIT).map((code) => (
             <Tag key={code} type="gray" size="sm">
               {code}
             </Tag>
           ))}
+          {unspscCodes.length > UNSPSC_PREVIEW_LIMIT && (
+            <Button
+              kind="ghost"
+              size="sm"
+              className="experience-list-unspsc-more"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setCodesModal({
+                  contract: experience.contract_number || 'N/A',
+                  contractor: contractor || '—',
+                  entity: experience.contracting_entity || 'N/A',
+                  codes: unspscCodes,
+                })
+              }}
+            >
+              Ver códigos ({unspscCodes.length})
+            </Button>
+          )}
         </div>
       ) : (
         '—'
@@ -268,6 +298,35 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
       <p className="experience-list-count">
         {contractCount} {contractCount === 1 ? 'contrato' : 'contratos'} en la experiencia
       </p>
+      {codesModal && (
+        <Modal
+          open
+          passiveModal
+          size="sm"
+          modalHeading="Códigos UNSPSC del contrato"
+          onRequestClose={() => setCodesModal(null)}
+          className="experience-list-unspsc-modal"
+        >
+          <div className="experience-list-unspsc-modal-body">
+            <p className="experience-list-unspsc-modal-meta">
+              <strong>{codesModal.contract}</strong>
+              {' · '}
+              {codesModal.entity}
+            </p>
+            <p className="experience-list-unspsc-modal-count">
+              {codesModal.codes.length}{' '}
+              {codesModal.codes.length === 1 ? 'código' : 'códigos'} extraídos del RUP
+            </p>
+            <div className="experience-list-unspsc-modal-codes">
+              {codesModal.codes.map((code) => (
+                <Tag key={code} type="gray" size="sm">
+                  {code}
+                </Tag>
+              ))}
+            </div>
+          </div>
+        </Modal>
+      )}
       <div className="experience-list-table-container">
         <DataTable rows={rows} headers={headers} isSortable size="md" useZebraStyles>
           {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
