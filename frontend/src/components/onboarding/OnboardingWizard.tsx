@@ -46,8 +46,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
 
   const handleExperiencesNext = () => {
     markExperiencesUploaded()
-    finishOnboarding()
-    onComplete()
+    goToStep(STEP.MARKETING)
   }
 
   const handleExperiencesSkip = () => {
