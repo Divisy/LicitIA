@@ -114,6 +114,10 @@ async def list_experiences(
     company_name: Optional[str] = Query(None, description="Filter by company name"),
     limit: int = Query(100, ge=1, le=1000, description="Number of results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
+    hydrate_rup: bool = Query(
+        False,
+        description="Re-read the stored RUP PDF to fill UNSPSC/SMMLV on this page only",
+    ),
     db: Session = Depends(get_db),
 ):
     """List company experiences."""
@@ -130,7 +134,8 @@ async def list_experiences(
         case((CompanyExperience.completion_date.is_(None), 1), else_=0),
         CompanyExperience.completion_date.desc()
     ).offset(offset).limit(limit).all()
-    backfill_rup_fields_from_stored_pdf(db, experiences)
+    if hydrate_rup:
+        backfill_rup_fields_from_stored_pdf(db, experiences)
 
     # Parse keywords for response
     import json

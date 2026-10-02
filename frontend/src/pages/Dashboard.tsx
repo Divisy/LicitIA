@@ -68,7 +68,7 @@ const Dashboard: React.FC = () => {
   const portfolioReady = portfolioStatus === 'ready'
   const portfolioLoading = portfolioStatus === 'loading'
   const showFirstSessionHome = !portfolioLoading && !portfolioReady && !showAllTenders
-  const showTenderTable = portfolioReady || showAllTenders
+  const showTenderTable = portfolioReady || showAllTenders || portfolioLoading
   
   const fetchTenders = useCallback(async (
     loadAll: boolean = false,
@@ -114,10 +114,8 @@ const Dashboard: React.FC = () => {
   ])
   
   useEffect(() => {
-    if (!portfolioLoading && showTenderTable) {
-      fetchTenders()
-    }
-  }, [portfolioLoading, showTenderTable, portfolioReady, fetchTenders])
+    fetchTenders()
+  }, [fetchTenders])
 
   useEffect(() => {
     if (portfolioReady && onboardingState.isActive) {

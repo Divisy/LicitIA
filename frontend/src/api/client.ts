@@ -484,10 +484,17 @@ export interface ExperienceListResponse {
 }
 
 export async function getExperiences(
-  companyName: string
+  companyName: string,
+  options: { hydrateRup?: boolean } = {}
 ): Promise<ExperienceListResponse> {
+  const params = new URLSearchParams({
+    company_name: companyName,
+  })
+  if (options.hydrateRup) {
+    params.set('hydrate_rup', 'true')
+  }
   const response = await client.get<ExperienceListResponse>(
-    `/experiences?company_name=${encodeURIComponent(companyName)}`
+    `/experiences?${params.toString()}`
   );
   return response.data;
 }
