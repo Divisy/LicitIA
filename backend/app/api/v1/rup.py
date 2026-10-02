@@ -15,7 +15,12 @@ from app.models.company_capacity import CompanyCapacity
 from app.models.company_experience import CompanyExperience
 from app.schemas.rup import RupCapacityPayload, RupImportResponse, RupProfileResponse
 from app.services.document_storage import get_document_storage
-from app.services.rup_import import persist_rup_pdf, replace_experiences_from_rup, upsert_capacity
+from app.services.rup_import import (
+    ensure_company_capacity_table,
+    persist_rup_pdf,
+    replace_experiences_from_rup,
+    upsert_capacity,
+)
 from app.services.rup_parser import extract_text_from_pdf_bytes, parse_rup_text
 
 logger = get_logger(__name__)
@@ -115,6 +120,7 @@ async def import_rup(
         raise HTTPException(status_code=500, detail="No se pudo guardar el certificado RUP.") from exc
 
     try:
+        ensure_company_capacity_table(db)
         imported = replace_experiences_from_rup(db, company_name=name, parsed=parsed)
         capacity = upsert_capacity(
             db,
@@ -135,9 +141,11 @@ async def import_rup(
     except SQLAlchemyError as exc:
         db.rollback()
         logger.exception("RUP persist failed for %s: %s", name, exc)
+        orig = getattr(exc, "orig", None)
+        hint = str(orig or exc).replace("\n", " ")[:180]
         raise HTTPException(
             status_code=500,
-            detail="No se pudo guardar la experiencia extraída del RUP.",
+            detail=f"No se pudo guardar la experiencia extraída del RUP. {hint}",
         ) from exc
 
     return RupImportResponse(
