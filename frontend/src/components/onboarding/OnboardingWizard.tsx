@@ -3,7 +3,6 @@ import { useOnboarding } from '../../hooks/useOnboarding'
 import { getPortfolioCompanyName } from '../../utils/portfolio'
 import WelcomeStep from './WelcomeStep'
 import RupUploadStep from './RupUploadStep'
-import MatchPreviewStep from './MatchPreviewStep'
 import MarketingInfoStep, { MarketingData } from './MarketingInfoStep'
 import OnboardingJourneyStrip from './OnboardingJourneyStrip'
 import { parseStoredSectors, USER_SECTORS_STORAGE_KEY } from '../../utils/companySectors'
@@ -32,8 +31,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
     goToStep,
   } = useOnboarding()
 
-  const hasUploadedExperiences = state.completedSteps.includes('experiences')
-
   if (!state.isActive) {
     return null
   }
@@ -49,22 +46,14 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
 
   const handleExperiencesNext = () => {
     markExperiencesUploaded()
-    nextStep()
+    finishOnboarding()
+    onComplete()
   }
 
   const handleExperiencesSkip = () => {
     skipPortfolioSetup()
     skipStep('experiences')
     goToStep(STEP.MARKETING)
-  }
-
-  const handleMatchPreviewNext = () => {
-    finishOnboarding()
-    onComplete()
-  }
-
-  const handleMatchPreviewMarketing = () => {
-    nextStep()
   }
 
   const handleMarketingComplete = (_data: MarketingData) => {
@@ -88,24 +77,15 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
         )
 
       case STEP.MATCH_PREVIEW:
-        if (!hasUploadedExperiences) {
-          return (
-            <MarketingInfoStep
-              onNext={handleMarketingComplete}
-              onBack={previousStep}
-              initialData={{
-                contactName: localStorage.getItem('licitia_user_name') || undefined,
-                phone: localStorage.getItem('licitia_user_phone') || undefined,
-                sectors: parseStoredSectors(localStorage.getItem(USER_SECTORS_STORAGE_KEY)),
-              }}
-            />
-          )
-        }
         return (
-          <MatchPreviewStep
-            companyName={resolvedCompanyName}
-            onNext={handleMatchPreviewNext}
-            onSkipMarketing={handleMatchPreviewMarketing}
+          <MarketingInfoStep
+            onNext={handleMarketingComplete}
+            onBack={previousStep}
+            initialData={{
+              contactName: localStorage.getItem('licitia_user_name') || undefined,
+              phone: localStorage.getItem('licitia_user_phone') || undefined,
+              sectors: parseStoredSectors(localStorage.getItem(USER_SECTORS_STORAGE_KEY)),
+            }}
           />
         )
 
@@ -113,7 +93,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
         return (
           <MarketingInfoStep
             onNext={handleMarketingComplete}
-            onBack={() => goToStep(hasUploadedExperiences ? STEP.MATCH_PREVIEW : STEP.EXPERIENCES)}
+            onBack={() => goToStep(STEP.EXPERIENCES)}
             initialData={{
               contactName: localStorage.getItem('licitia_user_name') || undefined,
               phone: localStorage.getItem('licitia_user_phone') || undefined,
