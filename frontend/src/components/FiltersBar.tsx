@@ -69,12 +69,10 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
   dateFrom,
   dateTo,
   department,
-  companyName,
   contractKind,
   onDateFromChange,
   onDateToChange,
   onDepartmentChange,
-  onCompanyNameChange,
   onContractKindChange,
   onSubmit,
 }) => {
@@ -199,17 +197,6 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
                   placeholder="Departamento o municipio"
                   value={department}
                   onChange={(e) => onDepartmentChange(e.target.value)}
-                  size="sm"
-                />
-              </div>
-
-              <div className="filters-bar-field filters-bar-field--company">
-                <TextInput
-                  id="company-name"
-                  labelText="Empresa"
-                  placeholder="Nombre de empresa"
-                  value={companyName}
-                  onChange={(e) => onCompanyNameChange(e.target.value)}
                   size="sm"
                 />
               </div>

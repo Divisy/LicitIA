@@ -9,7 +9,6 @@ from app.core.db import get_db
 from app.core.logging import get_logger
 from app.models.tender import Tender
 from app.models.tender_document import TenderDocument
-from app.models.company_experience import CompanyExperience
 from app.services.document_storage import get_document_storage
 from app.services.document_extraction import (
     deduplicate_visible_documents,
@@ -37,7 +36,7 @@ from app.services.tender_requirements.service import (
     persist_tender_requirements,
     requirements_cache_is_stale,
 )
-from app.services.experience_matching import match_tender_against_experiences, MIN_MATCH_THRESHOLD
+from app.services.experience_matching import match_tender_against_experiences
 from app.services.tender_lifecycle import filter_active_dashboard_tenders
 from app.services.tender_summary.contract_kind import apply_contract_kind_filter, parse_contract_kind
 from app.services.tender_summary.service import (
@@ -105,13 +104,10 @@ async def list_tenders(
             query = apply_contract_kind_filter(query, kind)
         logger.info("Filtered by only_interventoria (legacy): %s tenders", query.count())
     
-    # Experience matching setup
+    # Matching vs RUP is paused until the company↔tender match is designed.
+    # Keep listing the radar (active tenders) regardless of match_experience.
     experiences = []
-    if match_experience or company_name:
-        exp_query = db.query(CompanyExperience)
-        if company_name:
-            exp_query = exp_query.filter(CompanyExperience.company_name.ilike(f"%{company_name}%"))
-        experiences = exp_query.all()
+    match_experience = False
     
     # If matching is required, we need to match tenders first, then paginate
     # OPTIMIZATION: 
@@ -226,19 +222,6 @@ async def get_tender(
         raise HTTPException(status_code=404, detail="Tender not found")
     
     tender_response = TenderResponse.model_validate(tender)
-    
-    # Add experience matching if company_name provided
-    if company_name:
-        experiences = db.query(CompanyExperience).filter(
-            CompanyExperience.company_name.ilike(f"%{company_name}%")
-        ).all()
-        
-        if experiences:
-            match_score, matching_experiences = match_tender_against_experiences(
-                tender, experiences, min_score=MIN_MATCH_THRESHOLD
-            )
-            tender_response.experience_match_score = match_score if match_score > 0 else None
-            tender_response.matching_experiences = matching_experiences if matching_experiences else None
     
     return tender_response
 

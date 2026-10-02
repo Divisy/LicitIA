@@ -13,7 +13,7 @@ import {
 import ExperienceUpload from '../components/ExperienceUpload'
 import ExperienceList from '../components/ExperienceList'
 import Logo from '../components/Logo'
-import { getExperiences, CompanyExperience, getTenders, TenderFilters } from '../api/client'
+import { getExperiences, CompanyExperience } from '../api/client'
 import './Experiences.scss'
 
 const Experiences: React.FC = () => {
@@ -22,8 +22,6 @@ const Experiences: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string>('BEC')
   const [refreshKey, setRefreshKey] = useState(0)
-  const [matchedTendersCount, setMatchedTendersCount] = useState<number | null>(null)
-  const [loadingStats, setLoadingStats] = useState(false)
 
   // Load company name from localStorage if available
   useEffect(() => {
@@ -52,13 +50,6 @@ const Experiences: React.FC = () => {
     try {
       const data = await getExperiences(companyName.trim())
       setExperiences(data.items)
-      
-      // Fetch matched tenders count if we have experiences
-      if (data.items.length > 0) {
-        fetchMatchedTendersCount(companyName.trim())
-      } else {
-        setMatchedTendersCount(0)
-      }
     } catch (err: any) {
       const errorMessage = err?.response?.data?.detail || err?.message || 'Error al cargar experiencias'
       setError(errorMessage)
@@ -68,44 +59,12 @@ const Experiences: React.FC = () => {
     }
   }
 
-  const fetchMatchedTendersCount = async (name: string) => {
-    setLoadingStats(true)
-    try {
-      const filters: TenderFilters = {
-        company_name: name,
-        match_experience: true,
-        min_match_score: 0.55,
-        limit: 1,
-        offset: 0,
-      }
-      const result = await getTenders(filters)
-      setMatchedTendersCount(result.total)
-    } catch (err) {
-      console.error('Error fetching matched tenders count:', err)
-      setMatchedTendersCount(null)
-    } finally {
-      setLoadingStats(false)
-    }
-  }
-
   const handleUploadSuccess = (count?: number) => {
     setRefreshKey(prev => prev + 1)
-    // Refresh stats after upload
-    if (companyName.trim()) {
-      setTimeout(() => {
-        fetchMatchedTendersCount(companyName.trim())
-      }, 1000)
-    }
   }
 
   const handleDeleteSuccess = () => {
     setRefreshKey(prev => prev + 1)
-    // Refresh stats after delete
-    if (companyName.trim()) {
-      setTimeout(() => {
-        fetchMatchedTendersCount(companyName.trim())
-      }, 500)
-    }
   }
 
   return (
@@ -125,7 +84,7 @@ const Experiences: React.FC = () => {
           </h2>
         </div>
         <p className="experiences-step-description">
-          Carga el certificado RUP vigente (PDF de la cámara de comercio). Con eso activamos el match % y los indicadores financieros.
+          Carga el certificado RUP vigente (PDF de la cámara de comercio). Guardamos las experiencias y la capacidad financiera/organizacional de la empresa.
         </p>
         <div className="experiences-step-content">
           <ExperienceUpload 

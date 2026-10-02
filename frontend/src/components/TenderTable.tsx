@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { DataTable, Table, TableHead, TableRow, TableHeader, TableBody, TableCell, Tag, Link, Tile, IconButton } from '@carbon/react'
 import { Tender } from '../api/client'
-import { WatsonMachineLearning, Launch, Star, StarFilled, ArrowUp, ArrowDown, ArrowsVertical } from '@carbon/icons-react'
+import { Launch, Star, StarFilled, ArrowUp, ArrowDown, ArrowsVertical } from '@carbon/icons-react'
 import {
   DEFAULT_TENDER_SORT_DIRECTION,
   DEFAULT_TENDER_SORT_KEY,
@@ -87,13 +87,6 @@ const TenderTable: React.FC<TenderTableProps> = ({
     }
   }
   
-  const getMatchTagKind = (score: number | null): 'green' | 'yellow' | 'red' | 'gray' => {
-    if (score === null || score === undefined) return 'gray'
-    if (score >= 0.6) return 'green'
-    if (score >= 0.4) return 'yellow'
-    return 'red'
-  }
-  
   const headers = useMemo(() => {
     const base = [
       { key: 'publication_date', header: 'Fecha Publicación' },
@@ -102,7 +95,6 @@ const TenderTable: React.FC<TenderTableProps> = ({
       { key: 'department', header: 'Departamento' },
       { key: 'amount', header: 'Monto' },
       { key: 'state', header: 'Estado' },
-      { key: 'match', header: 'Match Experiencia' },
       { key: 'link', header: 'Enlace' },
     ]
     if (showFavoriteColumn) {
@@ -156,18 +148,6 @@ const TenderTable: React.FC<TenderTableProps> = ({
         </Tag>
       ) : (
         <Tag type="gray" size="sm">N/A</Tag>
-      ),
-      match: tender.experience_match_score !== null && tender.experience_match_score !== undefined ? (
-        <Tag 
-          type={getMatchTagKind(tender.experience_match_score)} 
-          size="sm"
-          className="tender-table-match-tag"
-        >
-          <WatsonMachineLearning size={12} className="tender-table-match-icon" />
-          {Math.round(tender.experience_match_score * 100)}%
-        </Tag>
-      ) : (
-        <Tag type="gray" size="sm">-</Tag>
       ),
       link: (
         <Link

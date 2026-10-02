@@ -49,7 +49,6 @@ const Dashboard: React.FC = () => {
   } = useOnboarding()
   const {
     status: portfolioStatus,
-    companyName: portfolioCompanyName,
     refresh: refreshPortfolio,
   } = usePortfolioStatus()
   const { isFavorite, toggleFavorite } = useFavoriteTenders()
@@ -92,14 +91,6 @@ const Dashboard: React.FC = () => {
       if (dateTo) params.date_to = dateTo
       if (department) params.department = department
       if (effectiveContractKind) params.contract_kind = effectiveContractKind
-
-      const effectiveCompanyName = companyName || portfolioCompanyName
-      if (portfolioReady && effectiveCompanyName) {
-        params.company_name = effectiveCompanyName
-        params.match_experience = true
-      } else if (companyName) {
-        params.company_name = companyName
-      }
       
       const response = await getTenders(params)
       
@@ -120,9 +111,6 @@ const Dashboard: React.FC = () => {
     dateFrom,
     dateTo,
     department,
-    companyName,
-    portfolioCompanyName,
-    portfolioReady,
   ])
   
   useEffect(() => {
@@ -132,15 +120,10 @@ const Dashboard: React.FC = () => {
   }, [portfolioLoading, showTenderTable, portfolioReady, fetchTenders])
 
   useEffect(() => {
-    if (portfolioReady) {
-      if (onboardingState.isActive) {
-        finishOnboarding()
-      }
-      if (!companyName && portfolioCompanyName) {
-        setCompanyName(portfolioCompanyName)
-      }
+    if (portfolioReady && onboardingState.isActive) {
+      finishOnboarding()
     }
-  }, [portfolioReady, onboardingState.isActive, finishOnboarding, companyName, portfolioCompanyName])
+  }, [portfolioReady, onboardingState.isActive, finishOnboarding])
   
   useEffect(() => {
     const shouldStartOnboarding = localStorage.getItem('licitia_start_onboarding')
