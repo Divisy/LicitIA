@@ -179,7 +179,8 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
     { key: 'number', header: '#' },
     { key: 'contractor', header: 'Contratista' },
     ...(showKindColumn ? [{ key: 'kind', header: 'Tipo de contrato' }] : []),
-    { key: 'specific', header: 'Experiencia específica' },
+    { key: 'specific', header: 'Acta' },
+    { key: 'object', header: 'Objeto del contrato' },
     { key: 'entity', header: 'Entidad contratante' },
     { key: 'contract', header: 'Contrato' },
     { key: 'date', header: 'Fecha finalización' },
@@ -215,11 +216,18 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
         : {}),
       specific: (
         <SpecificExperienceCell
-          text={specificText}
+          hasObject={Boolean(specificText)}
           filename={experience.specific_evidence_filename}
           uploading={uploading}
           onUpload={() => openEvidencePicker(experience.id)}
         />
+      ),
+      object: specificText ? (
+        <p className="experience-list-object" title={specificText}>
+          {specificText}
+        </p>
+      ) : (
+        <span className="experience-list-object-empty">—</span>
       ),
       entity: experience.contracting_entity || 'N/A',
       contract: experience.contract_number || 'N/A',
@@ -344,22 +352,19 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
 export default ExperienceList
 
 function SpecificExperienceCell({
-  text,
+  hasObject,
   filename,
   uploading,
   onUpload,
 }: {
-  text: string
+  hasObject: boolean
   filename: string | null
   uploading: boolean
   onUpload: () => void
 }) {
-  if (text) {
+  if (hasObject) {
     return (
       <div className="experience-list-specific experience-list-specific--filled">
-        <p className="experience-list-specific-text" title={text}>
-          {text}
-        </p>
         {filename && (
           <span className="experience-list-specific-file">
             <CheckmarkFilled size={14} />

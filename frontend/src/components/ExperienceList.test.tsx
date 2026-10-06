@@ -82,4 +82,23 @@ describe('ExperienceList UNSPSC preview', () => {
     expect(screen.queryByText(/El RUP no trae el objeto/)).not.toBeInTheDocument()
     expect(screen.getByText(/2 contratos · 2 sin acta/)).toBeInTheDocument()
   })
+
+  it('shows the extracted contract object in its own column', () => {
+    render(
+      <ExperienceList
+        experiences={[
+          experience({
+            specific_experience: 'Construcción y mejoramiento de la malla vial en Paipa.',
+            specific_evidence_filename: 'ACTA.pdf',
+          }),
+        ]}
+        companyName="BEC"
+      />
+    )
+    expect(screen.getByText('Objeto del contrato')).toBeInTheDocument()
+    expect(
+      screen.getByText('Construcción y mejoramiento de la malla vial en Paipa.')
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Reemplazar/ })).toBeInTheDocument()
+  })
 })

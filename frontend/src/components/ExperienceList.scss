@@ -103,15 +103,20 @@
   gap: $spacing-02;
 }
 
-.experience-list-specific-text {
+.experience-list-object {
   @include type-style('body-compact-01');
   color: var(--cds-text-primary);
   margin: 0;
+  max-width: 280px;
   line-height: 1.35;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.experience-list-object-empty {
+  color: var(--cds-text-secondary);
 }
 
 .experience-list-specific-missing {
