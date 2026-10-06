@@ -161,7 +161,7 @@ const RupUploadStep: React.FC<RupUploadStepProps> = ({
             onClick={onSkip}
             className="onboarding-experiences-skip"
           >
-            Explorar sin personalizar
+            Explorar sin RUP por ahora
           </Button>
           <Button
             size="lg"

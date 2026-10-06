@@ -37,13 +37,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
 
   const resolvedCompanyName = state.companyName || getPortfolioCompanyName()
 
-  const handleWelcomeSkip = () => {
-    skipPortfolioSetup()
-    skipStep('welcome')
-    finishOnboarding()
-    onComplete()
-  }
-
   const handleExperiencesNext = () => {
     markExperiencesUploaded()
     goToStep(STEP.MARKETING)
@@ -63,7 +56,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
   const renderStep = () => {
     switch (state.currentStep) {
       case STEP.WELCOME:
-        return <WelcomeStep onNext={nextStep} onSkip={handleWelcomeSkip} />
+        return <WelcomeStep onNext={nextStep} />
 
       case STEP.EXPERIENCES:
         return (
@@ -104,7 +97,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
         )
 
       default:
-        return <WelcomeStep onNext={nextStep} onSkip={handleWelcomeSkip} />
+        return <WelcomeStep onNext={nextStep} />
     }
   }
 

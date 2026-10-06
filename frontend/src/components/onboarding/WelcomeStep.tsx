@@ -31,10 +31,9 @@ const VALUE_POINT_TONES = {
 
 interface WelcomeStepProps {
   onNext: () => void
-  onSkip?: () => void
 }
 
-const WelcomeStep: React.FC<WelcomeStepProps> = ({ onNext, onSkip }) => {
+const WelcomeStep: React.FC<WelcomeStepProps> = ({ onNext }) => {
   return (
     <div className="onboarding-welcome-step">
       <div className="onboarding-welcome-step__scroll">
@@ -98,11 +97,6 @@ const WelcomeStep: React.FC<WelcomeStepProps> = ({ onNext, onSkip }) => {
             Paso 1 de 3 · ~2 min
           </p>
         </div>
-        {onSkip && (
-          <button type="button" className="onboarding-welcome-step__skip" onClick={onSkip}>
-            Explorar sin personalizar
-          </button>
-        )}
       </footer>
     </div>
   )
