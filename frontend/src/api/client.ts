@@ -563,6 +563,7 @@ export interface LeadResponse {
   city?: string;
   sectors?: string[];
   created_at: string;
+  onboarding_completed_at?: string | null;
 }
 
 export async function captureLead(lead: LeadCreate): Promise<LeadResponse> {
@@ -583,12 +584,50 @@ export async function checkLeadExists(
       `/leads/check?email=${encodeURIComponent(email)}`
     );
     return response.data;
-  } catch (err: any) {
-    if (err?.response?.status === 404) {
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    if (status === 404) {
       return { exists: false };
     }
     throw err;
   }
+}
+
+export async function completeOnboarding(email: string): Promise<LeadResponse> {
+  const response = await client.post<LeadResponse>("/leads/onboarding-complete", {
+    email,
+  });
+  return response.data;
+}
+
+export interface RequestCodeResponse {
+  exists: boolean;
+  ttl_minutes?: number;
+  debug_code?: string;
+}
+
+export async function requestLoginCode(email: string): Promise<RequestCodeResponse> {
+  const response = await client.post<RequestCodeResponse>("/auth/request-code", {
+    email,
+  });
+  return response.data;
+}
+
+export interface VerifyCodeResponse {
+  ok: boolean;
+  exists: boolean;
+  lead?: LeadResponse;
+}
+
+export async function verifyLoginCode(
+  email: string,
+  code: string
+): Promise<VerifyCodeResponse> {
+  const response = await client.post<VerifyCodeResponse>("/auth/verify-code", {
+    email,
+    code,
+  });
+  return response.data;
 }
 
 export interface SupportTicketCreate {

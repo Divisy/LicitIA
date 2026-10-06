@@ -26,6 +26,7 @@ import { useTheme } from '../../theme/ThemeProvider'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import Logo from '../../components/Logo'
 import FeedbackWidget from '../../components/FeedbackWidget'
+import { clearUserSession } from '../../utils/userSession'
 import './AppLayout.scss'
 
 interface AppLayoutProps {
@@ -72,21 +73,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   }
 
   const handleLogout = () => {
-    // Clear all user data from localStorage
-    localStorage.removeItem('licitia_user_email')
-    localStorage.removeItem('licitia_user_name')
-    localStorage.removeItem('licitia_user_company')
-    localStorage.removeItem('licitia_user_industry')
-    localStorage.removeItem('licitia_user_company_size')
-    localStorage.removeItem('licitia_user_role')
-    localStorage.removeItem('licitia_new_user')
-    localStorage.removeItem('licitia_onboarding_completed')
-    localStorage.removeItem('licitia_onboarding_state')
-    localStorage.removeItem('licitia_onboarding_banner_dismissed')
-    localStorage.removeItem('licitia_start_onboarding')
-    
-    // Navigate to landing page
-    navigate('/landing')
+    clearUserSession()
+    navigate('/')
   }
 
   const navigationItems = [

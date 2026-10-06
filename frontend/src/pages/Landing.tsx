@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { 
   Grid, 
   Column, 
@@ -37,17 +37,19 @@ import {
   Close,
   Launch
 } from '@carbon/icons-react'
-import { captureLead, getTenders, Tender } from '../api/client'
+import { captureLead, checkLeadExists, getTenders, Tender } from '../api/client'
 import { useTranslation } from 'react-i18next'
 import { Button, Card } from '../components/ui'
 import { Tag, Link as CarbonLink } from '@carbon/react'
+import { persistLeadSession } from '../utils/userSession'
 import './Landing.scss'
 
 const Landing: React.FC = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { t } = useTranslation()
   const [formData, setFormData] = useState({
-    email: '',
+    email: searchParams.get('email') || '',
     company: '',
   })
   const [loading, setLoading] = useState(false)
@@ -75,58 +77,50 @@ const Landing: React.FC = () => {
     setLoading(true)
 
     try {
-      // Intentar capturar el lead en el backend
+      let existing = { exists: false }
+      try {
+        existing = await checkLeadExists(formData.email.trim())
+      } catch {
+        existing = { exists: false }
+      }
+      if (existing.exists) {
+        navigate(`/login?email=${encodeURIComponent(formData.email.trim())}`, {
+          state: { accountExists: true },
+        })
+        return
+      }
+
       try {
         const leadResponse = await captureLead({
           email: formData.email.trim(),
           company: formData.company.trim(),
           source: 'landing_page',
         })
+        persistLeadSession(
+          {
+            email: leadResponse.email,
+            company: leadResponse.company || formData.company.trim(),
+          },
+          { startOnboarding: true }
+        )
         console.log('[Landing] Lead captured in backend:', leadResponse)
-      } catch (apiErr: any) {
-        // Si el backend no está disponible, continuar con localStorage
-        console.warn('[Landing] Backend not available, using localStorage fallback:', {
-          message: apiErr?.message,
-          status: apiErr?.response?.status,
-          url: apiErr?.config?.url,
-          baseURL: apiErr?.config?.baseURL,
-        })
-        // No mostrar error al usuario si el backend falla, usar fallback
+      } catch (apiErr: unknown) {
+        console.warn('[Landing] Backend not available, using localStorage fallback:', apiErr)
+        persistLeadSession(
+          {
+            email: formData.email.trim(),
+            company: formData.company.trim(),
+          },
+          { startOnboarding: true }
+        )
       }
-      
-      // Verificar si es un nuevo usuario (email diferente al guardado)
-      const previousEmail = localStorage.getItem('licitia_user_email')
-      const isNewUser = !previousEmail || previousEmail !== formData.email
-      
-      // Si es un nuevo usuario, limpiar todos los flags de onboarding
-      if (isNewUser) {
-        console.log('[Landing] New user detected, clearing onboarding flags')
-        localStorage.removeItem('licitia_onboarding_completed')
-        localStorage.removeItem('licitia_onboarding_state')
-        localStorage.removeItem('licitia_onboarding_banner_dismissed')
-      }
-      
-      // Guardar información del lead en localStorage para el onboarding
-      localStorage.setItem('licitia_new_user', 'true')
-      localStorage.setItem('licitia_user_email', formData.email.trim())
-      localStorage.setItem('licitia_user_company', formData.company.trim())
-      // Marcar que debe iniciar onboarding automáticamente
-      localStorage.setItem('licitia_start_onboarding', 'true')
-      
-      console.log('[Landing] Lead saved, flags set:', {
-        email: formData.email,
-        company: formData.company,
-        startOnboarding: localStorage.getItem('licitia_start_onboarding')
-      })
-      
+
       setSuccess(true)
       setTimeout(() => {
-        console.log('[Landing] Navigating to dashboard, flag:', localStorage.getItem('licitia_start_onboarding'))
         navigate('/dashboard')
       }, 1500)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error in form submission:', err)
-      // Solo mostrar error si es un error crítico
       setError('Error al procesar el registro. Por favor, intenta de nuevo.')
     } finally {
       setLoading(false)
@@ -134,7 +128,7 @@ const Landing: React.FC = () => {
   }
 
   const handleSkip = () => {
-    navigate('/')
+    navigate('/dashboard')
   }
 
   // Create demo data function
@@ -512,7 +506,7 @@ const Landing: React.FC = () => {
                       disabled={loading}
                       className="landing-hero__cta"
                     >
-                      {loading ? 'Entrando...' : 'Log in'}
+                      {loading ? 'Creando cuenta...' : 'Crear cuenta'}
                       {!loading && <ArrowRight size={20} className="landing-hero__cta-icon" />}
                     </CarbonButton>
                   </div>
@@ -536,12 +530,12 @@ const Landing: React.FC = () => {
                 onClick={handleSkip}
                 className="landing-hero__skip"
               >
-                O saltar y ver el dashboard →
+                O ver el radar sin cuenta →
               </button>
               <p className="landing-hero__login-link">
                 ¿Ya tienes cuenta?{' '}
                 <Link to="/login" className="landing-hero__login-link-text">
-                  Inicia sesión
+                  Entra aquí
                 </Link>
               </p>
             </div>

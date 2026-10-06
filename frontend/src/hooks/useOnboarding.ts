@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { completeOnboarding } from '../api/client'
 import { clearPortfolioSkipped, getPortfolioCompanyName, markPortfolioSkipped } from '../utils/portfolio'
 
 export interface OnboardingState {
@@ -162,6 +163,10 @@ export function useOnboarding() {
     setState(prev => ({ ...prev, isActive: false, hasSeenDashboard: true }))
     localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true')
     localStorage.removeItem(ONBOARDING_STATE_KEY)
+    const email = localStorage.getItem('licitia_user_email')
+    if (email) {
+      completeOnboarding(email).catch(() => undefined)
+    }
   }
 
   const resetOnboarding = () => {

@@ -92,6 +92,14 @@ class Settings(BaseSettings):
     MANUAL_DOCUMENT_UPLOAD_MAX_BYTES: int = 52_428_800  # 50 MB
     RUP_UPLOAD_MAX_BYTES: int = 26_214_400  # 25 MB — certificado RUP (US 1.11)
 
+    # Login OTP (US 2.5)
+    AUTH_OTP_TTL_MINUTES: int = 10
+    AUTH_OTP_MAX_SENDS: int = 3
+    AUTH_OTP_WINDOW_MINUTES: int = 15
+    AUTH_OTP_MAX_ATTEMPTS: int = 5
+    AUTH_OTP_SECRET: str = "licitia-otp-dev"
+    AUTH_OTP_DEBUG: bool = False
+
     # Document storage backend: local (Railway Volume) or r2 (Cloudflare R2)
     DOCUMENT_STORAGE_BACKEND: str = "local"
     # When using R2, keep a copy on the local volume (default: false to save disk)

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core.db import get_db
 from app.models.lead import Lead
+from app.services.login_code import ensure_auth_tables, find_lead_by_email, normalize_email
 from datetime import datetime
 from typing import Optional
 
@@ -70,6 +71,7 @@ class LeadResponse(BaseModel):
     sectors: Optional[list[str]] = None
     source: Optional[str]
     created_at: datetime
+    onboarding_completed_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -89,6 +91,7 @@ def to_lead_response(lead: Lead) -> LeadResponse:
         sectors=parse_sectors(lead.sectors),
         source=lead.source,
         created_at=lead.created_at,
+        onboarding_completed_at=getattr(lead, "onboarding_completed_at", None),
     )
 
 
@@ -123,7 +126,9 @@ async def create_lead(lead: LeadCreate, db: Session = Depends(get_db)):
     """
     try:
         ensure_lead_city_column(db)
-        existing_lead = db.query(Lead).filter(Lead.email == lead.email).first()
+        ensure_auth_tables(db)
+        email = normalize_email(lead.email)
+        existing_lead = find_lead_by_email(db, email)
 
         if existing_lead:
             _apply_lead_fields(existing_lead, lead)
@@ -132,7 +137,7 @@ async def create_lead(lead: LeadCreate, db: Session = Depends(get_db)):
             return to_lead_response(existing_lead)
 
         new_lead = Lead(
-            email=lead.email,
+            email=email,
             name=lead.name,
             company=lead.company,
             industry=lead.industry,
@@ -166,9 +171,30 @@ async def check_lead_exists(email: str, db: Session = Depends(get_db)):
     """
     try:
         ensure_lead_city_column(db)
-        lead = db.query(Lead).filter(Lead.email == email).first()
+        ensure_auth_tables(db)
+        lead = find_lead_by_email(db, email)
         if lead:
             return {"exists": True, "lead": to_lead_response(lead)}
         return {"exists": False}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error checking lead: {str(e)}")
+
+
+class OnboardingCompletePayload(BaseModel):
+    email: EmailStr
+
+
+@router.post("/leads/onboarding-complete", response_model=LeadResponse)
+async def complete_onboarding(
+    payload: OnboardingCompletePayload,
+    db: Session = Depends(get_db),
+):
+    ensure_lead_city_column(db)
+    ensure_auth_tables(db)
+    lead = find_lead_by_email(db, payload.email)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    lead.onboarding_completed_at = datetime.utcnow()
+    db.commit()
+    db.refresh(lead)
+    return to_lead_response(lead)

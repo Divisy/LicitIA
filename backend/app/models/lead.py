@@ -20,6 +20,7 @@ class Lead(Base):
     city = Column(String(120), nullable=True)
     sectors = Column(String(255), nullable=True)
     source = Column(String(100), nullable=True, default="landing_page")
+    onboarding_completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

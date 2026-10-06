@@ -1,85 +1,85 @@
-import React, { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { 
-  Grid, 
-  Column, 
-  TextInput, 
+import React, { useMemo, useState } from 'react'
+import { useNavigate, Link, useLocation, useSearchParams } from 'react-router-dom'
+import {
+  Grid,
+  Column,
+  TextInput,
   Button as CarbonButton,
   InlineNotification,
-  Tile
+  Tile,
 } from '@carbon/react'
-import { 
-  WatsonMachineLearning,
-  ArrowRight,
-  ArrowLeft
-} from '@carbon/icons-react'
-import { checkLeadExists } from '../api/client'
-import {
-  serializeSectors,
-  USER_SECTORS_STORAGE_KEY,
-  type CompanySector,
-} from '../utils/companySectors'
+import { WatsonMachineLearning, ArrowRight, ArrowLeft } from '@carbon/icons-react'
+import { requestLoginCode, verifyLoginCode } from '../api/client'
+import { persistLeadSession } from '../utils/userSession'
 import './Login.scss'
 
 const Login: React.FC = () => {
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
+  const presetEmail = searchParams.get('email') || ''
+  const accountExists = Boolean(
+    (location.state as { accountExists?: boolean } | null)?.accountExists
+  )
+
+  const [email, setEmail] = useState(presetEmail)
+  const [code, setCode] = useState('')
+  const [step, setStep] = useState<'email' | 'code'>('email')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [unknownEmail, setUnknownEmail] = useState(false)
+  const [debugCode, setDebugCode] = useState<string | null>(null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const signupLink = useMemo(
+    () => (email.trim() ? `/?email=${encodeURIComponent(email.trim())}` : '/'),
+    [email]
+  )
+
+  const handleRequestCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setUnknownEmail(false)
+    setLoading(true)
+    try {
+      const result = await requestLoginCode(email.trim())
+      if (!result.exists) {
+        setUnknownEmail(true)
+        return
+      }
+      setDebugCode(result.debug_code || null)
+      setStep('code')
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string }
+      setError(
+        axiosErr?.response?.data?.detail ||
+          axiosErr?.message ||
+          'No se pudo enviar el código. Inténtalo de nuevo.'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setLoading(true)
-
     try {
-      // Verificar si el email existe en el sistema
-      const checkResult = await checkLeadExists(email)
-      
-      if (checkResult.exists && checkResult.lead) {
-        // Email existe, cargar información del usuario
-        localStorage.setItem('licitia_user_email', checkResult.lead.email)
-        
-        if (checkResult.lead.name) {
-          localStorage.setItem('licitia_user_name', checkResult.lead.name)
-        }
-        if (checkResult.lead.company) {
-          localStorage.setItem('licitia_user_company', checkResult.lead.company)
-        }
-        if (checkResult.lead.industry) {
-          localStorage.setItem('licitia_user_industry', checkResult.lead.industry)
-        }
-        if (checkResult.lead.company_size) {
-          localStorage.setItem('licitia_user_company_size', checkResult.lead.company_size)
-        }
-        if (checkResult.lead.role) {
-          localStorage.setItem('licitia_user_role', checkResult.lead.role)
-        }
-        if (checkResult.lead.phone) {
-          localStorage.setItem('licitia_user_phone', checkResult.lead.phone)
-        }
-        if (checkResult.lead.city) {
-          localStorage.setItem('licitia_user_city', checkResult.lead.city)
-        }
-        if (checkResult.lead.sectors?.length) {
-          localStorage.setItem(
-            USER_SECTORS_STORAGE_KEY,
-            serializeSectors(checkResult.lead.sectors as CompanySector[])
-          )
-        }
-        
-        // No iniciar onboarding para usuarios existentes
-        localStorage.removeItem('licitia_start_onboarding')
-        
-        // Redirigir al dashboard
-        navigate('/dashboard')
-      } else {
-        // Email no existe, sugerir registro
-        setError('Este email no está registrado. Por favor, regístrate primero.')
+      const result = await verifyLoginCode(email.trim(), code.trim())
+      if (!result.exists || !result.lead) {
+        setUnknownEmail(true)
+        setStep('email')
+        return
       }
-    } catch (err: any) {
-      console.error('Error checking lead:', err)
-      setError(err?.response?.data?.detail || err?.message || 'Error al verificar el email. Intenta de nuevo.')
+      persistLeadSession(result.lead, { returning: true })
+      navigate('/dashboard')
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string }
+      setError(
+        axiosErr?.response?.data?.detail ||
+          axiosErr?.message ||
+          'Código incorrecto. Inténtalo de nuevo.'
+      )
     } finally {
       setLoading(false)
     }
@@ -96,62 +96,139 @@ const Login: React.FC = () => {
                 <WatsonMachineLearning size={32} />
                 <h1 className="login-title">LicitIA</h1>
               </div>
-              <h2 className="login-heading">
-                Bienvenido de nuevo
-              </h2>
+              <h2 className="login-heading">Bienvenido de nuevo</h2>
               <p className="login-description">
-                Ingresa tu email para acceder a tu cuenta
+                {step === 'email'
+                  ? 'Ingresa tu correo y te enviamos un código de un solo uso.'
+                  : `Enviamos un código a ${email}. Caduca en 10 minutos.`}
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="login-form">
-              <TextInput
-                id="email-login"
-                type="email"
-                labelText="Correo electrónico"
-                placeholder="tu@empresa.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                size="lg"
-                className="login-input"
-                autoFocus
+            {accountExists && step === 'email' && (
+              <InlineNotification
+                kind="info"
+                title="Esta cuenta ya está"
+                subtitle="Entra con tu correo para continuar."
+                lowContrast
+                className="login-notification"
+                hideCloseButton
               />
+            )}
 
-              <CarbonButton
-                type="submit"
-                size="lg"
-                renderIcon={ArrowRight}
-                disabled={loading}
-                className="login-button"
-              >
-                {loading ? 'Verificando...' : 'Iniciar sesión'}
-              </CarbonButton>
-
-              {error && (
-                <InlineNotification
-                  kind="error"
-                  title="Error"
-                  subtitle={error}
-                  lowContrast={true}
-                  className="login-notification"
-                  onClose={() => setError(null)}
+            {step === 'email' ? (
+              <form onSubmit={handleRequestCode} className="login-form">
+                <TextInput
+                  id="email-login"
+                  type="email"
+                  labelText="Correo electrónico"
+                  placeholder="tu@empresa.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  size="lg"
+                  className="login-input"
+                  autoFocus
                 />
-              )}
 
-              <div className="login-footer">
-                <p className="login-footer-text">
-                  ¿No tienes cuenta?{' '}
-                  <Link to="/landing" className="login-link">
-                    Regístrate gratis
+                <CarbonButton
+                  type="submit"
+                  size="lg"
+                  renderIcon={ArrowRight}
+                  disabled={loading}
+                  className="login-button"
+                >
+                  {loading ? 'Enviando...' : 'Enviar código'}
+                </CarbonButton>
+
+                {unknownEmail && (
+                  <InlineNotification
+                    kind="warning"
+                    title="No hay cuenta con este correo"
+                    subtitle="Crea tu cuenta para entrar al radar."
+                    lowContrast
+                    className="login-notification"
+                    hideCloseButton
+                  />
+                )}
+
+                {error && (
+                  <InlineNotification
+                    kind="error"
+                    title="Error"
+                    subtitle={error}
+                    lowContrast
+                    className="login-notification"
+                    onClose={() => setError(null)}
+                  />
+                )}
+
+                <div className="login-footer">
+                  <p className="login-footer-text">
+                    ¿No tienes cuenta?{' '}
+                    <Link to={signupLink} className="login-link">
+                      Crear cuenta
+                    </Link>
+                  </p>
+                  <Link to="/" className="login-back-link">
+                    <ArrowLeft size={16} />
+                    Volver a la landing
                   </Link>
-                </p>
-                <Link to="/landing" className="login-back-link">
-                  <ArrowLeft size={16} />
-                  Volver a la landing
-                </Link>
-              </div>
-            </form>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleVerify} className="login-form">
+                <TextInput
+                  id="code-login"
+                  labelText="Código"
+                  placeholder="000000"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  required
+                  size="lg"
+                  className="login-input"
+                  autoFocus
+                />
+
+                {debugCode && (
+                  <p className="login-debug-code">Código de prueba: {debugCode}</p>
+                )}
+
+                <CarbonButton
+                  type="submit"
+                  size="lg"
+                  renderIcon={ArrowRight}
+                  disabled={loading || code.length !== 6}
+                  className="login-button"
+                >
+                  {loading ? 'Verificando...' : 'Entrar'}
+                </CarbonButton>
+
+                {error && (
+                  <InlineNotification
+                    kind="error"
+                    title="Error"
+                    subtitle={error}
+                    lowContrast
+                    className="login-notification"
+                    onClose={() => setError(null)}
+                  />
+                )}
+
+                <div className="login-footer">
+                  <button
+                    type="button"
+                    className="login-link login-resend"
+                    onClick={() => {
+                      setStep('email')
+                      setCode('')
+                      setError(null)
+                    }}
+                  >
+                    Usar otro correo o pedir otro código
+                  </button>
+                </div>
+              </form>
+            )}
           </Tile>
         </Column>
       </Grid>
@@ -160,4 +237,3 @@ const Login: React.FC = () => {
 }
 
 export default Login
-

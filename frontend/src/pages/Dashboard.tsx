@@ -39,7 +39,9 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
-  const [showAllTenders, setShowAllTenders] = useState(() => isPortfolioSkipped())
+  const [showAllTenders, setShowAllTenders] = useState(
+    () => isPortfolioSkipped() || !localStorage.getItem('licitia_user_email')
+  )
   
   const {
     state: onboardingState,

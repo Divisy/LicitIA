@@ -131,6 +131,20 @@
   }
 }
 
+.login-resend {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.login-debug-code {
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin: 0 0 $spacing-04;
+}
+
 .login-back-link {
   display: inline-flex;
   align-items: center;

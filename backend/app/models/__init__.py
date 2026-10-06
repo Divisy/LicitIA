@@ -4,6 +4,7 @@ from app.models.subscription import Subscription
 from app.models.company_experience import CompanyExperience
 from app.models.company_capacity import CompanyCapacity
 from app.models.lead import Lead
+from app.models.login_code import LoginCode
 from app.models.support_ticket import SupportTicket
 from app.models.feedback import Feedback
 from app.models.tender_document import TenderDocument
@@ -19,6 +20,7 @@ __all__ = [
     "CompanyExperience",
     "CompanyCapacity",
     "Lead",
+    "LoginCode",
     "SupportTicket",
     "Feedback",
 ]

@@ -72,6 +72,31 @@ LicitIA - Radar de Oportunidades
         logger.error(f"Error sending email alert to {subscription.contact_email}: {e}")
 
 
+def send_login_code_email(to_email: str, code: str) -> None:
+    """Send a one-time login code."""
+    msg = EmailMessage()
+    msg["From"] = settings.NOTIFICATION_FROM_EMAIL
+    msg["To"] = to_email
+    msg["Subject"] = "Tu código LicitIA"
+    ttl = getattr(settings, "AUTH_OTP_TTL_MINUTES", 10)
+    msg.set_content(
+        f"Tu código LicitIA es {code}. Caduca en {ttl} minutos.\n\n"
+        "Si no pediste este código, ignora este correo.\n\n"
+        "— LicitIA"
+    )
+
+    if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+        logger.warning("SMTP not configured; login code for %s was not emailed", to_email)
+        return
+
+    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as smtp:
+        if settings.SMTP_USE_TLS:
+            smtp.starttls()
+        smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+        smtp.send_message(msg)
+    logger.info("Login code emailed to %s", to_email)
+
+
 def send_whatsapp_alert(subscription: Subscription, tender: Tender) -> None:
     """
     Send a WhatsApp alert via Cloud API.
