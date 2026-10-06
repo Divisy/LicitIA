@@ -1626,7 +1626,12 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
 
   return (
     <ComposedModal open={open} onClose={onClose} size="lg" className="tender-detail-modal">
-      <ModalHeader title={title} label="Detalle de licitación" closeModal={onClose} />
+      <ModalHeader
+        title={title}
+        label="Detalle de licitación"
+        closeModal={onClose}
+        iconDescription="Cerrar"
+      />
       <ModalBody>
         <div className="tender-detail-panel">
           <section
@@ -1695,8 +1700,6 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
             )}
           </section>
 
-          <DecisionSummaryBar tender={tender} summary={summary} />
-
           <section className="tender-detail-panel__summary">
             <div className="tender-detail-panel__summary-header">
               <h3 className="tender-detail-panel__entity">{tender.entity_name}</h3>
@@ -1722,6 +1725,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
               </div>
             </div>
             <p className="tender-detail-panel__object">{tender.object_text}</p>
+            <DecisionSummaryBar tender={tender} summary={summary} />
             <div className="tender-detail-panel__meta">
               <div>
                 <span className="tender-detail-panel__meta-label">Publicación</span>
