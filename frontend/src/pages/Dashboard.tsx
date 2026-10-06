@@ -56,7 +56,8 @@ const Dashboard: React.FC = () => {
   const [dateFrom, setDateFrom] = useState<string>('')
   const [dateTo, setDateTo] = useState<string>('')
   const [department, setDepartment] = useState<string>('')
-  const [companyName, setCompanyName] = useState<string>('')
+  const [entity, setEntity] = useState<string>('')
+  const [appliedEntity, setAppliedEntity] = useState<string>('')
   const [contractKind, setContractKind] = useState<ContractKindFilter>(() =>
     defaultContractKindFromSectors(
       parseStoredSectors(localStorage.getItem(USER_SECTORS_STORAGE_KEY))
@@ -90,6 +91,7 @@ const Dashboard: React.FC = () => {
       if (dateFrom) params.date_from = dateFrom
       if (dateTo) params.date_to = dateTo
       if (department) params.department = department
+      if (appliedEntity) params.entity = appliedEntity
       if (effectiveContractKind) params.contract_kind = effectiveContractKind
       
       const response = await getTenders(params)
@@ -111,6 +113,7 @@ const Dashboard: React.FC = () => {
     dateFrom,
     dateTo,
     department,
+    appliedEntity,
   ])
   
   useEffect(() => {
@@ -153,7 +156,12 @@ const Dashboard: React.FC = () => {
   
   const handleFilterSubmit = () => {
     setShowAll(false)
-    fetchTenders(false)
+    const next = entity.trim()
+    if (next === appliedEntity) {
+      fetchTenders(false)
+      return
+    }
+    setAppliedEntity(next)
   }
 
   const handleContractKindChange = (value: ContractKindFilter) => {
@@ -230,12 +238,12 @@ const Dashboard: React.FC = () => {
                 dateFrom={dateFrom}
                 dateTo={dateTo}
                 department={department}
-                companyName={companyName}
+                entity={entity}
                 contractKind={contractKind}
                 onDateFromChange={setDateFrom}
                 onDateToChange={setDateTo}
                 onDepartmentChange={setDepartment}
-                onCompanyNameChange={setCompanyName}
+                onEntityChange={setEntity}
                 onContractKindChange={handleContractKindChange}
                 onSubmit={handleFilterSubmit}
               />

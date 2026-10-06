@@ -21,12 +21,12 @@ interface FiltersBarProps {
   dateFrom: string
   dateTo: string
   department: string
-  companyName: string
+  entity: string
   contractKind: ContractKindFilter
   onDateFromChange: (value: string) => void
   onDateToChange: (value: string) => void
   onDepartmentChange: (value: string) => void
-  onCompanyNameChange: (value: string) => void
+  onEntityChange: (value: string) => void
   onContractKindChange: (value: ContractKindFilter) => void
   onSubmit: () => void
 }
@@ -70,10 +70,12 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
   dateFrom,
   dateTo,
   department,
+  entity,
   contractKind,
   onDateFromChange,
   onDateToChange,
   onDepartmentChange,
+  onEntityChange,
   onContractKindChange,
   onSubmit,
 }) => {
@@ -196,6 +198,17 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
                   placeholder="Departamento o municipio"
                   value={department}
                   onChange={(e) => onDepartmentChange(e.target.value)}
+                  size="sm"
+                />
+              </div>
+
+              <div className="filters-bar-field filters-bar-field--entity">
+                <TextInput
+                  id="entity"
+                  labelText="Entidad contratante"
+                  placeholder="INVÍAS, municipio, IDU…"
+                  value={entity}
+                  onChange={(e) => onEntityChange(e.target.value)}
                   size="sm"
                 />
               </div>

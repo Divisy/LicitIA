@@ -158,6 +158,7 @@ export interface TenderFilters {
   contract_kind?: ContractKindFilter;
   date_from?: string;
   date_to?: string;
+  entity?: string;
   match_experience?: boolean;
   only_interventoria?: boolean;
   company_name?: string;
@@ -188,6 +189,9 @@ export async function getTenders(
   }
   if (filters.date_to) {
     params.append("date_to", filters.date_to);
+  }
+  if (filters.entity) {
+    params.append("entity", filters.entity);
   }
   if (filters.match_experience !== undefined) {
     params.append("match_experience", filters.match_experience.toString());

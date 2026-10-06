@@ -57,6 +57,10 @@ async def list_tenders(
     contract_modality: Optional[str] = Query(None, description="Filter by contract modality (Modalidad de contratación)"),
     date_from: Optional[date] = Query(None, description="Filter by closing date from"),
     date_to: Optional[date] = Query(None, description="Filter by closing date to"),
+    entity: Optional[str] = Query(
+        None,
+        description="Filter by contracting entity name (partial, case-insensitive)",
+    ),
     match_experience: bool = Query(False, description="Only show tenders matching company experiences"),
     only_interventoria: bool = Query(False, description="Deprecated: use contract_kind=interventoria"),
     contract_kind: Optional[str] = Query(
@@ -95,6 +99,10 @@ async def list_tenders(
         query = query.filter(
             Tender.closing_date < datetime.combine(date_to + timedelta(days=1), time.min)
         )
+
+    entity_query = (entity or "").strip()
+    if entity_query:
+        query = query.filter(Tender.entity_name.ilike(f"%{entity_query}%"))
     
     kind = parse_contract_kind(contract_kind)
     if kind is not None:
