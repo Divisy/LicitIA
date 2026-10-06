@@ -55,8 +55,8 @@ async def list_tenders(
     department: Optional[str] = Query(None, description="Filter by department"),
     contract_type: Optional[str] = Query(None, description="Filter by contract type (Tipo de contrato)"),
     contract_modality: Optional[str] = Query(None, description="Filter by contract modality (Modalidad de contratación)"),
-    date_from: Optional[date] = Query(None, description="Filter by closing date from"),
-    date_to: Optional[date] = Query(None, description="Filter by closing date to"),
+    date_from: Optional[date] = Query(None, description="Filter by publication date from"),
+    date_to: Optional[date] = Query(None, description="Filter by publication date to"),
     entity: Optional[str] = Query(
         None,
         description="Filter by contracting entity name (partial, case-insensitive)",
@@ -93,11 +93,11 @@ async def list_tenders(
         query = query.filter(Tender.contract_modality.ilike(f"%{contract_modality}%"))
     
     if date_from:
-        query = query.filter(Tender.closing_date >= datetime.combine(date_from, time.min))
+        query = query.filter(Tender.publication_date >= datetime.combine(date_from, time.min))
 
     if date_to:
         query = query.filter(
-            Tender.closing_date < datetime.combine(date_to + timedelta(days=1), time.min)
+            Tender.publication_date < datetime.combine(date_to + timedelta(days=1), time.min)
         )
 
     entity_query = (entity or "").strip()

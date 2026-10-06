@@ -165,7 +165,7 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
                   <DatePickerInput
                     id="date-from"
                     placeholder="dd/mm/aaaa"
-                    labelText="Cierre desde"
+                    labelText="Publicación desde"
                     size="md"
                   />
                 </DatePicker>
@@ -185,7 +185,7 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
                   <DatePickerInput
                     id="date-to"
                     placeholder="dd/mm/aaaa"
-                    labelText="Cierre hasta"
+                    labelText="Publicación hasta"
                     size="md"
                   />
                 </DatePicker>
