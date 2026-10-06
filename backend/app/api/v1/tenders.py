@@ -1,7 +1,7 @@
 """Tender API endpoints."""
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import List, Optional
 from datetime import date, datetime, time, timedelta
 from uuid import UUID
 
@@ -38,6 +38,7 @@ from app.services.tender_requirements.service import (
 )
 from app.services.experience_matching import match_tender_against_experiences
 from app.services.tender_lifecycle import filter_active_dashboard_tenders
+from app.services.project_typology import parse_typology_params, typologies_intersect
 from app.services.tender_summary.contract_kind import apply_contract_kind_filter, parse_contract_kind
 from app.services.tender_summary.service import (
     SUMMARY_EXTRACTION_VERSION,
@@ -60,6 +61,10 @@ async def list_tenders(
     entity: Optional[str] = Query(
         None,
         description="Filter by contracting entity name (partial, case-insensitive)",
+    ),
+    typology: Optional[List[str]] = Query(
+        None,
+        description="Project typology filter (repeatable or CSV). OR among values.",
     ),
     match_experience: bool = Query(False, description="Only show tenders matching company experiences"),
     only_interventoria: bool = Query(False, description="Deprecated: use contract_kind=interventoria"),
@@ -177,14 +182,23 @@ async def list_tenders(
         items = matched_items[offset:offset + limit]
         
     else:
-        # Normal flow: paginate first, then match (for display purposes only)
-        # Order by closing_date DESC (most distant future first), with NULL values last
-        total = query.count()
-        # Order by closing date DESC (most distant future first), then by entity name ASC
-        tenders = query.order_by(
+        selected_typologies = parse_typology_params(typology)
+        ordered = query.order_by(
             Tender.closing_date.desc().nulls_last(),
             Tender.entity_name.asc()
-        ).offset(offset).limit(limit).all()
+        )
+        if selected_typologies:
+            all_tenders = ordered.all()
+            kept = [
+                tender
+                for tender in all_tenders
+                if typologies_intersect(tender.object_text or "", selected_typologies)
+            ]
+            total = len(kept)
+            tenders = kept[offset : offset + limit]
+        else:
+            total = query.count()
+            tenders = ordered.offset(offset).limit(limit).all()
         
         # Build response with match scores (optional, for display)
         items = []

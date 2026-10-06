@@ -16,6 +16,7 @@ from app.schemas.company_experience import (
     ExcelImportResponse
 )
 from app.services.excel_import import import_experiences_from_excel
+from app.services.project_typology import apply_project_typologies, union_typologies
 from app.services.rup_contract_kind import kind_payload_for_experience, unspsc_codes_from_stored
 from app.services.rup_import import backfill_rup_fields_from_stored_pdf, ensure_specific_experience_columns
 from app.services.specific_experience import backfill_objetos_from_stored_actas
@@ -73,6 +74,7 @@ def _experience_dict(
         "contract_kind_label": label,
         "specific_experience": experience.specific_experience,
         "specific_evidence_filename": experience.specific_evidence_filename,
+        "project_typologies": apply_project_typologies(experience),
         "unspsc_codes": unspsc_codes_from_stored(
             stored_json=getattr(experience, "unspsc_codes", None),
         ),
@@ -95,10 +97,13 @@ async def create_experience(
     keywords = extract_keywords(experience.project_description)
     keywords_json = json.dumps(keywords) if keywords else None
     
+    payload = experience.model_dump()
+    payload.pop("project_typologies", None)
     db_experience = CompanyExperience(
-        **experience.model_dump(),
+        **payload,
         keywords=keywords_json
     )
+    apply_project_typologies(db_experience)
     db.add(db_experience)
     db.commit()
     db.refresh(db_experience)
@@ -132,13 +137,25 @@ async def list_experiences(
     total = query.count()
     # Handle None completion_date for ordering
     from sqlalchemy import case
-    experiences = query.order_by(
+    ordered = query.order_by(
         case((CompanyExperience.completion_date.is_(None), 1), else_=0),
         CompanyExperience.completion_date.desc()
-    ).offset(offset).limit(limit).all()
+    )
+    all_experiences = ordered.all()
     if hydrate_rup:
-        backfill_rup_fields_from_stored_pdf(db, experiences)
-        backfill_objetos_from_stored_actas(db, experiences)
+        page = all_experiences[offset : offset + limit]
+        backfill_rup_fields_from_stored_pdf(db, page)
+        backfill_objetos_from_stored_actas(db, page)
+    dirty = False
+    for exp in all_experiences:
+        previous = getattr(exp, "project_typologies", None)
+        apply_project_typologies(exp)
+        if getattr(exp, "project_typologies", None) != previous:
+            dirty = True
+    if dirty:
+        db.commit()
+    experiences = all_experiences[offset : offset + limit]
+    available_typologies = union_typologies(all_experiences)
 
     # Parse keywords for response
     import json
@@ -158,7 +175,11 @@ async def list_experiences(
         exp_data = CompanyExperienceResponse.model_validate(exp_dict)
         items.append(exp_data)
     
-    return CompanyExperienceListResponse(items=items, total=total)
+    return CompanyExperienceListResponse(
+        items=items,
+        total=total,
+        available_typologies=available_typologies,
+    )
 
 
 @router.get("/experiences/{experience_id}", response_model=CompanyExperienceResponse)
@@ -202,6 +223,7 @@ async def upload_specific_evidence(
         persist_pdf_bytes,
         slugify_company,
     )
+    from app.services.project_typology import apply_project_typologies
     from app.services.rup_contract_kind import apply_kind_from_specific_experience
     from app.services.specific_experience import extract_specific_experience_from_pdf_bytes
 
@@ -247,6 +269,7 @@ async def upload_specific_evidence(
     if extracted:
         experience.specific_experience = extracted
         apply_kind_from_specific_experience(experience, extracted)
+        apply_project_typologies(experience)
         keywords = extract_keywords(extracted)
         experience.keywords = json.dumps(keywords) if keywords else experience.keywords
         experience.updated_at = datetime.utcnow()

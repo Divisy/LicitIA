@@ -21,6 +21,7 @@ class CompanyExperienceBase(BaseModel):
     contract_kind_label: Optional[str] = None
     specific_experience: Optional[str] = None
     specific_evidence_filename: Optional[str] = None
+    project_typologies: List[str] = Field(default_factory=list)
 
 
 class CompanyExperienceCreate(CompanyExperienceBase):
@@ -44,6 +45,7 @@ class CompanyExperienceListResponse(BaseModel):
     """Paginated experience list response."""
     items: List[CompanyExperienceResponse]
     total: int
+    available_typologies: List[str] = Field(default_factory=list)
 
 
 class ExcelImportResponse(BaseModel):

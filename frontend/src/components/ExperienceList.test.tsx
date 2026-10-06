@@ -21,6 +21,7 @@ function experience(overrides: Partial<CompanyExperience> = {}): CompanyExperien
     contract_kind_label: 'Estudios, diseños y obra',
     specific_experience: null,
     specific_evidence_filename: null,
+    project_typologies: [],
     unspsc_codes: ['11101700', '11111500', '30101800', '30102000', '81101500'],
     keywords: null,
     created_at: '2026-01-01T00:00:00Z',
@@ -90,6 +91,7 @@ describe('ExperienceList UNSPSC preview', () => {
           experience({
             specific_experience: 'Construcción y mejoramiento de la malla vial en Paipa.',
             specific_evidence_filename: 'ACTA.pdf',
+            project_typologies: ['vias'],
           }),
         ]}
         companyName="BEC"
@@ -99,6 +101,8 @@ describe('ExperienceList UNSPSC preview', () => {
     expect(
       screen.getByText('Construcción y mejoramiento de la malla vial en Paipa.')
     ).toBeInTheDocument()
+    expect(screen.getByText('Tipología')).toBeInTheDocument()
+    expect(screen.getByText('Vías')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Reemplazar/ })).toBeInTheDocument()
   })
 })

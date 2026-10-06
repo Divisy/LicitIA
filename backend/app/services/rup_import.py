@@ -18,6 +18,7 @@ from app.models.company_capacity import CompanyCapacity
 from app.models.company_experience import CompanyExperience
 from app.services.document_storage import DocumentStorageService, get_document_storage
 from app.services.experience_matching import extract_keywords
+from app.services.project_typology import apply_project_typologies
 from app.services.rup_contract_kind import kind_payload_for_experience, unspsc_codes_from_stored
 from app.services.rup_parser import RupParseResult, extract_text_from_pdf_bytes, parse_rup_text, resolve_contractor_name
 
@@ -127,6 +128,12 @@ def ensure_specific_experience_columns(db: Session) -> None:
     )
     db.execute(
         text("ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS unspsc_codes TEXT")
+    )
+    db.execute(
+        text(
+            "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS "
+            "project_typologies TEXT"
+        )
     )
     db.execute(
         text(
@@ -258,6 +265,7 @@ def replace_experiences_from_rup(
             created_at=now,
             updated_at=now,
         )
+        apply_project_typologies(experience)
         db.add(experience)
         imported += 1
     return imported

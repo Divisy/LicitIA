@@ -160,6 +160,7 @@ export interface TenderFilters {
   date_from?: string;
   date_to?: string;
   entity?: string;
+  typology?: string[];
   match_experience?: boolean;
   only_interventoria?: boolean;
   company_name?: string;
@@ -193,6 +194,11 @@ export async function getTenders(
   }
   if (filters.entity) {
     params.append("entity", filters.entity);
+  }
+  if (filters.typology?.length) {
+    filters.typology.forEach((value) => {
+      if (value) params.append("typology", value);
+    });
   }
   if (filters.match_experience !== undefined) {
     params.append("match_experience", filters.match_experience.toString());
@@ -477,6 +483,7 @@ export interface CompanyExperience {
   contract_kind_label: string | null;
   specific_experience: string | null;
   specific_evidence_filename: string | null;
+  project_typologies: string[] | null;
   unspsc_codes: string[] | null;
   keywords: string[] | null;
   created_at: string;
@@ -486,6 +493,7 @@ export interface CompanyExperience {
 export interface ExperienceListResponse {
   items: CompanyExperience[];
   total: number;
+  available_typologies?: string[];
 }
 
 export async function getExperiences(

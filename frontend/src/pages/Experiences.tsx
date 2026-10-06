@@ -126,7 +126,7 @@ const Experiences: React.FC = () => {
         </div>
         <p className="experiences-step-description">
           El RUP no incluye el objeto de cada contrato. Carga el acta en PDF; si se lee el objeto,
-          aparece en la columna Objeto del contrato.
+          aparece en Objeto del contrato y la tipología (vías, acueducto, puentes…) para filtrar el radar.
         </p>
         
         {loading && (

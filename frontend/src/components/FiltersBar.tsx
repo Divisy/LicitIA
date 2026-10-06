@@ -15,6 +15,7 @@ import {
 } from '@carbon/icons-react'
 import { ContractKindFilter } from '../api/client'
 import { dateFromPickerChange } from '../utils/filterDates'
+import { typologyLabel } from '../utils/projectTypology'
 import './FiltersBar.scss'
 
 interface FiltersBarProps {
@@ -23,11 +24,14 @@ interface FiltersBarProps {
   department: string
   entity: string
   contractKind: ContractKindFilter
+  availableTypologies: string[]
+  selectedTypologies: string[]
   onDateFromChange: (value: string) => void
   onDateToChange: (value: string) => void
   onDepartmentChange: (value: string) => void
   onEntityChange: (value: string) => void
   onContractKindChange: (value: ContractKindFilter) => void
+  onTypologiesChange: (values: string[]) => void
   onSubmit: () => void
 }
 
@@ -72,15 +76,26 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
   department,
   entity,
   contractKind,
+  availableTypologies,
+  selectedTypologies,
   onDateFromChange,
   onDateToChange,
   onDepartmentChange,
   onEntityChange,
   onContractKindChange,
+  onTypologiesChange,
   onSubmit,
 }) => {
   const handleContractKindSelect = (value: ContractKindFilter) => {
     onContractKindChange(value)
+  }
+
+  const toggleTypology = (value: string) => {
+    if (selectedTypologies.includes(value)) {
+      onTypologiesChange(selectedTypologies.filter((item) => item !== value))
+      return
+    }
+    onTypologiesChange([...selectedTypologies, value])
   }
 
   return (
@@ -224,6 +239,37 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
                 Buscar
               </Button>
             </div>
+          </div>
+
+          <div className="filters-bar-typology" aria-label="Tipología de proyecto">
+            <p className="filters-bar-typology__title">Tipología de proyecto</p>
+            {availableTypologies.length === 0 ? (
+              <p className="filters-bar-hint">
+                Carga actas para filtrar por tipología
+              </p>
+            ) : (
+              <div className="filters-bar-typology__options" role="group">
+                {availableTypologies.map((value) => {
+                  const selected = selectedTypologies.includes(value)
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={selected}
+                      className={[
+                        'filters-bar-typology__chip',
+                        selected ? 'filters-bar-typology__chip--selected' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      onClick={() => toggleTypology(value)}
+                    >
+                      {typologyLabel(value)}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </section>
       </form>

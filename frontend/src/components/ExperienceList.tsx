@@ -32,6 +32,7 @@ import {
   experienceContractKindLabel,
   experienceContractKindTag,
 } from '../utils/companySectors'
+import { typologyLabel } from '../utils/projectTypology'
 import './ExperienceList.scss'
 
 interface ExperienceListProps {
@@ -181,6 +182,7 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
     ...(showKindColumn ? [{ key: 'kind', header: 'Tipo de contrato' }] : []),
     { key: 'specific', header: 'Acta' },
     { key: 'object', header: 'Objeto del contrato' },
+    { key: 'typology', header: 'Tipología' },
     { key: 'entity', header: 'Entidad contratante' },
     { key: 'contract', header: 'Contrato' },
     { key: 'date', header: 'Fecha finalización' },
@@ -226,6 +228,17 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
         <p className="experience-list-object" title={specificText}>
           {specificText}
         </p>
+      ) : (
+        <span className="experience-list-object-empty">—</span>
+      ),
+      typology: (experience.project_typologies || []).length ? (
+        <div className="experience-list-typologies">
+          {(experience.project_typologies || []).map((value) => (
+            <Tag key={value} type="cyan" size="sm">
+              {typologyLabel(value)}
+            </Tag>
+          ))}
+        </div>
       ) : (
         <span className="experience-list-object-empty">—</span>
       ),

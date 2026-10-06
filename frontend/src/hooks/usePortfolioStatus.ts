@@ -7,6 +7,7 @@ export type PortfolioStatus = 'loading' | 'empty' | 'ready'
 export function usePortfolioStatus() {
   const [status, setStatus] = useState<PortfolioStatus>('loading')
   const [experienceCount, setExperienceCount] = useState(0)
+  const [availableTypologies, setAvailableTypologies] = useState<string[]>([])
   const [companyName, setCompanyName] = useState(getPortfolioCompanyName())
 
   const refresh = useCallback(async () => {
@@ -17,9 +18,11 @@ export function usePortfolioStatus() {
       const result = await getExperiences(name)
       const count = result.total ?? result.items.length
       setExperienceCount(count)
+      setAvailableTypologies(result.available_typologies || [])
       setStatus(count >= 1 ? 'ready' : 'empty')
     } catch {
       setExperienceCount(0)
+      setAvailableTypologies([])
       setStatus('empty')
     }
   }, [])
@@ -31,6 +34,7 @@ export function usePortfolioStatus() {
   return {
     status,
     experienceCount,
+    availableTypologies,
     companyName,
     refresh,
     isPortfolioSkipped: isPortfolioSkipped(),
