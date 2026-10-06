@@ -52,7 +52,6 @@ const Dashboard: React.FC = () => {
   const {
     status: portfolioStatus,
     refresh: refreshPortfolio,
-    availableTypologies,
   } = usePortfolioStatus()
   const { isFavorite, toggleFavorite } = useFavoriteTenders()
   
@@ -61,8 +60,6 @@ const Dashboard: React.FC = () => {
   const [department, setDepartment] = useState<string>('')
   const [entity, setEntity] = useState<string>('')
   const [appliedEntity, setAppliedEntity] = useState<string>('')
-  const [typologies, setTypologies] = useState<string[]>([])
-  const [appliedTypologies, setAppliedTypologies] = useState<string[]>([])
   const [contractKind, setContractKind] = useState<ContractKindFilter>(() =>
     defaultContractKindFromSectors(
       parseStoredSectors(localStorage.getItem(USER_SECTORS_STORAGE_KEY))
@@ -97,7 +94,6 @@ const Dashboard: React.FC = () => {
       if (dateTo) params.date_to = dateTo
       if (department) params.department = department
       if (appliedEntity) params.entity = appliedEntity
-      if (appliedTypologies.length) params.typology = appliedTypologies
       if (effectiveContractKind) params.contract_kind = effectiveContractKind
       
       const response = await getTenders(params)
@@ -120,7 +116,6 @@ const Dashboard: React.FC = () => {
     dateTo,
     department,
     appliedEntity,
-    appliedTypologies,
   ])
   
   useEffect(() => {
@@ -164,17 +159,11 @@ const Dashboard: React.FC = () => {
   const handleFilterSubmit = () => {
     setShowAll(false)
     const next = entity.trim()
-    const nextTypologies = typologies
-    const sameEntity = next === appliedEntity
-    const sameTypologies =
-      nextTypologies.length === appliedTypologies.length &&
-      nextTypologies.every((value) => appliedTypologies.includes(value))
-    if (sameEntity && sameTypologies) {
+    if (next === appliedEntity) {
       fetchTenders(false)
       return
     }
     setAppliedEntity(next)
-    setAppliedTypologies(nextTypologies)
   }
 
   const handleContractKindChange = (value: ContractKindFilter) => {
@@ -253,14 +242,11 @@ const Dashboard: React.FC = () => {
                 department={department}
                 entity={entity}
                 contractKind={contractKind}
-                availableTypologies={availableTypologies}
-                selectedTypologies={typologies}
                 onDateFromChange={setDateFrom}
                 onDateToChange={setDateTo}
                 onDepartmentChange={setDepartment}
                 onEntityChange={setEntity}
                 onContractKindChange={handleContractKindChange}
-                onTypologiesChange={setTypologies}
                 onSubmit={handleFilterSubmit}
               />
             </Column>
