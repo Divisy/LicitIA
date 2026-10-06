@@ -91,3 +91,66 @@ def test_kind_payload_reclassifies_legacy_rows():
     )
     assert kind == "ejecucion_obra"
     assert label == "Ejecución de obra"
+
+
+def test_kind_payload_uses_acta_objeto_over_stored_rup_kind():
+    kind, label = kind_payload_for_experience(
+        engineering_area="ejecucion_obra",
+        project_description="72103300 SERVICIOS DE MANTENIMIENTO",
+        category="72103300",
+        contract_number="RUP-1",
+        specific_experience=(
+            "Interventoría técnica y administrativa de las obras de pavimentación "
+            "en el municipio de Santa Isabel."
+        ),
+    )
+    assert kind == "interventoria"
+    assert label == "Interventoría"
+
+
+def test_kind_payload_classifies_all_four_kinds_from_objeto():
+    cases = [
+        (
+            "Elaboración de estudios y diseños definitivos para el acueducto veredal.",
+            "estudios_disenos",
+            "Estudios y diseños",
+        ),
+        (
+            "Interventoría integral al contrato de obra del sistema vial.",
+            "interventoria",
+            "Interventoría",
+        ),
+        (
+            "Estudios, diseños y construcción del sistema de acueducto de Santa Isabel.",
+            "estudios_disenos_y_obra",
+            "Estudios, diseños y obra",
+        ),
+        (
+            "Construcción y pavimentación de la malla vial urbana en Paipa.",
+            "ejecucion_obra",
+            "Ejecución de obra",
+        ),
+    ]
+    for objeto, expected_kind, expected_label in cases:
+        kind, label = kind_payload_for_experience(
+            engineering_area="desconocido",
+            project_description="",
+            category="",
+            contract_number="RUP-12",
+            specific_experience=objeto,
+        )
+        assert kind == expected_kind
+        assert label == expected_label
+
+
+def test_estudios_para_mejoramiento_is_not_obra():
+    kind, _ = kind_payload_for_experience(
+        engineering_area="ejecucion_obra",
+        project_description="obra",
+        category="",
+        contract_number="RUP-2",
+        specific_experience=(
+            "Elaboración de estudios y diseños para el mejoramiento de la malla vial."
+        ),
+    )
+    assert kind == "estudios_disenos"

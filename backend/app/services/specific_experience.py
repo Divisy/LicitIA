@@ -352,6 +352,9 @@ def backfill_objetos_from_stored_actas(db, experiences, *, limit: int = 3) -> in
             )
             continue
         row.specific_experience = extracted
+        from app.services.rup_contract_kind import apply_kind_from_specific_experience
+
+        apply_kind_from_specific_experience(row, extracted)
         keywords = extract_keywords(extracted)
         if keywords:
             row.keywords = json.dumps(keywords)

@@ -48,6 +48,7 @@ def _experience_dict(
         project_description=experience.project_description,
         category=experience.category,
         contract_number=experience.contract_number,
+        specific_experience=getattr(experience, "specific_experience", None),
     )
     return {
         "id": experience.id,
@@ -201,6 +202,7 @@ async def upload_specific_evidence(
         persist_pdf_bytes,
         slugify_company,
     )
+    from app.services.rup_contract_kind import apply_kind_from_specific_experience
     from app.services.specific_experience import extract_specific_experience_from_pdf_bytes
 
     ensure_specific_experience_columns(db)
@@ -244,6 +246,7 @@ async def upload_specific_evidence(
     extracted = await asyncio.to_thread(extract_specific_experience_from_pdf_bytes, content)
     if extracted:
         experience.specific_experience = extracted
+        apply_kind_from_specific_experience(experience, extracted)
         keywords = extract_keywords(extracted)
         experience.keywords = json.dumps(keywords) if keywords else experience.keywords
         experience.updated_at = datetime.utcnow()

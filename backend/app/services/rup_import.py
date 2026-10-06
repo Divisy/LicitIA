@@ -18,7 +18,7 @@ from app.models.company_capacity import CompanyCapacity
 from app.models.company_experience import CompanyExperience
 from app.services.document_storage import DocumentStorageService, get_document_storage
 from app.services.experience_matching import extract_keywords
-from app.services.rup_contract_kind import unspsc_codes_from_stored
+from app.services.rup_contract_kind import kind_payload_for_experience, unspsc_codes_from_stored
 from app.services.rup_parser import RupParseResult, extract_text_from_pdf_bytes, parse_rup_text, resolve_contractor_name
 
 logger = get_logger(__name__)
@@ -232,7 +232,20 @@ def replace_experiences_from_rup(
             amount=_money(contract.amount_cop),
             amount_smmlv=_smmlv(contract.amount_smmlv),
             category=_clip(contract.category, 200),
-            engineering_area=_clip(contract.contract_kind, 200),
+            engineering_area=_clip(
+                (
+                    kind_payload_for_experience(
+                        engineering_area=contract.contract_kind,
+                        project_description=description,
+                        category=contract.category,
+                        contract_number=contract.contract_number,
+                        specific_experience=specific_text,
+                    )[0]
+                    if specific_text
+                    else contract.contract_kind
+                ),
+                200,
+            ),
             department=_clip(contract.department, 100),
             municipality=_clip(contract.municipality, 100),
             keywords=json.dumps(keywords) if keywords else None,

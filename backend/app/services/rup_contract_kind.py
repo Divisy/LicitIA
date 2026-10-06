@@ -233,13 +233,24 @@ def classify_rup_experience_kind(
     return RupExperienceKind.DESCONOCIDO
 
 
+def classify_kind_from_contract_object(object_text: str) -> RupExperienceKind:
+    """Classify only from the acta objeto, not from RUP UNSPSC or stored kind."""
+    return classify_rup_experience_kind(object_text=object_text or "")
+
+
 def kind_payload_for_experience(
     *,
     engineering_area: Optional[str],
     project_description: Optional[str],
     category: Optional[str],
     contract_number: Optional[str],
+    specific_experience: Optional[str] = None,
 ) -> tuple[str, str]:
+    objeto = (specific_experience or "").strip()
+    if objeto:
+        from_objeto = classify_kind_from_contract_object(objeto)
+        if from_objeto != RupExperienceKind.DESCONOCIDO:
+            return from_objeto.value, _KIND_LABELS[from_objeto]
     stored = parse_stored_contract_kind(engineering_area)
     kind = stored or classify_rup_experience_kind(
         object_text=project_description or "",
@@ -248,3 +259,18 @@ def kind_payload_for_experience(
         extra_text=engineering_area or "",
     )
     return kind.value, _KIND_LABELS[kind]
+
+
+def apply_kind_from_specific_experience(experience, objeto: str) -> Optional[str]:
+    """Persist Tipo de contrato from the extracted acta object when it is one of the 4 kinds."""
+    kind, _ = kind_payload_for_experience(
+        engineering_area=None,
+        project_description="",
+        category="",
+        contract_number="",
+        specific_experience=objeto,
+    )
+    if kind == RupExperienceKind.DESCONOCIDO.value:
+        return None
+    experience.engineering_area = kind
+    return kind
