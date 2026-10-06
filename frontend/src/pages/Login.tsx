@@ -29,6 +29,7 @@ const Login: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [unknownEmail, setUnknownEmail] = useState(false)
   const [debugCode, setDebugCode] = useState<string | null>(null)
+  const [emailSent, setEmailSent] = useState(false)
 
   const signupLink = useMemo(
     () => (email.trim() ? `/?email=${encodeURIComponent(email.trim())}` : '/'),
@@ -46,7 +47,11 @@ const Login: React.FC = () => {
         setUnknownEmail(true)
         return
       }
+      setEmailSent(Boolean(result.email_sent))
       setDebugCode(result.debug_code || null)
+      if (result.debug_code) {
+        setCode(result.debug_code)
+      }
       setStep('code')
     } catch (err: unknown) {
       setError(formatApiError(err, 'No se pudo enviar el código. Inténtalo de nuevo.'))
@@ -90,7 +95,9 @@ const Login: React.FC = () => {
               <p className="login-description">
                 {step === 'email'
                   ? 'Ingresa tu correo y te enviamos un código de un solo uso.'
-                  : `Enviamos un código a ${email}. Caduca en 10 minutos.`}
+                  : emailSent
+                    ? `Enviamos un código a ${email}. Caduca en 10 minutos.`
+                    : 'El correo no se pudo enviar. Usa el código que aparece en pantalla.'}
               </p>
             </div>
 
@@ -179,8 +186,15 @@ const Login: React.FC = () => {
                   autoFocus
                 />
 
-                {debugCode && (
-                  <p className="login-debug-code">Código de prueba: {debugCode}</p>
+                {debugCode && !emailSent && (
+                  <InlineNotification
+                    kind="info"
+                    title="Usa este código"
+                    subtitle={debugCode}
+                    lowContrast
+                    className="login-notification"
+                    hideCloseButton
+                  />
                 )}
 
                 <CarbonButton
@@ -211,6 +225,8 @@ const Login: React.FC = () => {
                     onClick={() => {
                       setStep('email')
                       setCode('')
+                      setDebugCode(null)
+                      setEmailSent(false)
                       setError(null)
                     }}
                   >

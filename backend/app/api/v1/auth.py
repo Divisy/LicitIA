@@ -1,5 +1,7 @@
 """Email one-time-code login for returning users."""
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+import asyncio
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
@@ -30,19 +32,8 @@ class VerifyPayload(BaseModel):
     code: str
 
 
-def _send_login_code_safe(email: str, code: str) -> None:
-    try:
-        send_login_code_email(email, code)
-    except Exception:
-        logger.exception("Failed to email login code to %s", email)
-
-
 @router.post("/auth/request-code")
-async def request_code(
-    payload: EmailPayload,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-):
+async def request_code(payload: EmailPayload, db: Session = Depends(get_db)):
     try:
         ensure_lead_city_column(db)
         ensure_auth_tables(db)
@@ -58,15 +49,14 @@ async def request_code(
             )
 
         code = issue_code(db, email)
-        smtp_ready = bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
-        if smtp_ready:
-            background_tasks.add_task(_send_login_code_safe, email, code)
+        email_sent = await asyncio.to_thread(send_login_code_email, email, code)
 
         body = {
             "exists": True,
             "ttl_minutes": settings.AUTH_OTP_TTL_MINUTES,
+            "email_sent": email_sent,
         }
-        if settings.AUTH_OTP_DEBUG or not smtp_ready:
+        if not email_sent or settings.AUTH_OTP_DEBUG:
             body["debug_code"] = code
         return body
     except HTTPException:

@@ -605,6 +605,7 @@ export interface RequestCodeResponse {
   exists: boolean;
   ttl_minutes?: number;
   debug_code?: string;
+  email_sent?: boolean;
 }
 
 export async function requestLoginCode(email: string): Promise<RequestCodeResponse> {

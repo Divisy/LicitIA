@@ -72,10 +72,15 @@ LicitIA - Radar de Oportunidades
         logger.error(f"Error sending email alert to {subscription.contact_email}: {e}")
 
 
-def send_login_code_email(to_email: str, code: str) -> None:
-    """Send a one-time login code."""
+def send_login_code_email(to_email: str, code: str) -> bool:
+    """Send a one-time login code. Returns True if the message left SMTP."""
+    if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+        logger.warning("SMTP not configured; login code for %s was not emailed", to_email)
+        return False
+
+    from_email = settings.SMTP_USER or settings.NOTIFICATION_FROM_EMAIL
     msg = EmailMessage()
-    msg["From"] = settings.NOTIFICATION_FROM_EMAIL
+    msg["From"] = from_email
     msg["To"] = to_email
     msg["Subject"] = "Tu código LicitIA"
     ttl = getattr(settings, "AUTH_OTP_TTL_MINUTES", 10)
@@ -85,16 +90,17 @@ def send_login_code_email(to_email: str, code: str) -> None:
         "— LicitIA"
     )
 
-    if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
-        logger.warning("SMTP not configured; login code for %s was not emailed", to_email)
-        return
-
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
-        if settings.SMTP_USE_TLS:
-            smtp.starttls()
-        smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-        smtp.send_message(msg)
-    logger.info("Login code emailed to %s", to_email)
+    try:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
+            if settings.SMTP_USE_TLS:
+                smtp.starttls()
+            smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            smtp.send_message(msg)
+        logger.info("Login code emailed to %s", to_email)
+        return True
+    except Exception:
+        logger.exception("Failed to email login code to %s", to_email)
+        return False
 
 
 def send_whatsapp_alert(subscription: Subscription, tender: Tender) -> None:
