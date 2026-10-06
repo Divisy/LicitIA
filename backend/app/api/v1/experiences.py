@@ -18,6 +18,7 @@ from app.schemas.company_experience import (
 from app.services.excel_import import import_experiences_from_excel
 from app.services.rup_contract_kind import kind_payload_for_experience, unspsc_codes_from_stored
 from app.services.rup_import import backfill_rup_fields_from_stored_pdf, ensure_specific_experience_columns
+from app.services.specific_experience import backfill_objetos_from_stored_actas
 from app.services.rup_parser import resolve_contractor_name
 from app.core.logging import get_logger
 
@@ -136,6 +137,7 @@ async def list_experiences(
     ).offset(offset).limit(limit).all()
     if hydrate_rup:
         backfill_rup_fields_from_stored_pdf(db, experiences)
+        backfill_objetos_from_stored_actas(db, experiences)
 
     # Parse keywords for response
     import json
@@ -213,6 +215,8 @@ async def upload_specific_evidence(
             detail="Sube el certificado o el acta de finalización en PDF.",
         )
 
+    import asyncio
+
     content = await file.read()
     max_bytes = min(getattr(settings, "RUP_UPLOAD_MAX_BYTES", 26_214_400), 26_214_400)
     if len(content) > max_bytes:
@@ -232,15 +236,25 @@ async def upload_specific_evidence(
             detail="No se pudo guardar el certificado o el acta.",
         ) from exc
 
-    extracted = extract_specific_experience_from_pdf_bytes(content)
     experience.specific_evidence_filename = filename[:255]
     experience.specific_evidence_key = object_key[:500]
+    experience.updated_at = datetime.utcnow()
+    db.commit()
+
+    extracted = await asyncio.to_thread(extract_specific_experience_from_pdf_bytes, content)
     if extracted:
         experience.specific_experience = extracted
         keywords = extract_keywords(extracted)
         experience.keywords = json.dumps(keywords) if keywords else experience.keywords
-    experience.updated_at = datetime.utcnow()
-    db.commit()
+        experience.updated_at = datetime.utcnow()
+        db.commit()
+    else:
+        logger.warning(
+            "Acta saved without objeto for experience %s file=%s bytes=%s",
+            experience_id,
+            filename,
+            len(content),
+        )
     db.refresh(experience)
     return CompanyExperienceResponse.model_validate(
         _experience_dict(

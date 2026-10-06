@@ -22,6 +22,32 @@ def test_extracts_objeto_del_contrato():
     assert "valor" not in result.lower()
 
 
+def test_extracts_objeto_on_following_line():
+    text = """
+    ACTA DE RECIBO FINAL
+    OBJETO DEL CONTRATO
+    Construcción y mejoramiento de la malla vial urbana en el municipio de Paipa.
+    VALOR DEL CONTRATO: $ 1.000
+    """
+    result = extract_specific_experience_from_text(text)
+    assert result is not None
+    assert "malla vial" in result.lower()
+    assert "valor" not in result.lower()
+
+
+def test_extracts_tiene_por_objeto():
+    text = (
+        "El Fondo Financiero de Proyectos de Desarrollo FONADE contrató al "
+        "Consorcio Santa Isabel, contrato que tiene por objeto estudios, "
+        "diseños y construcción del sistema de acueducto de Santa Isabel. "
+        "Valor: $ 500."
+    )
+    result = extract_specific_experience_from_text(text)
+    assert result is not None
+    assert "acueducto" in result.lower()
+    assert "santa isabel" in result.lower()
+
+
 def test_returns_none_when_no_objeto():
     text = "Certificado de existencia y representación legal de la sociedad. " * 5
     assert extract_specific_experience_from_text(text) is None
@@ -29,15 +55,15 @@ def test_returns_none_when_no_objeto():
 
 def test_scanned_acta_uses_vision_when_pdf_has_no_text():
     with patch(
-        "app.services.rup_parser.extract_text_from_pdf_bytes",
-        return_value="044\n045\n046\n047\n048\n049",
+        "app.services.specific_experience._page_texts",
+        return_value=["044\n045\n046\n047\n048\n049"],
     ), patch(
         "app.services.specific_experience.extract_specific_experience_with_vision",
         return_value="Construcción y mejoramiento de la malla vial urbana en Paipa.",
     ) as vision:
         result = extract_specific_experience_from_pdf_bytes(b"%PDF-scan")
     assert "malla vial" in result
-    vision.assert_called_once_with(b"%PDF-scan")
+    vision.assert_called_once()
 
 
 def test_garbled_scan_text_layer_uses_vision():
@@ -46,8 +72,11 @@ def test_garbled_scan_text_layer_uses_vision():
         * 40
     )
     with patch(
-        "app.services.rup_parser.extract_text_from_pdf_bytes",
-        return_value=garbage,
+        "app.services.specific_experience._page_texts",
+        return_value=[garbage],
+    ), patch(
+        "app.services.specific_experience.extract_objeto_from_text_with_llm",
+        return_value=None,
     ), patch(
         "app.services.specific_experience.extract_specific_experience_with_vision",
         return_value="Mejoramiento de la vía Santa Isabel en el municipio.",
@@ -63,13 +92,35 @@ def test_native_text_skips_vision():
         "en el municipio de Paipa, Boyacá. Valor: 100."
     )
     with patch(
-        "app.services.rup_parser.extract_text_from_pdf_bytes",
-        return_value=native,
+        "app.services.specific_experience._page_texts",
+        return_value=[native],
     ), patch(
         "app.services.specific_experience.extract_specific_experience_with_vision"
     ) as vision:
         result = extract_specific_experience_from_pdf_bytes(b"%PDF-text")
     assert "acueducto" in result.lower()
+    vision.assert_not_called()
+
+
+def test_llm_extracts_objeto_when_regex_misses():
+    native = (
+        "Certificado de cumplimiento. El contratista ejecutó la pavimentación "
+        "de la vía terciaria entre Paipa y Sotaquirá, incluyendo obras de "
+        "drenaje y señalización. Constancia de recibo a satisfacción. "
+        * 2
+    )
+    with patch(
+        "app.services.specific_experience._page_texts",
+        return_value=[native],
+    ), patch(
+        "app.services.specific_experience.extract_objeto_from_text_with_llm",
+        return_value="Pavimentación de la vía terciaria entre Paipa y Sotaquirá.",
+    ) as llm, patch(
+        "app.services.specific_experience.extract_specific_experience_with_vision"
+    ) as vision:
+        result = extract_specific_experience_from_pdf_bytes(b"%PDF-llm")
+    assert "terciaria" in result.lower()
+    llm.assert_called_once()
     vision.assert_not_called()
 
 
@@ -87,9 +138,11 @@ def test_vision_reads_objeto_json():
     with patch("app.services.specific_experience.settings") as mock_settings, patch(
         "app.services.specific_experience.render_acta_page_jpegs",
         return_value=[(1, b"jpeg-bytes")],
+    ), patch(
+        "app.services.specific_experience._page_texts",
+        return_value=["acta"],
     ), patch("openai.OpenAI", return_value=fake_client):
         mock_settings.OPENAI_API_KEY = "sk-test"
         mock_settings.OPENAI_MODEL_NAME = "gpt-4o-mini"
         result = extract_specific_experience_with_vision(b"%PDF")
     assert "Pavimentación" in result
-
