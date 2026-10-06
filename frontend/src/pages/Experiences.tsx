@@ -22,7 +22,9 @@ const Experiences: React.FC = () => {
   const [rupProfile, setRupProfile] = useState<RupProfileResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [companyName, setCompanyName] = useState<string>('BEC')
+  const [companyName, setCompanyName] = useState<string>(
+    () => localStorage.getItem('licitia_user_company') || ''
+  )
   const [refreshKey, setRefreshKey] = useState(0)
 
   // Load company name from localStorage if available
@@ -30,18 +32,21 @@ const Experiences: React.FC = () => {
     const savedCompany = localStorage.getItem('licitia_user_company')
     if (savedCompany) {
       setCompanyName(savedCompany)
-      fetchExperiences()
+    }
+    if (savedCompany || localStorage.getItem('licitia_user_email')) {
+      fetchExperiences(savedCompany || undefined)
     }
   }, [])
 
   useEffect(() => {
-    if (companyName.trim() && refreshKey > 0) {
+    if (refreshKey > 0) {
       fetchExperiences()
     }
   }, [refreshKey])
 
-  const fetchExperiences = async () => {
-    if (!companyName.trim()) {
+  const fetchExperiences = async (overrideName?: string) => {
+    const name = (overrideName ?? companyName).trim()
+    if (!name && !localStorage.getItem('licitia_user_email')) {
       setError('Por favor ingresa el nombre de la empresa')
       return
     }
@@ -50,9 +55,10 @@ const Experiences: React.FC = () => {
     setError(null)
 
     try {
+      const queryName = name || 'Mi Empresa'
       const [data, profile] = await Promise.all([
-        getExperiences(companyName.trim(), { hydrateRup: true }),
-        getRupProfile(companyName.trim()).catch(() => null),
+        getExperiences(queryName, { hydrateRup: true }),
+        getRupProfile(queryName).catch(() => null),
       ])
       setExperiences(data.items)
       setRupProfile(profile)

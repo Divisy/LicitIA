@@ -19,6 +19,7 @@ from app.services.rup_import import (
     backfill_capacity_from_stored_rup,
     ensure_company_capacity_table,
     ensure_specific_experience_columns,
+    normalize_owner_email,
     persist_rup_pdf,
     replace_experiences_from_rup,
     upsert_capacity,
@@ -67,6 +68,7 @@ def _warnings(row: Optional[CompanyCapacity]) -> list[str]:
 async def import_rup(
     file: UploadFile = File(..., description="Certificado RUP en PDF"),
     company_name: str = Query("Mi Empresa", min_length=1, description="Company name"),
+    owner_email: Optional[str] = Query(None, description="Registered user email"),
     db: Session = Depends(get_db),
 ):
     filename = (file.filename or "").strip()
@@ -110,12 +112,14 @@ async def import_rup(
         raise HTTPException(status_code=400, detail=detail)
 
     name = (company_name or "").strip() or "Mi Empresa"
+    email = normalize_owner_email(owner_email)
     try:
         source_key = persist_rup_pdf(
             get_document_storage(),
             company_name=name,
             filename=filename,
             content=content,
+            owner_email=email,
         )
     except Exception as exc:
         logger.warning("Failed to store RUP PDF for %s: %s", name, exc)
@@ -124,13 +128,16 @@ async def import_rup(
     try:
         ensure_company_capacity_table(db)
         ensure_specific_experience_columns(db)
-        imported = replace_experiences_from_rup(db, company_name=name, parsed=parsed)
+        imported = replace_experiences_from_rup(
+            db, company_name=name, parsed=parsed, owner_email=email
+        )
         capacity = upsert_capacity(
             db,
             company_name=name,
             parsed=parsed,
             source_pdf_key=source_key,
             source_pdf_filename=filename,
+            owner_email=email,
         )
         db.commit()
         db.refresh(capacity)
@@ -166,22 +173,29 @@ async def import_rup(
 @router.get("/rup/profile", response_model=RupProfileResponse)
 def get_rup_profile(
     company_name: str = Query(..., min_length=1),
+    owner_email: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    row = (
-        db.query(CompanyCapacity)
-        .filter(CompanyCapacity.company_name == company_name.strip())
-        .first()
-    )
+    ensure_company_capacity_table(db)
+    email = normalize_owner_email(owner_email)
+    query = db.query(CompanyCapacity)
+    if email:
+        query = query.filter(CompanyCapacity.owner_email == email)
+    else:
+        query = query.filter(CompanyCapacity.company_name == company_name.strip())
+    row = query.first()
     if not row:
         raise HTTPException(status_code=404, detail="Esta empresa aún no tiene un RUP cargado.")
     row = backfill_capacity_from_stored_rup(db, row)
 
-    experiences_count = (
-        db.query(CompanyExperience)
-        .filter(CompanyExperience.company_name == company_name.strip())
-        .count()
-    )
+    experiences_query = db.query(CompanyExperience)
+    if email:
+        experiences_query = experiences_query.filter(CompanyExperience.owner_email == email)
+    else:
+        experiences_query = experiences_query.filter(
+            CompanyExperience.company_name == company_name.strip()
+        )
+    experiences_count = experiences_query.count()
     return RupProfileResponse(
         id=row.id,
         company_name=row.company_name,

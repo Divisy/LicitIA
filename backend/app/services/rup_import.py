@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 _CREATE_CAPACITY_SQL = """
 CREATE TABLE IF NOT EXISTS company_capacity (
     id UUID PRIMARY KEY,
-    company_name VARCHAR(255) NOT NULL UNIQUE,
+    company_name VARCHAR(255) NOT NULL,
     nit VARCHAR(32),
     razon_social VARCHAR(500),
     camara VARCHAR(255),
@@ -100,6 +100,89 @@ def ensure_company_capacity_table(db: Session) -> None:
         )
     )
     db.commit()
+    ensure_owner_email_columns(db)
+
+
+def normalize_owner_email(email: Optional[str]) -> Optional[str]:
+    value = (email or "").strip().lower()
+    return value or None
+
+
+def ensure_owner_email_columns(db: Session) -> None:
+    db.execute(text("ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS owner_email VARCHAR(255)"))
+    db.execute(text("ALTER TABLE company_capacity ADD COLUMN IF NOT EXISTS owner_email VARCHAR(255)"))
+    db.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_company_experiences_owner_email "
+            "ON company_experiences (owner_email)"
+        )
+    )
+    db.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_company_capacity_owner_email "
+            "ON company_capacity (owner_email)"
+        )
+    )
+    db.execute(
+        text(
+            "ALTER TABLE company_capacity DROP CONSTRAINT IF EXISTS company_capacity_company_name_key"
+        )
+    )
+    db.execute(
+        text(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_company_capacity_owner_email
+            ON company_capacity (owner_email)
+            WHERE owner_email IS NOT NULL
+            """
+        )
+    )
+    db.commit()
+    _backfill_owner_email_from_leads(db)
+
+
+def _backfill_owner_email_from_leads(db: Session) -> None:
+    db.execute(
+        text(
+            """
+            UPDATE company_experiences AS ce
+            SET owner_email = sub.email
+            FROM (
+                SELECT DISTINCT ON (lower(btrim(company)))
+                    lower(btrim(email)) AS email,
+                    lower(btrim(company)) AS company
+                FROM leads
+                WHERE company IS NOT NULL
+                  AND btrim(company) <> ''
+                  AND email IS NOT NULL
+                ORDER BY lower(btrim(company)), created_at DESC
+            ) AS sub
+            WHERE ce.owner_email IS NULL
+              AND lower(btrim(ce.company_name)) = sub.company
+            """
+        )
+    )
+    db.execute(
+        text(
+            """
+            UPDATE company_capacity AS cc
+            SET owner_email = sub.email
+            FROM (
+                SELECT DISTINCT ON (lower(btrim(company)))
+                    lower(btrim(email)) AS email,
+                    lower(btrim(company)) AS company
+                FROM leads
+                WHERE company IS NOT NULL
+                  AND btrim(company) <> ''
+                  AND email IS NOT NULL
+                ORDER BY lower(btrim(company)), created_at DESC
+            ) AS sub
+            WHERE cc.owner_email IS NULL
+              AND lower(btrim(cc.company_name)) = sub.company
+            """
+        )
+    )
+    db.commit()
 
 
 def ensure_specific_experience_columns(db: Session) -> None:
@@ -142,6 +225,7 @@ def ensure_specific_experience_columns(db: Session) -> None:
         )
     )
     db.commit()
+    ensure_owner_email_columns(db)
 
 
 
@@ -179,8 +263,9 @@ def persist_rup_pdf(
     company_name: str,
     filename: str,
     content: bytes,
+    owner_email: Optional[str] = None,
 ) -> str:
-    slug = slugify_company(company_name)
+    slug = slugify_company(owner_email or company_name)
     object_key = f"rup/{slug}/rup.pdf"
     return persist_pdf_bytes(storage, object_key=object_key, content=content)
 
@@ -190,12 +275,15 @@ def replace_experiences_from_rup(
     *,
     company_name: str,
     parsed: RupParseResult,
+    owner_email: Optional[str] = None,
 ) -> int:
-    existing = (
-        db.query(CompanyExperience)
-        .filter(CompanyExperience.company_name == company_name)
-        .all()
-    )
+    email = normalize_owner_email(owner_email)
+    existing_query = db.query(CompanyExperience)
+    if email:
+        existing_query = existing_query.filter(CompanyExperience.owner_email == email)
+    else:
+        existing_query = existing_query.filter(CompanyExperience.company_name == company_name)
+    existing = existing_query.all()
     evidence_by_contract: dict[str, tuple[Optional[str], Optional[str], Optional[str]]] = {}
     for row in existing:
         number = (row.contract_number or "").strip().upper()
@@ -207,9 +295,9 @@ def replace_experiences_from_rup(
                 getattr(row, "specific_evidence_filename", None),
                 getattr(row, "specific_evidence_key", None),
             )
-    db.query(CompanyExperience).filter(CompanyExperience.company_name == company_name).delete(
-        synchronize_session=False
-    )
+    db.query(CompanyExperience).filter(
+        CompanyExperience.owner_email == email if email else CompanyExperience.company_name == company_name
+    ).delete(synchronize_session=False)
     imported = 0
     now = datetime.utcnow()
     for contract in parsed.contracts:
@@ -224,6 +312,7 @@ def replace_experiences_from_rup(
         experience = CompanyExperience(
             id=uuid.uuid4(),
             company_name=_clip(company_name, 255) or "Mi Empresa",
+            owner_email=email,
             contract_number=_clip(contract.contract_number, 100),
             project_description=description,
             contractor_name=_clip(
@@ -278,12 +367,27 @@ def upsert_capacity(
     parsed: RupParseResult,
     source_pdf_key: str,
     source_pdf_filename: str,
+    owner_email: Optional[str] = None,
 ) -> CompanyCapacity:
-    row = db.query(CompanyCapacity).filter(CompanyCapacity.company_name == company_name).first()
+    email = normalize_owner_email(owner_email)
+    query = db.query(CompanyCapacity)
+    if email:
+        row = query.filter(CompanyCapacity.owner_email == email).first()
+    else:
+        row = query.filter(CompanyCapacity.company_name == company_name).first()
     now = datetime.utcnow()
     if row is None:
-        row = CompanyCapacity(id=uuid.uuid4(), company_name=company_name, created_at=now)
+        row = CompanyCapacity(
+            id=uuid.uuid4(),
+            company_name=company_name,
+            owner_email=email,
+            created_at=now,
+        )
         db.add(row)
+    else:
+        row.company_name = company_name
+        if email:
+            row.owner_email = email
 
     row.nit = _clip(parsed.nit, 32)
     row.razon_social = _clip(parsed.razon_social, 500)
@@ -336,6 +440,7 @@ def backfill_capacity_from_stored_rup(db: Session, row: CompanyCapacity) -> Comp
         parsed=parsed,
         source_pdf_key=row.source_pdf_key,
         source_pdf_filename=row.source_pdf_filename or "rup.pdf",
+        owner_email=getattr(row, "owner_email", None),
     )
     db.commit()
     db.refresh(row)
@@ -361,16 +466,29 @@ def backfill_rup_fields_from_stored_pdf(
         return
 
     names = {row.company_name for row in missing if row.company_name}
-    if not names:
+    emails = {getattr(row, "owner_email", None) for row in missing if getattr(row, "owner_email", None)}
+    if not names and not emails:
         return
-    capacities = (
-        db.query(CompanyCapacity).filter(CompanyCapacity.company_name.in_(names)).all()
-    )
+    capacity_query = db.query(CompanyCapacity)
+    if emails:
+        capacities = capacity_query.filter(CompanyCapacity.owner_email.in_(emails)).all()
+        capacity_by_owner = {(row.owner_email or "").lower(): row for row in capacities}
+    else:
+        capacities = capacity_query.filter(CompanyCapacity.company_name.in_(names)).all()
+        capacity_by_owner = {}
     capacity_by_name = {(row.company_name or "").lower(): row for row in capacities}
     storage = get_document_storage()
     parsed_by_company: dict[str, dict[str, object]] = {}
     for name in names:
-        capacity = capacity_by_name.get((name or "").lower())
+        owner = next(
+            (
+                (getattr(row, "owner_email", None) or "").lower()
+                for row in missing
+                if (row.company_name or "").lower() == name.lower() and getattr(row, "owner_email", None)
+            ),
+            "",
+        )
+        capacity = capacity_by_owner.get(owner) or capacity_by_name.get((name or "").lower())
         if not capacity or not capacity.source_pdf_key:
             continue
         try:

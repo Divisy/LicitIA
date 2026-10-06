@@ -13,6 +13,7 @@ class CompanyExperience(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     company_name = Column(String(255), nullable=False, index=True)
+    owner_email = Column(String(255), nullable=True, index=True)
     contract_number = Column(String(100), nullable=True)
     project_description = Column(Text, nullable=False)  # OBRA
     contractor_name = Column(String(500), nullable=True)

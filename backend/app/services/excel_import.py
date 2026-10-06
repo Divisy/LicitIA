@@ -57,7 +57,8 @@ def parse_amount(amount_str: str) -> Optional[float]:
 
 def import_experiences_from_excel(
     file_path: str,
-    company_name: str = "BEC"
+    company_name: str = "BEC",
+    owner_email: Optional[str] = None,
 ) -> Tuple[int, List[str]]:
     """
     Import company experiences from Excel file.
@@ -262,13 +263,19 @@ def import_experiences_from_excel(
                 if contract_num:
                     existing = db.query(CompanyExperience).filter(
                         CompanyExperience.contract_number == contract_num,
-                        CompanyExperience.company_name == row_company
+                        CompanyExperience.company_name == row_company,
+                        *(
+                            [CompanyExperience.owner_email == owner_email]
+                            if owner_email
+                            else []
+                        ),
                     ).first()
                 
                 if not existing:
                     # Create new experience
                     experience = CompanyExperience(
                         company_name=row_company,
+                        owner_email=owner_email,
                         contract_number=contract_num,
                         project_description=project_desc,
                         contracting_entity=contracting_entity,

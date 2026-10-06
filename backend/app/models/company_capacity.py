@@ -9,12 +9,13 @@ from app.core.db import Base
 
 
 class CompanyCapacity(Base):
-    """One current RUP capacity row per company_name."""
+    """One current RUP capacity row per owner email."""
 
     __tablename__ = "company_capacity"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    company_name = Column(String(255), nullable=False, unique=True, index=True)
+    company_name = Column(String(255), nullable=False, index=True)
+    owner_email = Column(String(255), nullable=True, index=True)
     nit = Column(String(32), nullable=True)
     razon_social = Column(String(500), nullable=True)
     camara = Column(String(255), nullable=True)

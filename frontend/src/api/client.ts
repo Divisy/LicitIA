@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getSessionEmail } from "../utils/userSession";
 
 // Production always uses same-origin `/api/v1` (nginx/Vite proxy). That avoids
 // CORS Network Error when the SPA is on a different Railway host than the API.
@@ -395,15 +396,26 @@ export interface ExcelImportResponse {
   message: string;
 }
 
+function withOwnerEmail(params: URLSearchParams): URLSearchParams {
+  const email = getSessionEmail();
+  if (email) params.set("owner_email", email);
+  return params;
+}
+
 export async function importExperiences(
   file: File,
   companyName: string
 ): Promise<ExcelImportResponse> {
   const formData = new FormData();
   formData.append("file", file, file.name);
+  const params = withOwnerEmail(
+    new URLSearchParams({
+      company_name: companyName.trim() || "Mi Empresa",
+    })
+  );
 
   const response = await client.post<ExcelImportResponse>(
-    `/experiences/import?company_name=${encodeURIComponent(companyName.trim() || "Mi Empresa")}`,
+    `/experiences/import?${params.toString()}`,
     formData
   );
   return response.data;
@@ -452,8 +464,14 @@ export async function importRup(
   const formData = new FormData();
   formData.append("file", file, file.name);
 
+  const params = withOwnerEmail(
+    new URLSearchParams({
+      company_name: companyName.trim() || "Mi Empresa",
+    })
+  );
+
   const response = await client.post<RupImportResponse>(
-    `/rup/import?company_name=${encodeURIComponent(companyName.trim() || "Mi Empresa")}`,
+    `/rup/import?${params.toString()}`,
     formData
   );
   return response.data;
@@ -462,8 +480,11 @@ export async function importRup(
 export async function getRupProfile(
   companyName: string
 ): Promise<RupProfileResponse> {
+  const params = withOwnerEmail(
+    new URLSearchParams({ company_name: companyName })
+  );
   const response = await client.get<RupProfileResponse>(
-    `/rup/profile?company_name=${encodeURIComponent(companyName)}`
+    `/rup/profile?${params.toString()}`
   );
   return response.data;
 }
@@ -501,9 +522,11 @@ export async function getExperiences(
   companyName: string,
   options: { hydrateRup?: boolean } = {}
 ): Promise<ExperienceListResponse> {
-  const params = new URLSearchParams({
-    company_name: companyName,
-  })
+  const params = withOwnerEmail(
+    new URLSearchParams({
+      company_name: companyName,
+    })
+  );
   if (options.hydrateRup) {
     params.set('hydrate_rup', 'true')
   }
@@ -544,8 +567,10 @@ export interface CompanyExperienceCreate {
 export async function createExperience(
   experience: CompanyExperienceCreate
 ): Promise<CompanyExperience> {
+  const params = withOwnerEmail(new URLSearchParams());
+  const qs = params.toString();
   const response = await client.post<CompanyExperience>(
-    "/experiences",
+    qs ? `/experiences?${qs}` : "/experiences",
     experience
   );
   return response.data;

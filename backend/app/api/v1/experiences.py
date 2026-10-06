@@ -18,7 +18,12 @@ from app.schemas.company_experience import (
 from app.services.excel_import import import_experiences_from_excel
 from app.services.project_typology import apply_project_typologies, union_typologies
 from app.services.rup_contract_kind import kind_payload_for_experience, unspsc_codes_from_stored
-from app.services.rup_import import backfill_rup_fields_from_stored_pdf, ensure_specific_experience_columns
+from app.services.rup_import import (
+    backfill_rup_fields_from_stored_pdf,
+    ensure_owner_email_columns,
+    ensure_specific_experience_columns,
+    normalize_owner_email,
+)
 from app.services.specific_experience import backfill_objetos_from_stored_actas
 from app.services.rup_parser import resolve_contractor_name
 from app.core.logging import get_logger
@@ -27,14 +32,20 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-def _razon_social_for(db: Session, company_name: Optional[str]) -> Optional[str]:
-    if not company_name:
+def _razon_social_for(
+    db: Session,
+    company_name: Optional[str],
+    owner_email: Optional[str] = None,
+) -> Optional[str]:
+    email = normalize_owner_email(owner_email)
+    query = db.query(CompanyCapacity)
+    if email:
+        query = query.filter(CompanyCapacity.owner_email == email)
+    elif company_name:
+        query = query.filter(CompanyCapacity.company_name.ilike(company_name.strip()))
+    else:
         return None
-    row = (
-        db.query(CompanyCapacity)
-        .filter(CompanyCapacity.company_name.ilike(company_name.strip()))
-        .first()
-    )
+    row = query.first()
     return row.razon_social if row and row.razon_social else None
 
 
@@ -87,11 +98,14 @@ def _experience_dict(
 @router.post("/experiences", response_model=CompanyExperienceResponse, status_code=201)
 async def create_experience(
     experience: CompanyExperienceCreate,
+    owner_email: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     """Create a new company experience."""
     from app.services.experience_matching import extract_keywords
     import json
+
+    ensure_owner_email_columns(db)
     
     # Extract keywords
     keywords = extract_keywords(experience.project_description)
@@ -99,6 +113,7 @@ async def create_experience(
     
     payload = experience.model_dump()
     payload.pop("project_typologies", None)
+    payload["owner_email"] = normalize_owner_email(owner_email)
     db_experience = CompanyExperience(
         **payload,
         keywords=keywords_json
@@ -111,7 +126,9 @@ async def create_experience(
         _experience_dict(
             db_experience,
             json.loads(db_experience.keywords) if db_experience.keywords else None,
-            razon_social=_razon_social_for(db, db_experience.company_name),
+            razon_social=_razon_social_for(
+                db, db_experience.company_name, db_experience.owner_email
+            ),
         )
     )
 
@@ -119,6 +136,7 @@ async def create_experience(
 @router.get("/experiences", response_model=CompanyExperienceListResponse)
 async def list_experiences(
     company_name: Optional[str] = Query(None, description="Filter by company name"),
+    owner_email: Optional[str] = Query(None, description="Registered user email"),
     limit: int = Query(100, ge=1, le=1000, description="Number of results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     hydrate_rup: bool = Query(
@@ -129,10 +147,15 @@ async def list_experiences(
 ):
     """List company experiences."""
     ensure_specific_experience_columns(db)
+    ensure_owner_email_columns(db)
     query = db.query(CompanyExperience)
-    
-    if company_name:
+    email = normalize_owner_email(owner_email)
+    if email:
+        query = query.filter(CompanyExperience.owner_email == email)
+    elif company_name:
         query = query.filter(CompanyExperience.company_name.ilike(f"%{company_name}%"))
+    else:
+        return CompanyExperienceListResponse(items=[], total=0, available_typologies=[])
     
     total = query.count()
     # Handle None completion_date for ordering
@@ -161,16 +184,22 @@ async def list_experiences(
     import json
     razon_by: dict[str, str] = {}
     names = {exp.company_name for exp in experiences if exp.company_name}
-    if names:
+    emails = {getattr(exp, "owner_email", None) for exp in experiences if getattr(exp, "owner_email", None)}
+    if emails:
+        for row in db.query(CompanyCapacity).filter(CompanyCapacity.owner_email.in_(emails)).all():
+            if row.razon_social:
+                razon_by[(row.owner_email or "").lower()] = row.razon_social
+    elif names:
         for row in db.query(CompanyCapacity).filter(CompanyCapacity.company_name.in_(names)).all():
             if row.razon_social:
                 razon_by[(row.company_name or "").lower()] = row.razon_social
     items = []
     for exp in experiences:
+        key = (getattr(exp, "owner_email", None) or "").lower() or (exp.company_name or "").lower()
         exp_dict = _experience_dict(
             exp,
             json.loads(exp.keywords) if exp.keywords else None,
-            razon_social=razon_by.get((exp.company_name or "").lower()),
+            razon_social=razon_by.get(key),
         )
         exp_data = CompanyExperienceResponse.model_validate(exp_dict)
         items.append(exp_data)
@@ -196,7 +225,9 @@ async def get_experience(
     exp_dict = _experience_dict(
         experience,
         json.loads(experience.keywords) if experience.keywords else None,
-        razon_social=_razon_social_for(db, experience.company_name),
+        razon_social=_razon_social_for(
+            db, experience.company_name, getattr(experience, "owner_email", None)
+        ),
     )
     response_data = CompanyExperienceResponse.model_validate(exp_dict)
     return response_data
@@ -286,7 +317,9 @@ async def upload_specific_evidence(
         _experience_dict(
             experience,
             json.loads(experience.keywords) if experience.keywords else None,
-            razon_social=_razon_social_for(db, experience.company_name),
+            razon_social=_razon_social_for(
+                db, experience.company_name, getattr(experience, "owner_email", None)
+            ),
         )
     )
 
@@ -295,6 +328,7 @@ async def upload_specific_evidence(
 async def import_experiences(
     file: UploadFile = File(..., description="Excel file with company experiences"),
     company_name: str = Query("BEC", description="Company name (defaults to BEC)"),
+    owner_email: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     """
@@ -323,7 +357,11 @@ async def import_experiences(
             tmp_file_path = tmp_file.name
             
             # Import experiences
-            imported, errors = import_experiences_from_excel(tmp_file_path, company_name)
+            imported, errors = import_experiences_from_excel(
+                tmp_file_path,
+                company_name,
+                owner_email=normalize_owner_email(owner_email),
+            )
             
             if errors:
                 message = f"Imported {imported} experiences with {len(errors)} errors"

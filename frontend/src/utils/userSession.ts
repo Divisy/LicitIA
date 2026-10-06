@@ -35,6 +35,10 @@ const SESSION_KEYS = [
   USER_SECTORS_STORAGE_KEY,
 ]
 
+export function getSessionEmail(): string {
+  return (localStorage.getItem('licitia_user_email') || '').trim().toLowerCase()
+}
+
 export function persistLeadSession(
   lead: SessionLead,
   options: { startOnboarding?: boolean; returning?: boolean } = {}
