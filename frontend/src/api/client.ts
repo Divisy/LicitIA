@@ -484,7 +484,8 @@ export async function getRupProfile(
     new URLSearchParams({ company_name: companyName })
   );
   const response = await client.get<RupProfileResponse>(
-    `/rup/profile?${params.toString()}`
+    `/rup/profile?${params.toString()}`,
+    { timeout: 20000 }
   );
   return response.data;
 }
@@ -531,7 +532,8 @@ export async function getExperiences(
     params.set('hydrate_rup', 'true')
   }
   const response = await client.get<ExperienceListResponse>(
-    `/experiences?${params.toString()}`
+    `/experiences?${params.toString()}`,
+    { timeout: 20000 }
   );
   return response.data;
 }

@@ -57,7 +57,7 @@ const Experiences: React.FC = () => {
     try {
       const queryName = name || 'Mi Empresa'
       const [data, profile] = await Promise.all([
-        getExperiences(queryName, { hydrateRup: true }),
+        getExperiences(queryName),
         getRupProfile(queryName).catch(() => null),
       ])
       setExperiences(data.items)

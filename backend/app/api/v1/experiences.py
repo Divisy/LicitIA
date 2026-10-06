@@ -158,6 +158,8 @@ async def list_experiences(
         return CompanyExperienceListResponse(items=[], total=0, available_typologies=[])
     
     total = query.count()
+    if total == 0:
+        return CompanyExperienceListResponse(items=[], total=0, available_typologies=[])
     # Handle None completion_date for ordering
     from sqlalchemy import case
     ordered = query.order_by(

@@ -23,6 +23,7 @@ from app.services.rup_contract_kind import kind_payload_for_experience, unspsc_c
 from app.services.rup_parser import RupParseResult, extract_text_from_pdf_bytes, parse_rup_text, resolve_contractor_name
 
 logger = get_logger(__name__)
+_owner_email_schema_ready = False
 
 _CREATE_CAPACITY_SQL = """
 CREATE TABLE IF NOT EXISTS company_capacity (
@@ -109,6 +110,9 @@ def normalize_owner_email(email: Optional[str]) -> Optional[str]:
 
 
 def ensure_owner_email_columns(db: Session) -> None:
+    global _owner_email_schema_ready
+    if _owner_email_schema_ready:
+        return
     db.execute(text("ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS owner_email VARCHAR(255)"))
     db.execute(text("ALTER TABLE company_capacity ADD COLUMN IF NOT EXISTS owner_email VARCHAR(255)"))
     db.execute(
@@ -128,17 +132,27 @@ def ensure_owner_email_columns(db: Session) -> None:
             "ALTER TABLE company_capacity DROP CONSTRAINT IF EXISTS company_capacity_company_name_key"
         )
     )
-    db.execute(
-        text(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS ux_company_capacity_owner_email
-            ON company_capacity (owner_email)
-            WHERE owner_email IS NOT NULL
-            """
-        )
-    )
     db.commit()
-    _backfill_owner_email_from_leads(db)
+    try:
+        db.execute(
+            text(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_company_capacity_owner_email
+                ON company_capacity (owner_email)
+                WHERE owner_email IS NOT NULL
+                """
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning("Skipping unique owner_email index on company_capacity")
+    try:
+        _backfill_owner_email_from_leads(db)
+    except Exception:
+        db.rollback()
+        logger.exception("Skipping owner_email backfill from leads")
+    _owner_email_schema_ready = True
 
 
 def _backfill_owner_email_from_leads(db: Session) -> None:
