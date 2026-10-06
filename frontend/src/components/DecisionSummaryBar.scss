@@ -2,16 +2,17 @@
 @use '@carbon/react/scss/type' as *;
 
 .decision-summary-bar {
-  position: relative;
-  z-index: 0;
+  position: static;
+  top: auto;
+  z-index: auto;
   display: flex;
   flex-direction: column;
   gap: $spacing-03;
-  margin: $spacing-04 0 $spacing-05;
+  margin: 0 0 $spacing-05;
   padding: $spacing-04 $spacing-05;
   border: 1px solid var(--cds-border-subtle);
   border-radius: $spacing-03;
-  background: var(--cds-layer);
+  background: var(--cds-layer-01);
   box-shadow: none;
 }
 
