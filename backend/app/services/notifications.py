@@ -89,7 +89,7 @@ def send_login_code_email(to_email: str, code: str) -> None:
         logger.warning("SMTP not configured; login code for %s was not emailed", to_email)
         return
 
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as smtp:
+    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
         if settings.SMTP_USE_TLS:
             smtp.starttls()
         smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)

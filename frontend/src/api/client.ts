@@ -608,9 +608,11 @@ export interface RequestCodeResponse {
 }
 
 export async function requestLoginCode(email: string): Promise<RequestCodeResponse> {
-  const response = await client.post<RequestCodeResponse>("/auth/request-code", {
-    email,
-  });
+  const response = await client.post<RequestCodeResponse>(
+    "/auth/request-code",
+    { email },
+    { timeout: 15000 }
+  );
   return response.data;
 }
 
@@ -624,10 +626,11 @@ export async function verifyLoginCode(
   email: string,
   code: string
 ): Promise<VerifyCodeResponse> {
-  const response = await client.post<VerifyCodeResponse>("/auth/verify-code", {
-    email,
-    code,
-  });
+  const response = await client.post<VerifyCodeResponse>(
+    "/auth/verify-code",
+    { email, code },
+    { timeout: 15000 }
+  );
   return response.data;
 }
 
