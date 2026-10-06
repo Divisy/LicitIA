@@ -171,9 +171,9 @@
   min-width: 140px;
 
   &--date {
-    flex: 0 0 12.5rem;
-    width: 12.5rem;
-    min-width: 12.5rem;
+    flex: 0 0 17rem;
+    width: 17rem;
+    min-width: 17rem;
     overflow: visible;
 
     .cds--date-picker,
@@ -184,9 +184,23 @@
       overflow: visible;
     }
 
+    .cds--date-picker-input__wrapper {
+      position: relative;
+    }
+
+    .cds--date-picker .cds--date-picker-input,
     .cds--date-picker-input {
       width: 100%;
-      padding-inline-end: 2.75rem;
+      box-sizing: border-box;
+      padding-right: 3rem;
+      padding-inline-end: 3rem;
+    }
+
+    .cds--date-picker__icon {
+      position: absolute;
+      right: 0.75rem;
+      left: auto;
+      pointer-events: none;
     }
   }
 

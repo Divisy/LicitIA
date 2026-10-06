@@ -164,7 +164,7 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
                     id="date-from"
                     placeholder="dd/mm/aaaa"
                     labelText="Cierre desde"
-                    size="sm"
+                    size="md"
                   />
                 </DatePicker>
               </div>
@@ -184,7 +184,7 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
                     id="date-to"
                     placeholder="dd/mm/aaaa"
                     labelText="Cierre hasta"
-                    size="sm"
+                    size="md"
                   />
                 </DatePicker>
               </div>
