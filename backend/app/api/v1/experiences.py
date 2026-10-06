@@ -199,8 +199,7 @@ async def upload_specific_evidence(
         persist_pdf_bytes,
         slugify_company,
     )
-    from app.services.rup_parser import extract_text_from_pdf_bytes
-    from app.services.specific_experience import extract_specific_experience_from_text
+    from app.services.specific_experience import extract_specific_experience_from_pdf_bytes
 
     ensure_specific_experience_columns(db)
     experience = db.query(CompanyExperience).filter(CompanyExperience.id == experience_id).first()
@@ -233,7 +232,7 @@ async def upload_specific_evidence(
             detail="No se pudo guardar el certificado o el acta.",
         ) from exc
 
-    extracted = extract_specific_experience_from_text(extract_text_from_pdf_bytes(content))
+    extracted = extract_specific_experience_from_pdf_bytes(content)
     experience.specific_evidence_filename = filename[:255]
     experience.specific_evidence_key = object_key[:500]
     if extracted:
