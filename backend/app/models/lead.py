@@ -17,6 +17,7 @@ class Lead(Base):
     company_size = Column(String(50), nullable=True)
     role = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
+    city = Column(String(120), nullable=True)
     sectors = Column(String(255), nullable=True)
     source = Column(String(100), nullable=True, default="landing_page")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

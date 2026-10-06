@@ -94,6 +94,7 @@ export interface LeadCreate {
   company_size?: string;
   role?: string;
   phone?: string;
+  city?: string;
   sectors?: string[];
 }
 
@@ -551,6 +552,7 @@ export interface LeadResponse {
   company_size?: string;
   role?: string;
   phone?: string;
+  city?: string;
   sectors?: string[];
   created_at: string;
 }

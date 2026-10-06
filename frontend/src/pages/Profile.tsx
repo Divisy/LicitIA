@@ -115,7 +115,9 @@ const Profile: React.FC = () => {
           ...prev,
           companyName: landingCompany,
           contactPerson: landingName || '',
-          email: landingEmail || ''
+          email: landingEmail || '',
+          city: localStorage.getItem('licitia_user_city') || '',
+          phone: localStorage.getItem('licitia_user_phone') || prev.phone,
         }))
         fetchExperiences(landingCompany)
       }

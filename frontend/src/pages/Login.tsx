@@ -58,6 +58,9 @@ const Login: React.FC = () => {
         if (checkResult.lead.phone) {
           localStorage.setItem('licitia_user_phone', checkResult.lead.phone)
         }
+        if (checkResult.lead.city) {
+          localStorage.setItem('licitia_user_city', checkResult.lead.city)
+        }
         if (checkResult.lead.sectors?.length) {
           localStorage.setItem(
             USER_SECTORS_STORAGE_KEY,

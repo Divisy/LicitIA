@@ -83,6 +83,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
             initialData={{
               contactName: localStorage.getItem('licitia_user_name') || undefined,
               phone: localStorage.getItem('licitia_user_phone') || undefined,
+              city: localStorage.getItem('licitia_user_city') || undefined,
               sectors: parseStoredSectors(localStorage.getItem(USER_SECTORS_STORAGE_KEY)),
             }}
           />
@@ -96,6 +97,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
             initialData={{
               contactName: localStorage.getItem('licitia_user_name') || undefined,
               phone: localStorage.getItem('licitia_user_phone') || undefined,
+              city: localStorage.getItem('licitia_user_city') || undefined,
               sectors: parseStoredSectors(localStorage.getItem(USER_SECTORS_STORAGE_KEY)),
             }}
           />

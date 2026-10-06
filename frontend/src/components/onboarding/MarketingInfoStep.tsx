@@ -26,6 +26,7 @@ interface MarketingInfoStepProps {
 export interface MarketingData {
   contactName: string
   phone: string
+  city: string
   sectors: CompanySector[]
 }
 
@@ -36,6 +37,7 @@ const MarketingInfoStep: React.FC<MarketingInfoStepProps> = ({
 }) => {
   const [contactName, setContactName] = useState(initialData.contactName || '')
   const [phone, setPhone] = useState(initialData.phone || '')
+  const [city, setCity] = useState(initialData.city || '')
   const [sectors, setSectors] = useState<CompanySector[]>(initialData.sectors || [])
   const [error, setError] = useState('')
 
@@ -63,6 +65,11 @@ const MarketingInfoStep: React.FC<MarketingInfoStepProps> = ({
       setError('Ingresa un teléfono válido (mínimo 7 dígitos)')
       return
     }
+    const cityName = city.trim()
+    if (cityName.length < 2) {
+      setError('Ingresa la ciudad')
+      return
+    }
     if (sectors.length === 0) {
       setError('Marca al menos un sector: estudios y diseños, interventoría u obra')
       return
@@ -73,11 +80,13 @@ const MarketingInfoStep: React.FC<MarketingInfoStepProps> = ({
     const marketingData: MarketingData = {
       contactName: name,
       phone: normalizedPhone,
+      city: cityName,
       sectors,
     }
 
     localStorage.setItem('licitia_user_name', marketingData.contactName)
     localStorage.setItem('licitia_user_phone', marketingData.phone)
+    localStorage.setItem('licitia_user_city', marketingData.city)
     localStorage.setItem(USER_SECTORS_STORAGE_KEY, serializeSectors(marketingData.sectors))
 
     const userEmail = localStorage.getItem('licitia_user_email')
@@ -88,6 +97,7 @@ const MarketingInfoStep: React.FC<MarketingInfoStepProps> = ({
         name: marketingData.contactName,
         company: company || undefined,
         phone: marketingData.phone,
+        city: marketingData.city,
         sectors: marketingData.sectors,
         source: 'onboarding',
       }).catch((err) => {
@@ -146,6 +156,20 @@ const MarketingInfoStep: React.FC<MarketingInfoStepProps> = ({
               value={phone}
               onChange={(e) => {
                 setPhone(e.target.value)
+                setError('')
+              }}
+              size="lg"
+            />
+          </div>
+
+          <div className="onboarding-marketing-field">
+            <TextInput
+              id="contact-city"
+              labelText="Ciudad *"
+              placeholder="Ej: Bogotá"
+              value={city}
+              onChange={(e) => {
+                setCity(e.target.value)
                 setError('')
               }}
               size="lg"

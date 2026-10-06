@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from app.core.db import get_db
 from app.models.lead import Lead
 from datetime import datetime
@@ -28,6 +29,11 @@ def parse_sectors(raw: Optional[str]) -> Optional[list[str]]:
     return [part for part in raw.split(",") if part in ALLOWED_SECTORS] or None
 
 
+def ensure_lead_city_column(db: Session) -> None:
+    db.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS city VARCHAR(120)"))
+    db.commit()
+
+
 class LeadCreate(BaseModel):
     email: EmailStr
     name: Optional[str] = None
@@ -36,6 +42,7 @@ class LeadCreate(BaseModel):
     company_size: Optional[str] = None
     role: Optional[str] = None
     phone: Optional[str] = None
+    city: Optional[str] = None
     sectors: Optional[list[str]] = None
     source: Optional[str] = "landing_page"
 
@@ -59,6 +66,7 @@ class LeadResponse(BaseModel):
     company_size: Optional[str]
     role: Optional[str]
     phone: Optional[str] = None
+    city: Optional[str] = None
     sectors: Optional[list[str]] = None
     source: Optional[str]
     created_at: datetime
@@ -77,6 +85,7 @@ def to_lead_response(lead: Lead) -> LeadResponse:
         company_size=lead.company_size,
         role=lead.role,
         phone=lead.phone,
+        city=getattr(lead, "city", None),
         sectors=parse_sectors(lead.sectors),
         source=lead.source,
         created_at=lead.created_at,
@@ -96,6 +105,8 @@ def _apply_lead_fields(target: Lead, payload: LeadCreate) -> None:
         target.role = payload.role
     if payload.phone:
         target.phone = payload.phone
+    if payload.city:
+        target.city = payload.city.strip()[:120]
     serialized = serialize_sectors(payload.sectors)
     if serialized:
         target.sectors = serialized
@@ -111,6 +122,7 @@ async def create_lead(lead: LeadCreate, db: Session = Depends(get_db)):
     Returns existing lead if email already exists.
     """
     try:
+        ensure_lead_city_column(db)
         existing_lead = db.query(Lead).filter(Lead.email == lead.email).first()
 
         if existing_lead:
@@ -127,6 +139,7 @@ async def create_lead(lead: LeadCreate, db: Session = Depends(get_db)):
             company_size=lead.company_size,
             role=lead.role,
             phone=lead.phone,
+            city=(lead.city.strip()[:120] if lead.city else None),
             sectors=serialize_sectors(lead.sectors),
             source=lead.source or "landing_page",
         )
@@ -152,6 +165,7 @@ async def check_lead_exists(email: str, db: Session = Depends(get_db)):
     Returns {exists: true/false, lead: LeadResponse} if exists
     """
     try:
+        ensure_lead_city_column(db)
         lead = db.query(Lead).filter(Lead.email == email).first()
         if lead:
             return {"exists": True, "lead": to_lead_response(lead)}
