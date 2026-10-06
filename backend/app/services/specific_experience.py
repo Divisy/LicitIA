@@ -12,7 +12,7 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 MIN_NATIVE_CHARS = 40
-MAX_OCR_PAGES = 3
+MAX_OCR_PAGES = 5
 RENDER_SCALE = 1.4
 
 _STOP = (
@@ -61,21 +61,26 @@ def extract_specific_experience_from_text(text: str) -> Optional[str]:
 
 
 def extract_specific_experience_from_pdf_bytes(content: bytes) -> Optional[str]:
-    """Native PDF text first; OCR/vision if the acta is a scan."""
+    """Native PDF text first; OCR/vision if there is no usable objeto."""
     from app.services.rup_parser import extract_text_from_pdf_bytes
 
     native = extract_text_from_pdf_bytes(content or b"")
     from_text = extract_specific_experience_from_text(native)
     if from_text:
         return from_text
-    if not _looks_like_scan(native):
-        return None
+    # Scans often have a garbage text layer (symbols, page numbers) that is not the objeto.
     return extract_specific_experience_with_vision(content)
 
 
 def _looks_like_scan(text: str) -> bool:
-    letters = sum(1 for ch in (text or "") if ch.isalpha())
-    return letters < MIN_NATIVE_CHARS
+    raw = text or ""
+    letters = sum(1 for ch in raw if ch.isalpha())
+    if letters < MIN_NATIVE_CHARS:
+        return True
+    if letters / max(len(raw), 1) < 0.35:
+        return True
+    words = re.findall(r"[A-Za-zÁÉÍÓÚÑáéíóúñ]{4,}", raw)
+    return len(words) < 15
 
 
 def render_acta_page_jpegs(

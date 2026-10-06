@@ -40,6 +40,23 @@ def test_scanned_acta_uses_vision_when_pdf_has_no_text():
     vision.assert_called_once_with(b"%PDF-scan")
 
 
+def test_garbled_scan_text_layer_uses_vision():
+    garbage = (
+        "r`> h} ^) ---.-.:.-,_ § ¡J, ;iii iiiiiiiiiii! Ííi!! ii8 >Ci !ii3iiíi "
+        * 40
+    )
+    with patch(
+        "app.services.rup_parser.extract_text_from_pdf_bytes",
+        return_value=garbage,
+    ), patch(
+        "app.services.specific_experience.extract_specific_experience_with_vision",
+        return_value="Mejoramiento de la vía Santa Isabel en el municipio.",
+    ) as vision:
+        result = extract_specific_experience_from_pdf_bytes(b"%PDF-garbled")
+    assert "Santa Isabel" in result
+    vision.assert_called_once()
+
+
 def test_native_text_skips_vision():
     native = (
         "Acta de recibo. Objeto del contrato: Construcción del acueducto veredal "
