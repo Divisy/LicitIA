@@ -14,6 +14,7 @@ import {
   Layers,
 } from '@carbon/icons-react'
 import { ContractKindFilter } from '../api/client'
+import { dateFromPickerChange } from '../utils/filterDates'
 import './FiltersBar.scss'
 
 interface FiltersBarProps {
@@ -76,16 +77,6 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
   onContractKindChange,
   onSubmit,
 }) => {
-  const handleDateFromChange = (event: React.SyntheticEvent<HTMLInputElement>) => {
-    const value = (event.target as HTMLInputElement).value
-    onDateFromChange(value)
-  }
-
-  const handleDateToChange = (event: React.SyntheticEvent<HTMLInputElement>) => {
-    const value = (event.target as HTMLInputElement).value
-    onDateToChange(value)
-  }
-
   const handleContractKindSelect = (value: ContractKindFilter) => {
     onContractKindChange(value)
   }
@@ -161,15 +152,19 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
               <div className="filters-bar-field filters-bar-field--date">
                 <DatePicker
                   datePickerType="single"
-                  value={dateFrom ? [new Date(dateFrom)] : []}
+                  dateFormat="d/m/Y"
+                  allowInput
+                  appendTo={typeof document !== 'undefined' ? document.body : undefined}
+                  value={dateFrom || undefined}
+                  onChange={(dates: Date[], typedValue: string) => {
+                    onDateFromChange(dateFromPickerChange(dates, typedValue))
+                  }}
                 >
                   <DatePickerInput
                     id="date-from"
                     placeholder="dd/mm/aaaa"
-                    labelText="Desde"
+                    labelText="Cierre desde"
                     size="sm"
-                    value={dateFrom}
-                    onChange={handleDateFromChange}
                   />
                 </DatePicker>
               </div>
@@ -177,15 +172,19 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
               <div className="filters-bar-field filters-bar-field--date">
                 <DatePicker
                   datePickerType="single"
-                  value={dateTo ? [new Date(dateTo)] : []}
+                  dateFormat="d/m/Y"
+                  allowInput
+                  appendTo={typeof document !== 'undefined' ? document.body : undefined}
+                  value={dateTo || undefined}
+                  onChange={(dates: Date[], typedValue: string) => {
+                    onDateToChange(dateFromPickerChange(dates, typedValue))
+                  }}
                 >
                   <DatePickerInput
                     id="date-to"
                     placeholder="dd/mm/aaaa"
-                    labelText="Hasta"
+                    labelText="Cierre hasta"
                     size="sm"
-                    value={dateTo}
-                    onChange={handleDateToChange}
                   />
                 </DatePicker>
               </div>

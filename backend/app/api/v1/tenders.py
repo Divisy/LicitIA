@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import Optional
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from uuid import UUID
 
 from app.core.db import get_db
@@ -55,8 +55,8 @@ async def list_tenders(
     department: Optional[str] = Query(None, description="Filter by department"),
     contract_type: Optional[str] = Query(None, description="Filter by contract type (Tipo de contrato)"),
     contract_modality: Optional[str] = Query(None, description="Filter by contract modality (Modalidad de contratación)"),
-    date_from: Optional[date] = Query(None, description="Filter by publication date from"),
-    date_to: Optional[date] = Query(None, description="Filter by publication date to"),
+    date_from: Optional[date] = Query(None, description="Filter by closing date from"),
+    date_to: Optional[date] = Query(None, description="Filter by closing date to"),
     match_experience: bool = Query(False, description="Only show tenders matching company experiences"),
     only_interventoria: bool = Query(False, description="Deprecated: use contract_kind=interventoria"),
     contract_kind: Optional[str] = Query(
@@ -89,10 +89,12 @@ async def list_tenders(
         query = query.filter(Tender.contract_modality.ilike(f"%{contract_modality}%"))
     
     if date_from:
-        query = query.filter(Tender.publication_date >= date_from)
-    
+        query = query.filter(Tender.closing_date >= datetime.combine(date_from, time.min))
+
     if date_to:
-        query = query.filter(Tender.publication_date <= date_to)
+        query = query.filter(
+            Tender.closing_date < datetime.combine(date_to + timedelta(days=1), time.min)
+        )
     
     kind = parse_contract_kind(contract_kind)
     if kind is not None:
