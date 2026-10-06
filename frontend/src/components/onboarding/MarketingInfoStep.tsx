@@ -136,7 +136,7 @@ const MarketingInfoStep: React.FC<MarketingInfoStepProps> = ({
             <TextInput
               id="contact-name"
               labelText="Nombre de contacto *"
-              placeholder="Ej: Rafael Tuta"
+              placeholder="Ej: Juan Lopez"
               value={contactName}
               onChange={(e) => {
                 setContactName(e.target.value)
