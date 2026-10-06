@@ -9,7 +9,7 @@ import {
   Tile,
 } from '@carbon/react'
 import { WatsonMachineLearning, ArrowRight, ArrowLeft } from '@carbon/icons-react'
-import { requestLoginCode, verifyLoginCode } from '../api/client'
+import { formatApiError, requestLoginCode, verifyLoginCode } from '../api/client'
 import { persistLeadSession } from '../utils/userSession'
 import './Login.scss'
 
@@ -49,12 +49,7 @@ const Login: React.FC = () => {
       setDebugCode(result.debug_code || null)
       setStep('code')
     } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string }
-      setError(
-        axiosErr?.response?.data?.detail ||
-          axiosErr?.message ||
-          'No se pudo enviar el código. Inténtalo de nuevo.'
-      )
+      setError(formatApiError(err, 'No se pudo enviar el código. Inténtalo de nuevo.'))
     } finally {
       setLoading(false)
     }
@@ -74,12 +69,7 @@ const Login: React.FC = () => {
       persistLeadSession(result.lead, { returning: true })
       navigate('/dashboard')
     } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string }
-      setError(
-        axiosErr?.response?.data?.detail ||
-          axiosErr?.message ||
-          'Código incorrecto. Inténtalo de nuevo.'
-      )
+      setError(formatApiError(err, 'Código incorrecto. Inténtalo de nuevo.'))
     } finally {
       setLoading(false)
     }

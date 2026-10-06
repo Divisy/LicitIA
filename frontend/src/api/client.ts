@@ -1,9 +1,10 @@
 import axios from "axios";
 
-// Use environment variable or default to relative path for production
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.PROD ? "/api/v1" : "http://localhost:8000/api/v1");
+// Production always uses same-origin `/api/v1` (nginx/Vite proxy). That avoids
+// CORS Network Error when the SPA is on a different Railway host than the API.
+const API_BASE_URL = import.meta.env.DEV
+  ? import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"
+  : "/api/v1";
 
 // Log API configuration for debugging
 if (import.meta.env.DEV) {

@@ -6,6 +6,7 @@ from sqlalchemy import text
 from app.core.db import get_db
 from app.models.lead import Lead
 from app.services.login_code import ensure_auth_tables, find_lead_by_email, normalize_email
+from app.services.company_email import COMPANY_EMAIL_REQUIRED_MESSAGE, is_company_email
 from datetime import datetime
 from typing import Optional
 
@@ -136,6 +137,9 @@ async def create_lead(lead: LeadCreate, db: Session = Depends(get_db)):
             db.refresh(existing_lead)
             return to_lead_response(existing_lead)
 
+        if not is_company_email(email):
+            raise HTTPException(status_code=400, detail=COMPANY_EMAIL_REQUIRED_MESSAGE)
+
         new_lead = Lead(
             email=email,
             name=lead.name,
@@ -152,6 +156,9 @@ async def create_lead(lead: LeadCreate, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(new_lead)
         return to_lead_response(new_lead)
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error creating lead: {str(e)}")

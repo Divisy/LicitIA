@@ -42,6 +42,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Card } from '../components/ui'
 import { Tag, Link as CarbonLink } from '@carbon/react'
 import { persistLeadSession } from '../utils/userSession'
+import { COMPANY_EMAIL_REQUIRED_MESSAGE, isCompanyEmail } from '../utils/companyEmail'
 import './Landing.scss'
 
 const Landing: React.FC = () => {
@@ -90,6 +91,11 @@ const Landing: React.FC = () => {
         return
       }
 
+      if (!isCompanyEmail(formData.email.trim())) {
+        setError(COMPANY_EMAIL_REQUIRED_MESSAGE)
+        return
+      }
+
       try {
         const leadResponse = await captureLead({
           email: formData.email.trim(),
@@ -105,6 +111,17 @@ const Landing: React.FC = () => {
         )
         console.log('[Landing] Lead captured in backend:', leadResponse)
       } catch (apiErr: unknown) {
+        const axiosErr = apiErr as {
+          response?: { status?: number; data?: { detail?: string } }
+        }
+        if (axiosErr.response?.status === 400) {
+          setError(axiosErr.response.data?.detail || COMPANY_EMAIL_REQUIRED_MESSAGE)
+          return
+        }
+        if (!isCompanyEmail(formData.email.trim())) {
+          setError(COMPANY_EMAIL_REQUIRED_MESSAGE)
+          return
+        }
         console.warn('[Landing] Backend not available, using localStorage fallback:', apiErr)
         persistLeadSession(
           {
@@ -510,6 +527,9 @@ const Landing: React.FC = () => {
                       {!loading && <ArrowRight size={20} className="landing-hero__cta-icon" />}
                     </CarbonButton>
                   </div>
+                  <p className="landing-hero__email-hint">
+                    Usa el correo de tu empresa
+                  </p>
                   {error && (
                     <InlineNotification
                       kind="error"

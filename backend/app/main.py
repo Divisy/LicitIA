@@ -63,9 +63,23 @@ else:
 # Parse origins
 cors_origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
 
+# Always allow the production SPA and local dev, even if CORS_ORIGINS is stale.
+CORS_ORIGIN_REGEX = r"https://[a-zA-Z0-9.-]+\.up\.railway\.app"
+REQUIRED_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    "https://licitia-frontend-production.up.railway.app",
+]
+for origin in REQUIRED_CORS_ORIGINS:
+    if origin not in cors_origins:
+        cors_origins.append(origin)
+
 # Log CORS configuration for debugging (use both logger and print for visibility)
 print(f"[CORS] CORS_ORIGINS env var: {cors_origins_raw if cors_origins_raw else 'NOT SET'}")
 print(f"[CORS] Parsed CORS origins: {cors_origins}")
+print(f"[CORS] Origin regex: {CORS_ORIGIN_REGEX}")
 logger.info(f"CORS origins configured: {cors_origins}")
 logger.info(f"CORS_ORIGINS env var: {cors_origins_raw if cors_origins_raw else 'NOT SET'}")
 
@@ -74,14 +88,7 @@ logger.info(f"CORS_ORIGINS env var: {cors_origins_raw if cors_origins_raw else '
 # We must specify explicit origins
 if not cors_origins:
     logger.warning("No CORS origins configured, using fallback origins")
-    # Fallback: allow common production and development origins
-    cors_origins = [
-        "https://perpetual-playfulness-production-c731.up.railway.app",
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-    ]
+    cors_origins = list(REQUIRED_CORS_ORIGINS)
     print(f"[CORS] Using fallback origins: {cors_origins}")
 
 # Configure CORS middleware
@@ -94,6 +101,7 @@ logger.info(f"Configuring CORS middleware with origins: {cors_origins}")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,  # Always use explicit list, never ["*"]
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],

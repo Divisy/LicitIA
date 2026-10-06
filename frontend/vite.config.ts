@@ -4,40 +4,52 @@ import path from 'path'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const proxyTarget = env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000'
+  const onRailway = Boolean(process.env.RAILWAY_ENVIRONMENT)
+  const proxyTarget =
+    env.VITE_PROXY_TARGET ||
+    process.env.VITE_PROXY_TARGET ||
+    (onRailway
+      ? 'https://vigilant-joy-production.up.railway.app'
+      : 'http://127.0.0.1:8000')
 
   return {
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
-  css: {
-    preprocessorOptions: {
-      scss: {
-        additionalData: `@use "@/styles/tokens" as *;`,
+    plugins: [react()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
       },
     },
-  },
-  server: {
-    port: 3000,
-    proxy: {
-      '/api': {
-        target: proxyTarget,
-        changeOrigin: true,
-        secure: true,
+    css: {
+      preprocessorOptions: {
+        scss: {
+          additionalData: `@use "@/styles/tokens" as *;`,
+        },
       },
     },
-  },
-  preview: {
-    host: '0.0.0.0',
-    port: 4173,
-    allowedHosts: [
-      '.railway.app',
-      '.up.railway.app',
-    ],
-  },
-}
+    server: {
+      port: 3000,
+      proxy: {
+        '/api': {
+          target: proxyTarget,
+          changeOrigin: true,
+          secure: true,
+        },
+      },
+    },
+    preview: {
+      host: '0.0.0.0',
+      port: 4173,
+      allowedHosts: [
+        '.railway.app',
+        '.up.railway.app',
+      ],
+      proxy: {
+        '/api': {
+          target: proxyTarget,
+          changeOrigin: true,
+          secure: true,
+        },
+      },
+    },
+  }
 })
-
