@@ -43,31 +43,39 @@ async def request_code(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    ensure_lead_city_column(db)
-    ensure_auth_tables(db)
-    email = normalize_email(payload.email)
-    lead = find_lead_by_email(db, email)
-    if lead is None:
-        return {"exists": False}
+    try:
+        ensure_lead_city_column(db)
+        ensure_auth_tables(db)
+        email = normalize_email(payload.email)
+        lead = find_lead_by_email(db, email)
+        if lead is None:
+            return {"exists": False}
 
-    if recent_send_count(db, email) >= settings.AUTH_OTP_MAX_SENDS:
-        raise HTTPException(
-            status_code=429,
-            detail="Demasiados códigos. Espera unos minutos e inténtalo de nuevo.",
-        )
+        if recent_send_count(db, email) >= settings.AUTH_OTP_MAX_SENDS:
+            raise HTTPException(
+                status_code=429,
+                detail="Demasiados códigos. Espera unos minutos e inténtalo de nuevo.",
+            )
 
-    code = issue_code(db, email)
-    smtp_ready = bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
-    if smtp_ready:
-        background_tasks.add_task(_send_login_code_safe, email, code)
+        code = issue_code(db, email)
+        smtp_ready = bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
+        if smtp_ready:
+            background_tasks.add_task(_send_login_code_safe, email, code)
 
-    body = {
-        "exists": True,
-        "ttl_minutes": settings.AUTH_OTP_TTL_MINUTES,
-    }
-    if settings.AUTH_OTP_DEBUG or not smtp_ready:
-        body["debug_code"] = code
-    return body
+        body = {
+            "exists": True,
+            "ttl_minutes": settings.AUTH_OTP_TTL_MINUTES,
+        }
+        if settings.AUTH_OTP_DEBUG or not smtp_ready:
+            body["debug_code"] = code
+        return body
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.exception("request-code failed for %s", payload.email)
+        raise HTTPException(status_code=500, detail=f"No se pudo enviar el código: {exc}") from exc
 
 
 @router.post("/auth/verify-code")

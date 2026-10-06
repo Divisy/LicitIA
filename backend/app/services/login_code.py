@@ -28,7 +28,16 @@ def generate_code() -> str:
 
 
 def ensure_auth_tables(db: Session) -> None:
-    db.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMP"))
+    for stmt in (
+        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS phone VARCHAR(50)",
+        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS city VARCHAR(120)",
+        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS sectors VARCHAR(255)",
+        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS industry VARCHAR(100)",
+        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS company_size VARCHAR(50)",
+        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS role VARCHAR(255)",
+        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMP",
+    ):
+        db.execute(text(stmt))
     db.execute(
         text(
             """

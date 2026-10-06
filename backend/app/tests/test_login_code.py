@@ -67,6 +67,15 @@ def test_verify_accepts_matching_code(monkeypatch):
     assert row.consumed_at is not None
 
 
+def test_ensure_auth_tables_adds_phone_column():
+    import inspect
+    from app.services import login_code as login_code_mod
+
+    source = inspect.getsource(login_code_mod.ensure_auth_tables)
+    assert "phone VARCHAR(50)" in source
+    assert "login_codes" in source
+
+
 def test_verify_rejects_wrong_code(monkeypatch):
     from app.config import settings
 
