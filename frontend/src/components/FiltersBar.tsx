@@ -206,7 +206,7 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
                 <TextInput
                   id="entity"
                   labelText="Entidad contratante"
-                  placeholder="INVÍAS, municipio, IDU…"
+                  placeholder="INVIAS, municipio, IDU…"
                   value={entity}
                   onChange={(e) => onEntityChange(e.target.value)}
                   size="sm"
