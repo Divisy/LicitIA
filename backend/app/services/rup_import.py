@@ -109,41 +109,52 @@ def normalize_owner_email(email: Optional[str]) -> Optional[str]:
     return value or None
 
 
+def _table_exists(db: Session, table_name: str) -> bool:
+    return bool(
+        db.execute(
+            text("SELECT to_regclass(:qualified) IS NOT NULL"),
+            {"qualified": f"public.{table_name}"},
+        ).scalar()
+    )
+
+
 def ensure_owner_email_columns(db: Session) -> None:
     global _owner_email_schema_ready
     if _owner_email_schema_ready:
         return
     db.execute(text("ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS owner_email VARCHAR(255)"))
-    db.execute(text("ALTER TABLE company_capacity ADD COLUMN IF NOT EXISTS owner_email VARCHAR(255)"))
     db.execute(
         text(
             "CREATE INDEX IF NOT EXISTS ix_company_experiences_owner_email "
             "ON company_experiences (owner_email)"
         )
     )
-    db.execute(
-        text(
-            "CREATE INDEX IF NOT EXISTS ix_company_capacity_owner_email "
-            "ON company_capacity (owner_email)"
-        )
-    )
-    db.execute(
-        text(
-            "ALTER TABLE company_capacity DROP CONSTRAINT IF EXISTS company_capacity_company_name_key"
-        )
-    )
-    db.commit()
-    try:
+    if _table_exists(db, "company_capacity"):
+        db.execute(text("ALTER TABLE company_capacity ADD COLUMN IF NOT EXISTS owner_email VARCHAR(255)"))
         db.execute(
             text(
-                """
-                CREATE UNIQUE INDEX IF NOT EXISTS ux_company_capacity_owner_email
-                ON company_capacity (owner_email)
-                WHERE owner_email IS NOT NULL
-                """
+                "CREATE INDEX IF NOT EXISTS ix_company_capacity_owner_email "
+                "ON company_capacity (owner_email)"
             )
         )
-        db.commit()
+        db.execute(
+            text(
+                "ALTER TABLE company_capacity DROP CONSTRAINT IF EXISTS company_capacity_company_name_key"
+            )
+        )
+    db.commit()
+    try:
+        if _table_exists(db, "company_capacity"):
+            db.execute(
+                text(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS ux_company_capacity_owner_email
+                    ON company_capacity (owner_email)
+                    WHERE owner_email IS NOT NULL
+                    """
+                )
+            )
+            db.commit()
     except Exception:
         db.rollback()
         logger.warning("Skipping unique owner_email index on company_capacity")
@@ -176,6 +187,9 @@ def _backfill_owner_email_from_leads(db: Session) -> None:
             """
         )
     )
+    if not _table_exists(db, "company_capacity"):
+        db.commit()
+        return
     db.execute(
         text(
             """

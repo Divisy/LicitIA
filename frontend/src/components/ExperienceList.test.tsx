@@ -2,7 +2,15 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ExperienceList from './ExperienceList'
-import { CompanyExperience } from '../api/client'
+import { CompanyExperience, updateExperienceContractKind } from '../api/client'
+
+vi.mock('../api/client', async () => {
+  const actual = await vi.importActual<typeof import('../api/client')>('../api/client')
+  return {
+    ...actual,
+    updateExperienceContractKind: vi.fn(),
+  }
+})
 
 function experience(overrides: Partial<CompanyExperience> = {}): CompanyExperience {
   return {
@@ -92,17 +100,64 @@ describe('ExperienceList UNSPSC preview', () => {
             specific_experience: 'Construcción y mejoramiento de la malla vial en Paipa.',
             specific_evidence_filename: 'ACTA.pdf',
             project_typologies: ['vias'],
+            partner_name: 'Otto Harry',
+            participation_percent: 25,
           }),
         ]}
         companyName="BEC"
       />
     )
     expect(screen.getByText('Objeto del contrato')).toBeInTheDocument()
-    expect(
-      screen.getByText('Construcción y mejoramiento de la malla vial en Paipa.')
-    ).toBeInTheDocument()
-    expect(screen.getByText('Tipología')).toBeInTheDocument()
-    expect(screen.getByText('Vías')).toBeInTheDocument()
+    expect(screen.getByText('Obra Paipa')).toBeInTheDocument()
+    expect(screen.getByText('Otto Harry · 25%')).toBeInTheDocument()
+    expect(screen.getAllByText('Tipología').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Vías').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: /Reemplazar/ })).toBeInTheDocument()
+  })
+
+  it('saves the contract type the user picks', async () => {
+    const user = userEvent.setup()
+    const onUpdated = vi.fn()
+    const saved = experience({ contract_kind: 'interventoria', contract_kind_label: 'Interventoría' })
+    vi.mocked(updateExperienceContractKind).mockResolvedValue(saved)
+
+    render(
+      <ExperienceList
+        experiences={[experience()]}
+        companyName="BEC"
+        onUpdated={onUpdated}
+      />
+    )
+
+    const select = screen.getAllByRole('combobox', { name: 'Tipo de contrato' }).at(-1)!
+    expect(select).toHaveValue('estudios_disenos_y_obra')
+    await user.selectOptions(select, 'interventoria')
+    expect(updateExperienceContractKind).toHaveBeenCalledWith('exp-1', 'interventoria')
+    expect(onUpdated).toHaveBeenCalledWith(saved)
+  })
+
+  it('filters the list by contracting entity', async () => {
+    const user = userEvent.setup()
+    render(
+      <ExperienceList
+        experiences={[
+          experience({ contracting_entity: 'IDU', contractor_name: 'CONSORCIO IDU' }),
+          experience({
+            id: 'exp-2',
+            contracting_entity: 'INVIAS',
+            contractor_name: 'CONSORCIO INVIAS',
+          }),
+        ]}
+        companyName="BEC"
+      />
+    )
+
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Entidad contratante' }),
+      'INVIAS'
+    )
+    expect(screen.getByText('CONSORCIO INVIAS')).toBeInTheDocument()
+    expect(screen.queryByText('CONSORCIO IDU')).not.toBeInTheDocument()
+    expect(screen.getByText(/1 de 2 contratos/)).toBeInTheDocument()
   })
 })

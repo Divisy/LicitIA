@@ -245,7 +245,11 @@ def kind_payload_for_experience(
     category: Optional[str],
     contract_number: Optional[str],
     specific_experience: Optional[str] = None,
+    contract_kind: Optional[str] = None,
 ) -> tuple[str, str]:
+    chosen = parse_stored_contract_kind(contract_kind)
+    if chosen and chosen != RupExperienceKind.DESCONOCIDO:
+        return chosen.value, _KIND_LABELS[chosen]
     objeto = (specific_experience or "").strip()
     if objeto:
         from_objeto = classify_kind_from_contract_object(objeto)
@@ -263,6 +267,9 @@ def kind_payload_for_experience(
 
 def apply_kind_from_specific_experience(experience, objeto: str) -> Optional[str]:
     """Persist Tipo de contrato from the extracted acta object when it is one of the 4 kinds."""
+    chosen = parse_stored_contract_kind(getattr(experience, "contract_kind", None))
+    if chosen and chosen != RupExperienceKind.DESCONOCIDO:
+        return chosen.value
     kind, _ = kind_payload_for_experience(
         engineering_area=None,
         project_description="",

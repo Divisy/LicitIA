@@ -13,11 +13,17 @@ from app.schemas.company_experience import (
     CompanyExperienceCreate,
     CompanyExperienceResponse,
     CompanyExperienceListResponse,
-    ExcelImportResponse
+    ExcelImportResponse,
+    ExperienceContractKindUpdate,
 )
 from app.services.excel_import import import_experiences_from_excel
 from app.services.project_typology import apply_project_typologies, union_typologies
-from app.services.rup_contract_kind import kind_payload_for_experience, unspsc_codes_from_stored
+from app.services.rup_contract_kind import (
+    RupExperienceKind,
+    kind_payload_for_experience,
+    parse_stored_contract_kind,
+    unspsc_codes_from_stored,
+)
 from app.services.rup_import import (
     backfill_rup_fields_from_stored_pdf,
     ensure_owner_email_columns,
@@ -30,6 +36,22 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 router = APIRouter()
+_contract_kind_column_ready = False
+
+
+def ensure_contract_kind_column(db: Session) -> None:
+    global _contract_kind_column_ready
+    if _contract_kind_column_ready:
+        return
+    from sqlalchemy import text
+
+    db.execute(
+        text(
+            "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS contract_kind VARCHAR(40)"
+        )
+    )
+    db.commit()
+    _contract_kind_column_ready = True
 
 
 def _razon_social_for(
@@ -61,6 +83,7 @@ def _experience_dict(
         category=experience.category,
         contract_number=experience.contract_number,
         specific_experience=getattr(experience, "specific_experience", None),
+        contract_kind=getattr(experience, "contract_kind", None),
     )
     return {
         "id": experience.id,
@@ -75,6 +98,18 @@ def _experience_dict(
             account_name=experience.company_name,
         ),
         "completion_date": experience.completion_date,
+        "start_date": getattr(experience, "start_date", None),
+        "partner_code": getattr(experience, "partner_code", None),
+        "partner_name": getattr(experience, "partner_name", None),
+        "participation_percent": float(experience.participation_percent)
+        if getattr(experience, "participation_percent", None) is not None
+        else None,
+        "contract_amount": float(experience.contract_amount)
+        if getattr(experience, "contract_amount", None) is not None
+        else None,
+        "smmlv_total": float(experience.smmlv_total)
+        if getattr(experience, "smmlv_total", None) is not None
+        else None,
         "amount": float(experience.amount) if experience.amount else None,
         "amount_smmlv": float(experience.amount_smmlv)
         if getattr(experience, "amount_smmlv", None)
@@ -113,6 +148,7 @@ async def create_experience(
     
     payload = experience.model_dump()
     payload.pop("project_typologies", None)
+    payload.pop("contract_kind_label", None)
     payload["owner_email"] = normalize_owner_email(owner_email)
     db_experience = CompanyExperience(
         **payload,
@@ -148,9 +184,23 @@ async def list_experiences(
     """List company experiences."""
     ensure_specific_experience_columns(db)
     ensure_owner_email_columns(db)
+    ensure_contract_kind_column(db)
     query = db.query(CompanyExperience)
     email = normalize_owner_email(owner_email)
-    if email:
+    if email and company_name:
+        from sqlalchemy import and_, or_
+
+        name = company_name.strip()
+        query = query.filter(
+            or_(
+                CompanyExperience.owner_email == email,
+                and_(
+                    CompanyExperience.owner_email.is_(None),
+                    CompanyExperience.company_name.ilike(f"%{name}%"),
+                ),
+            )
+        )
+    elif email:
         query = query.filter(CompanyExperience.owner_email == email)
     elif company_name:
         query = query.filter(CompanyExperience.company_name.ilike(f"%{company_name}%"))
@@ -233,6 +283,46 @@ async def get_experience(
     )
     response_data = CompanyExperienceResponse.model_validate(exp_dict)
     return response_data
+
+
+@router.patch(
+    "/experiences/{experience_id}/contract-kind",
+    response_model=CompanyExperienceResponse,
+)
+async def update_experience_contract_kind(
+    experience_id: UUID,
+    payload: ExperienceContractKindUpdate,
+    db: Session = Depends(get_db),
+):
+    """Save the contract type chosen by the user for one experience."""
+    from datetime import datetime
+    import json
+
+    ensure_contract_kind_column(db)
+    experience = db.query(CompanyExperience).filter(CompanyExperience.id == experience_id).first()
+    if not experience:
+        raise HTTPException(status_code=404, detail="Experience not found")
+
+    raw = (payload.contract_kind or "").strip().lower()
+    if not raw or raw == RupExperienceKind.DESCONOCIDO.value:
+        experience.contract_kind = None
+    else:
+        chosen = parse_stored_contract_kind(raw)
+        if chosen is None or chosen == RupExperienceKind.DESCONOCIDO:
+            raise HTTPException(status_code=400, detail="El tipo de contrato no es válido.")
+        experience.contract_kind = chosen.value
+    experience.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(experience)
+    return CompanyExperienceResponse.model_validate(
+        _experience_dict(
+            experience,
+            json.loads(experience.keywords) if experience.keywords else None,
+            razon_social=_razon_social_for(
+                db, experience.company_name, getattr(experience, "owner_email", None)
+            ),
+        )
+    )
 
 
 @router.post(

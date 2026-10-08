@@ -172,7 +172,7 @@ def typologies_intersect(object_text: str, selected: Iterable[str]) -> bool:
 def apply_project_typologies(experience) -> list[str]:
     objeto = (getattr(experience, "specific_experience", None) or "").strip()
     description = (getattr(experience, "project_description", None) or "").strip()
-    values = classify_project_typologies(objeto or description)
+    values = classify_project_typologies(description, objeto)
     dumped = json.dumps(values, ensure_ascii=False) if values else None
     if hasattr(experience, "project_typologies"):
         experience.project_typologies = dumped
@@ -185,10 +185,8 @@ def union_typologies(experiences: Iterable) -> list[str]:
     for experience in experiences:
         stored = typologies_from_stored(getattr(experience, "project_typologies", None))
         values = stored or classify_project_typologies(
+            getattr(experience, "project_description", None),
             getattr(experience, "specific_experience", None),
-            getattr(experience, "project_description", None)
-            if not (getattr(experience, "specific_experience", None) or "").strip()
-            else "",
         )
         for key in values:
             if key not in seen:

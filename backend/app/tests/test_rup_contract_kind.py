@@ -93,6 +93,19 @@ def test_kind_payload_reclassifies_legacy_rows():
     assert label == "Ejecución de obra"
 
 
+def test_user_contract_kind_wins_over_the_acta_objeto():
+    kind, label = kind_payload_for_experience(
+        engineering_area="Vías",
+        project_description="Interventoría técnica de las vías urbanas.",
+        category="Interventoría",
+        contract_number="1232 DE 2006",
+        specific_experience="Interventoría técnica y administrativa de las obras de pavimentación.",
+        contract_kind="ejecucion_obra",
+    )
+    assert kind == "ejecucion_obra"
+    assert label == "Ejecución de obra"
+
+
 def test_kind_payload_uses_acta_objeto_over_stored_rup_kind():
     kind, label = kind_payload_for_experience(
         engineering_area="ejecucion_obra",

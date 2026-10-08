@@ -39,6 +39,13 @@ export function defaultContractKindFromSectors(
   return ''
 }
 
+export const EXPERIENCE_CONTRACT_KIND_OPTIONS = [
+  { value: 'ejecucion_obra', label: 'Ejecución de obra' },
+  { value: 'interventoria', label: 'Interventoría' },
+  { value: 'estudios_disenos', label: 'Estudios y diseños' },
+  { value: 'estudios_disenos_y_obra', label: 'Estudios, diseños y obra' },
+] as const
+
 export const EXPERIENCE_CONTRACT_KIND_LABELS: Record<string, string> = {
   ejecucion_obra: 'Ejecución de obra',
   estudios_disenos: 'Estudios y diseños',

@@ -32,6 +32,12 @@ class CompanyExperienceCreate(CompanyExperienceBase):
 class CompanyExperienceResponse(CompanyExperienceBase):
     """Schema for experience response."""
     id: UUID
+    partner_code: Optional[str] = None
+    partner_name: Optional[str] = None
+    start_date: Optional[date] = None
+    participation_percent: Optional[float] = None
+    contract_amount: Optional[float] = None
+    smmlv_total: Optional[float] = None
     keywords: Optional[List[str]] = None
     unspsc_codes: List[str] = Field(default_factory=list)
     created_at: datetime
@@ -46,6 +52,11 @@ class CompanyExperienceListResponse(BaseModel):
     items: List[CompanyExperienceResponse]
     total: int
     available_typologies: List[str] = Field(default_factory=list)
+
+
+class ExperienceContractKindUpdate(BaseModel):
+    """User choice for the experience contract type."""
+    contract_kind: Optional[str] = None
 
 
 class ExcelImportResponse(BaseModel):

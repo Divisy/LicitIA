@@ -19,10 +19,23 @@ class CompanyExperience(Base):
     contractor_name = Column(String(500), nullable=True)
     contracting_entity = Column(String(500), nullable=True)  # ENTIDAD CONTRATANTE
     completion_date = Column(Date, nullable=True)  # FECHA FINALIZACIÓN
+    start_date = Column(Date, nullable=True)  # FECHA INICIO
     amount = Column(Numeric(18, 2), nullable=True)  # pesos if the RUP reported COP
     amount_smmlv = Column(Numeric(18, 4), nullable=True)  # SMMLV printed on the RUP
+    contract_amount = Column(Numeric(18, 2), nullable=True)  # valor del contrato en pesos
+    smmlv_total = Column(Numeric(18, 4), nullable=True)  # SMMLV del contrato completo
+    participation_percent = Column(Numeric(8, 2), nullable=True)
+    duration_months = Column(Numeric(8, 2), nullable=True)
+    suspension_months = Column(Numeric(8, 2), nullable=True)
+    partner_code = Column(String(20), nullable=True)  # OHG, BEVB
+    partner_name = Column(String(255), nullable=True)  # socio que trasladó la experiencia
+    contract_kind = Column(String(40), nullable=True)  # elección del usuario
     category = Column(String(200), nullable=True)  # CATEGORÍA
     engineering_area = Column(String(200), nullable=True)  # ÁREA DE LA INGENIERÍA CIVIL
+    civil_areas = Column(Text, nullable=True)  # JSON array of civil engineering areas
+    sheet_metrics = Column(Text, nullable=True)  # JSON: SMMLV del año, PFM, fila de origen
+    notes = Column(Text, nullable=True)
+    import_key = Column(String(64), nullable=True, unique=True, index=True)
     
     # Geographic location (for improved matching)
     department = Column(String(100), nullable=True)  # Departamento

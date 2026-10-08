@@ -497,6 +497,8 @@ export interface CompanyExperience {
   project_description: string;
   contracting_entity: string | null;
   contractor_name: string | null;
+  partner_name?: string | null;
+  participation_percent?: number | null;
     completion_date: string | null;
     amount: number | null;
     amount_smmlv: number | null;
@@ -526,6 +528,7 @@ export async function getExperiences(
   const params = withOwnerEmail(
     new URLSearchParams({
       company_name: companyName,
+      limit: "1000",
     })
   );
   if (options.hydrateRup) {
@@ -540,6 +543,17 @@ export async function getExperiences(
 
 export async function deleteExperience(id: string): Promise<void> {
   await client.delete(`/experiences/${id}`);
+}
+
+export async function updateExperienceContractKind(
+  experienceId: string,
+  contractKind: string | null
+): Promise<CompanyExperience> {
+  const response = await client.patch<CompanyExperience>(
+    `/experiences/${experienceId}/contract-kind`,
+    { contract_kind: contractKind }
+  );
+  return response.data;
 }
 
 export async function uploadSpecificExperienceEvidence(

@@ -1,6 +1,8 @@
 import React, { useRef, useState } from 'react'
 import {
   Tag,
+  Select,
+  SelectItem,
   DataTable,
   Table,
   TableHead,
@@ -11,6 +13,7 @@ import {
   Button,
   InlineNotification,
   Modal,
+  TextInput,
 } from '@carbon/react'
 import {
   Document,
@@ -26,12 +29,17 @@ import {
 import {
   CompanyExperience,
   formatApiError,
+  updateExperienceContractKind,
   uploadSpecificExperienceEvidence,
 } from '../api/client'
+import { EXPERIENCE_CONTRACT_KIND_OPTIONS } from '../utils/companySectors'
 import {
-  experienceContractKindLabel,
-  experienceContractKindTag,
-} from '../utils/companySectors'
+  EMPTY_EXPERIENCE_FILTERS,
+  ExperienceListFilters,
+  experienceFilterChoices,
+  filterExperiences,
+  hasActiveExperienceFilters,
+} from '../utils/experienceFilters'
 import { typologyLabel } from '../utils/projectTypology'
 import './ExperienceList.scss'
 
@@ -58,10 +66,16 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
   onUpdated,
 }) => {
   const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const [savingKindId, setSavingKindId] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [codesModal, setCodesModal] = useState<UnspscModalState | null>(null)
+  const [filters, setFilters] = useState<ExperienceListFilters>(EMPTY_EXPERIENCE_FILTERS)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const setFilter = (field: keyof ExperienceListFilters, value: string) => {
+    setFilters((current) => ({ ...current, [field]: value }))
+  }
 
   const formatDate = (dateString: string | null): string => {
     if (!dateString) return 'N/A'
@@ -104,6 +118,19 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
       )
     }
     return 'N/A'
+  }
+
+  const handleKindChange = async (experienceId: string, value: string) => {
+    setSavingKindId(experienceId)
+    setUploadError(null)
+    try {
+      const updated = await updateExperienceContractKind(experienceId, value || null)
+      onUpdated?.(updated)
+    } catch (error) {
+      setUploadError(formatApiError(error, 'No se pudo guardar el tipo de contrato.'))
+    } finally {
+      setSavingKindId(null)
+    }
   }
 
   const openEvidencePicker = (experienceId: string) => {
@@ -150,15 +177,14 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
     )
   }
 
-  const showKindColumn = experiences.some(
-    (experience) =>
-      Boolean(experience.contract_kind) && experience.contract_kind !== 'desconocido'
-  )
+  const filtersActive = hasActiveExperienceFilters(filters)
+  const visibleExperiences = filterExperiences(experiences, filters)
+  const { entities, typologies } = experienceFilterChoices(experiences)
   const contractCount = experiences.length
-  const withSpecificCount = experiences.filter(
-    (experience) => Boolean((experience.specific_experience || '').trim())
+  const visibleCount = visibleExperiences.length
+  const pendingSpecificCount = visibleExperiences.filter(
+    (experience) => !((experience.specific_experience || '').trim())
   ).length
-  const pendingSpecificCount = contractCount - withSpecificCount
 
   const getExperienceIcon = (kind: string | null | undefined) => {
     if (kind === 'interventoria') {
@@ -179,7 +205,7 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
   const headers = [
     { key: 'number', header: '#' },
     { key: 'contractor', header: 'Contratista' },
-    ...(showKindColumn ? [{ key: 'kind', header: 'Tipo de contrato' }] : []),
+    { key: 'kind', header: 'Tipo de contrato' },
     { key: 'specific', header: 'Acta' },
     { key: 'object', header: 'Objeto del contrato' },
     { key: 'typology', header: 'Tipología' },
@@ -190,32 +216,55 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
     { key: 'unspsc', header: 'UNSPSC' },
   ]
 
-  const rows = experiences.map((experience, index) => {
+  const rows = visibleExperiences.map((experience, index) => {
     const kind = experience.contract_kind
-    const kindLabel = experienceContractKindLabel(kind, experience.contract_kind_label)
     const unspscCodes = (experience.unspsc_codes || []).filter(Boolean)
     const specificText = (experience.specific_experience || '').trim()
+    const description = (experience.project_description || '').trim()
+    const objectText = description || specificText
     const uploading = uploadingId === experience.id
     const contractor = (experience.contractor_name || '').trim()
+    const partner = (experience.partner_name || '').trim()
+    const participation =
+      experience.participation_percent == null
+        ? ''
+        : `${new Intl.NumberFormat('es-CO', {
+            maximumFractionDigits: 2,
+          }).format(experience.participation_percent)}%`
 
     return {
       id: experience.id,
       number: <span className="experience-list-number">{index + 1}</span>,
       contractor: (
-        <div className="experience-list-contractor">{contractor || '—'}</div>
+        <div className="experience-list-contractor">
+          {contractor || '—'}
+          {partner && (
+            <div className="experience-list-partner">
+              {partner}
+              {participation ? ` · ${participation}` : ''}
+            </div>
+          )}
+        </div>
       ),
-      ...(showKindColumn
-        ? {
-            kind: (
-              <div className="experience-list-service">
-                {getExperienceIcon(kind)}
-                <Tag type={experienceContractKindTag(kind)} size="sm">
-                  {kindLabel}
-                </Tag>
-              </div>
-            ),
-          }
-        : {}),
+      kind: (
+        <div className="experience-list-kind">
+          {getExperienceIcon(kind)}
+          <Select
+            id={`experience-kind-${experience.id}`}
+            labelText="Tipo de contrato"
+            hideLabel
+            size="sm"
+            value={kind && kind !== 'desconocido' ? kind : ''}
+            disabled={savingKindId === experience.id}
+            onChange={(event) => handleKindChange(experience.id, event.target.value)}
+          >
+            <SelectItem value="" text="No identificado" />
+            {EXPERIENCE_CONTRACT_KIND_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value} text={option.label} />
+            ))}
+          </Select>
+        </div>
+      ),
       specific: (
         <SpecificExperienceCell
           hasObject={Boolean(specificText)}
@@ -224,9 +273,9 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
           onUpload={() => openEvidencePicker(experience.id)}
         />
       ),
-      object: specificText ? (
-        <p className="experience-list-object" title={specificText}>
-          {specificText}
+      object: objectText ? (
+        <p className="experience-list-object" title={objectText}>
+          {objectText}
         </p>
       ) : (
         <span className="experience-list-object-empty">—</span>
@@ -297,12 +346,104 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
           onClose={() => setUploadError(null)}
         />
       )}
+      <div className="experience-list-filters">
+        <Select
+          id="experience-filter-kind"
+          labelText="Tipo de contrato"
+          size="sm"
+          value={filters.contractKind}
+          onChange={(event) => setFilter('contractKind', event.target.value)}
+        >
+          <SelectItem value="" text="Todos" />
+          <SelectItem value="desconocido" text="No identificado" />
+          {EXPERIENCE_CONTRACT_KIND_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value} text={option.label} />
+          ))}
+        </Select>
+        <Select
+          id="experience-filter-entity"
+          labelText="Entidad contratante"
+          size="sm"
+          value={filters.entity}
+          onChange={(event) => setFilter('entity', event.target.value)}
+        >
+          <SelectItem value="" text="Todas" />
+          {entities.map((entity) => (
+            <SelectItem key={entity} value={entity} text={entity} />
+          ))}
+        </Select>
+        <Select
+          id="experience-filter-typology"
+          labelText="Tipología"
+          size="sm"
+          value={filters.typology}
+          onChange={(event) => setFilter('typology', event.target.value)}
+        >
+          <SelectItem value="" text="Todas" />
+          {typologies.map((typology) => (
+            <SelectItem key={typology} value={typology} text={typologyLabel(typology)} />
+          ))}
+        </Select>
+        <TextInput
+          id="experience-filter-date-from"
+          labelText="Finaliza desde"
+          type="date"
+          size="sm"
+          value={filters.dateFrom}
+          onChange={(event) => setFilter('dateFrom', event.target.value)}
+        />
+        <TextInput
+          id="experience-filter-date-to"
+          labelText="Finaliza hasta"
+          type="date"
+          size="sm"
+          value={filters.dateTo}
+          onChange={(event) => setFilter('dateTo', event.target.value)}
+        />
+        <TextInput
+          id="experience-filter-value-min"
+          labelText="Valor mínimo (SMMLV)"
+          type="number"
+          size="sm"
+          min={0}
+          value={filters.valueMin}
+          onChange={(event) => setFilter('valueMin', event.target.value)}
+        />
+        <TextInput
+          id="experience-filter-value-max"
+          labelText="Valor máximo (SMMLV)"
+          type="number"
+          size="sm"
+          min={0}
+          value={filters.valueMax}
+          onChange={(event) => setFilter('valueMax', event.target.value)}
+        />
+        {filtersActive && (
+          <Button
+            kind="ghost"
+            size="sm"
+            className="experience-list-filters-clear"
+            onClick={() => setFilters(EMPTY_EXPERIENCE_FILTERS)}
+          >
+            Limpiar filtros
+          </Button>
+        )}
+      </div>
       <p className="experience-list-count">
-        {contractCount} {contractCount === 1 ? 'contrato' : 'contratos'}
+        {filtersActive
+          ? `${visibleCount} de ${contractCount} contratos`
+          : `${contractCount} ${contractCount === 1 ? 'contrato' : 'contratos'}`}
         {pendingSpecificCount > 0
           ? ` · ${pendingSpecificCount} sin acta`
-          : ' · experiencia específica completa'}
+          : visibleCount > 0
+            ? ' · experiencia específica completa'
+            : ''}
       </p>
+      {visibleCount === 0 && (
+        <p className="experience-list-filter-empty">
+          Ningún contrato coincide con estos filtros.
+        </p>
+      )}
       {codesModal && (
         <Modal
           open
@@ -332,6 +473,7 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
           </div>
         </Modal>
       )}
+      {visibleCount > 0 && (
       <div className="experience-list-table-container">
         <DataTable rows={rows} headers={headers} isSortable size="md" useZebraStyles>
           {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
@@ -358,6 +500,7 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
           )}
         </DataTable>
       </div>
+      )}
     </div>
   )
 }
