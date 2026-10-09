@@ -602,6 +602,57 @@ function computeMonthlyCashFlow(
   return Math.round(total / months)
 }
 
+function formatExperienceSmmlv(value: number | null | undefined): string | null {
+  if (value == null) return null
+  return `${new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(value)} SMMLV`
+}
+
+function ExperienceMatchBlock({ tender }: { tender: Tender }) {
+  const contracts = (tender.experience_fit?.contracts || []).filter((row) => row.in_general_sum)
+  if (tender.experience_fit?.status !== 'puede_aplicar' || contracts.length === 0) return null
+  const several = contracts.length !== 1
+
+  return (
+    <section className="tender-detail-panel__match" aria-label="Coincide con tu experiencia">
+      <div className="tender-detail-panel__match-header">
+        <h4 className="tender-detail-panel__match-title">Coincide con tu experiencia</h4>
+        <Tag type="green" size="sm">
+          {several ? `${contracts.length} contratos` : '1 contrato'}
+        </Tag>
+      </div>
+      <p className="tender-detail-panel__match-intro">
+        {several
+          ? 'El objeto de esta licitación coincide con el objeto de estos contratos del RUP.'
+          : 'El objeto de esta licitación coincide con el objeto de este contrato del RUP.'}
+      </p>
+      <ul className="tender-detail-panel__match-list">
+        {contracts.map((contract) => {
+          const smmlv = formatExperienceSmmlv(contract.amount_smmlv)
+          return (
+            <li key={contract.experience_id} className="tender-detail-panel__match-card">
+              <div className="tender-detail-panel__match-card-head">
+                <p className="tender-detail-panel__match-number">
+                  {contract.contract_number || 'Sin número'}
+                </p>
+                {smmlv && <span className="tender-detail-panel__match-value">{smmlv}</span>}
+              </div>
+              {contract.contracting_entity && (
+                <p className="tender-detail-panel__match-entity">{contract.contracting_entity}</p>
+              )}
+              {contract.object_text && (
+                <>
+                  <span className="tender-detail-panel__match-object-label">Objeto del acta</span>
+                  <p className="tender-detail-panel__match-object">{contract.object_text}</p>
+                </>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
 function formatMonthlyCashFlow(amount: number): string {
   return `$ ${Math.round(amount).toLocaleString('es-CO').replace(/,/g, '.')}/mes`
 }
@@ -1726,29 +1777,11 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                 </IconButton>
               </div>
             </div>
-            <p className="tender-detail-panel__object">{tender.object_text}</p>
-            {tender.experience_fit?.status === 'puede_aplicar' &&
-              tender.experience_fit.contracts.some((row) => row.in_general_sum) && (
-              <div className="tender-detail-panel__meta">
-                <div>
-                  <span className="tender-detail-panel__meta-label">Match con la experiencia</span>
-                  <span>
-                    {tender.experience_fit.contracts
-                      .filter((row) => row.in_general_sum)
-                      .map((row) =>
-                        [
-                          row.contract_number || 'Sin número',
-                          row.contracting_entity,
-                          row.object_text,
-                        ]
-                          .filter(Boolean)
-                          .join(' — ')
-                      )
-                      .join(' | ')}
-                  </span>
-                </div>
-              </div>
-            )}
+            <div>
+              <span className="tender-detail-panel__meta-label">Objeto de la licitación</span>
+              <p className="tender-detail-panel__object">{tender.object_text}</p>
+            </div>
+            <ExperienceMatchBlock tender={tender} />
             <div className="tender-detail-panel__meta">
               <div>
                 <span className="tender-detail-panel__meta-label">Publicación</span>

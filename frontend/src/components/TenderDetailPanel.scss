@@ -197,6 +197,89 @@
   line-height: 1.45;
 }
 
+.tender-detail-panel__match {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+  padding: $spacing-04;
+  border: 1px solid var(--cds-border-subtle);
+  border-left: 3px solid var(--cds-support-success);
+  border-radius: $spacing-02;
+  background: var(--cds-layer-01);
+}
+
+.tender-detail-panel__match-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-03;
+}
+
+.tender-detail-panel__match-title {
+  margin: 0;
+  @include type-style('heading-compact-01');
+}
+
+.tender-detail-panel__match-intro {
+  margin: 0;
+  @include type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+}
+
+.tender-detail-panel__match-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+}
+
+.tender-detail-panel__match-card {
+  margin: 0;
+  padding: $spacing-04;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: $spacing-02;
+}
+
+.tender-detail-panel__match-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: $spacing-03;
+}
+
+.tender-detail-panel__match-number {
+  margin: 0;
+  @include type-style('heading-compact-01');
+}
+
+.tender-detail-panel__match-value {
+  flex-shrink: 0;
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+}
+
+.tender-detail-panel__match-entity {
+  margin: $spacing-02 0 0;
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+}
+
+.tender-detail-panel__match-object-label {
+  display: block;
+  margin-top: $spacing-04;
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+}
+
+.tender-detail-panel__match-object {
+  margin: $spacing-02 0 0;
+  @include type-style('body-compact-01');
+  line-height: 1.45;
+}
+
 .tender-detail-panel__meta {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
