@@ -293,7 +293,7 @@ const Dashboard: React.FC = () => {
                     Puede aplicar
                   </Button>
                   <p className="dashboard-results-text">
-                    Puede aplicar cuando la suma de SMMLV cubre la experiencia general del pliego y las partidas del acta cubren la experiencia específica. Si falta el pliego o las partidas, no se afirma.
+                    Puede aplicar cuando el objeto del acta coincide con el objeto de la licitación, dentro del mismo tipo de contrato. Si no hay acta con objeto, no se afirma.
                   </p>
                   {!showAll && tenders.length < total && (
                     <Button

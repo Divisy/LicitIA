@@ -109,31 +109,42 @@ def _fit_experience_rows(db: Session, owner_email: Optional[str], company_name: 
     return rows
 
 
-def _requirements_by_id(db: Session, tender_ids: list) -> dict:
-    if not tender_ids:
-        return {}
-    records = (
-        db.query(TenderRequirements)
-        .filter(TenderRequirements.tender_id.in_(tender_ids))
-        .all()
-    )
-    return {record.tender_id: record.requirements_json for record in records}
+def _prepare_object_matches(tenders: list, fit_experiences: list) -> tuple[dict, set]:
+    if not fit_experiences or not tenders:
+        return {}, set()
+    from app.services.object_match import judge_object_matches
+    from app.services.tender_summary.contract_kind import detect_contract_kind
+
+    payload = [
+        {
+            "id": str(tender.id),
+            "kind": detect_contract_kind(tender).value,
+            "object": tender.object_text or "",
+        }
+        for tender in tenders
+    ]
+    return judge_object_matches(payload, fit_experiences)
 
 
-def _attach_experience_fit(response: TenderResponse, tender: Tender, fit_experiences: list, requirements) -> None:
+def _attach_experience_fit(
+    response: TenderResponse,
+    tender: Tender,
+    fit_experiences: list,
+    matched_ids: set[str],
+    comparison_available: bool,
+) -> None:
     if not fit_experiences:
         return
     from app.schemas.tender import ExperienceFit
-    from app.services.experience_fit import evaluate_experience_fit, publication_as_date
+    from app.services.experience_fit import evaluate_experience_fit
     from app.services.tender_summary.contract_kind import detect_contract_kind
 
     result = evaluate_experience_fit(
         tender_kind=detect_contract_kind(tender).value,
         tender_object=tender.object_text or "",
-        tender_amount=float(tender.amount) if tender.amount is not None else None,
-        publication_date=publication_as_date(tender.publication_date),
-        requirements=requirements,
         experiences=fit_experiences,
+        matched_experience_ids=matched_ids,
+        comparison_available=comparison_available,
     )
     response.experience_fit = ExperienceFit.model_validate(result.as_dict())
     response.experience_match_score = None
@@ -292,7 +303,7 @@ async def list_tenders(
                 if not selected_typologies
                 or typologies_intersect(tender.object_text or "", selected_typologies)
             ]
-            requirements = _requirements_by_id(db, [tender.id for tender in kept]) if fit_experiences else {}
+            object_matches, failed_matches = _prepare_object_matches(kept, fit_experiences)
             fitted = []
             for tender in kept:
                 tender_response = TenderResponse.model_validate(tender)
@@ -300,7 +311,8 @@ async def list_tenders(
                     tender_response,
                     tender,
                     fit_experiences,
-                    requirements.get(tender.id),
+                    object_matches.get(str(tender.id), set()),
+                    str(tender.id) not in failed_matches,
                 )
                 if wanted_fit and (
                     tender_response.experience_fit is None
@@ -313,7 +325,7 @@ async def list_tenders(
         else:
             total = query.count()
             tenders = ordered.offset(offset).limit(limit).all()
-            requirements = _requirements_by_id(db, [tender.id for tender in tenders]) if fit_experiences else {}
+            object_matches, failed_matches = _prepare_object_matches(tenders, fit_experiences)
             items = []
             for tender in tenders:
                 tender_response = TenderResponse.model_validate(tender)
@@ -327,7 +339,8 @@ async def list_tenders(
                     tender_response,
                     tender,
                     fit_experiences,
-                    requirements.get(tender.id),
+                    object_matches.get(str(tender.id), set()),
+                    str(tender.id) not in failed_matches,
                 )
                 items.append(tender_response)
         
