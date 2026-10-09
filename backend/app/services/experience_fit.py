@@ -29,6 +29,7 @@ class FitContract:
     in_general_sum: bool
     specific_met: bool
     matched_activity: Optional[str] = None
+    object_text: Optional[str] = None
 
 
 @dataclass
@@ -54,6 +55,7 @@ class ExperienceFitResult:
                     "in_general_sum": row.in_general_sum,
                     "specific_met": row.specific_met,
                     "matched_activity": row.matched_activity,
+                    "object_text": row.object_text,
                 }
                 for row in self.contracts
             ],
@@ -129,6 +131,7 @@ def evaluate_experience_fit(
                 amount_smmlv=float(amount) if amount is not None else None,
                 in_general_sum=is_match,
                 specific_met=False,
+                object_text=(row.get("object_text") or "").strip() or None,
             )
         )
 

@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import TenderTable from './TenderTable'
 import type { Tender } from '../api/client'
 
@@ -33,6 +34,15 @@ function tender(fit: Tender['experience_fit']): Tender {
 }
 
 describe('TenderTable experience fit', () => {
+  beforeAll(() => {
+    class ResizeObserverStub {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+  })
+
   it('shows Puede aplicar instead of a match percentage', () => {
     render(
       <TenderTable
@@ -42,12 +52,54 @@ describe('TenderTable experience fit', () => {
             reason: 'La suma de SMMLV y las partidas cubren el pliego',
             general_sum_smmlv: 302,
             general_minimum_smmlv: 300,
-            contracts: [],
+            contracts: [
+              {
+                experience_id: 'exp-1232',
+                contract_number: '1232 DE 2006',
+                contracting_entity: 'INVIAS',
+                amount_smmlv: 222,
+                in_general_sum: true,
+                specific_met: false,
+                matched_activity: null,
+                object_text: 'Interventoría para el mejoramiento de la vía Las Margaritas',
+              },
+            ],
           }),
         ]}
       />
     )
     expect(screen.getByText('Puede aplicar')).toBeInTheDocument()
     expect(screen.queryByText(/% match/i)).not.toBeInTheDocument()
+  })
+
+  it('opens the matching experience contract from Puede aplicar', async () => {
+    const user = userEvent.setup()
+    render(
+      <TenderTable
+        tenders={[
+          tender({
+            status: 'puede_aplicar',
+            reason: 'El objeto del acta coincide con el objeto de la licitación',
+            general_sum_smmlv: null,
+            general_minimum_smmlv: null,
+            contracts: [
+              {
+                experience_id: 'exp-1232',
+                contract_number: '1232 DE 2006',
+                contracting_entity: 'INVIAS',
+                amount_smmlv: 222,
+                in_general_sum: true,
+                specific_met: false,
+                matched_activity: null,
+                object_text: 'Interventoría para el mejoramiento de la vía Las Margaritas',
+              },
+            ],
+          }),
+        ]}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'Puede aplicar' }))
+    expect(screen.getByText('1232 DE 2006')).toBeInTheDocument()
+    expect(screen.getByText('Interventoría para el mejoramiento de la vía Las Margaritas')).toBeInTheDocument()
   })
 })

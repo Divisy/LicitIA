@@ -14,6 +14,7 @@ class ExperienceFitContract(BaseModel):
     in_general_sum: bool = False
     specific_met: bool = False
     matched_activity: Optional[str] = None
+    object_text: Optional[str] = None
 
 
 class ExperienceFit(BaseModel):

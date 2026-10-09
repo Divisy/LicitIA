@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { DataTable, Table, TableHead, TableRow, TableHeader, TableBody, TableCell, Tag, Link, Tile, IconButton } from '@carbon/react'
+import { DataTable, Table, TableHead, TableRow, TableHeader, TableBody, TableCell, Tag, Link, Tile, IconButton, Modal } from '@carbon/react'
 import { ExperienceFitStatus, Tender } from '../api/client'
 import { Launch, Star, StarFilled, ArrowUp, ArrowDown, ArrowsVertical } from '@carbon/icons-react'
 import {
@@ -30,6 +30,7 @@ const TenderTable: React.FC<TenderTableProps> = ({
 }) => {
   const [sortKey, setSortKey] = useState<TenderSortKey>(DEFAULT_TENDER_SORT_KEY)
   const [sortDirection, setSortDirection] = useState<SortDirection>(DEFAULT_TENDER_SORT_DIRECTION)
+  const [matchTender, setMatchTender] = useState<Tender | null>(null)
 
   useEffect(() => {
     setSortKey(DEFAULT_TENDER_SORT_KEY)
@@ -143,7 +144,16 @@ const TenderTable: React.FC<TenderTableProps> = ({
       amount: (
         <span className="tender-table-amount">{formatCurrency(tender.amount)}</span>
       ),
-      experience_fit: <ExperienceFitTag fit={tender.experience_fit} />,
+      experience_fit: (
+        <ExperienceFitTag
+          fit={tender.experience_fit}
+          onShowMatch={
+            tender.experience_fit?.status === 'puede_aplicar'
+              ? () => setMatchTender(tender)
+              : undefined
+          }
+        />
+      ),
       state: tender.state ? (
         <Tag type={getEstadoTagKind(tender.state)} size="sm">
           {tender.state}
@@ -261,7 +271,9 @@ const TenderTable: React.FC<TenderTableProps> = ({
                     <TableCell
                       key={cell.id}
                       onClick={
-                        cell.info.header === 'link' || cell.info.header === 'favorite'
+                        cell.info.header === 'link' ||
+                        cell.info.header === 'favorite' ||
+                        cell.info.header === 'experience_fit'
                           ? (event) => event.stopPropagation()
                           : undefined
                       }
@@ -276,6 +288,9 @@ const TenderTable: React.FC<TenderTableProps> = ({
           </Table>
         )}
       </DataTable>
+      {matchTender?.experience_fit && (
+        <MatchContractsModal tender={matchTender} onClose={() => setMatchTender(null)} />
+      )}
     </div>
   )
 }
@@ -286,16 +301,72 @@ const FIT_LABEL: Record<ExperienceFitStatus, string> = {
   no_se_puede_afirmar: 'No se puede afirmar',
 }
 
-function ExperienceFitTag({ fit }: { fit: Tender['experience_fit'] }) {
+function ExperienceFitTag({
+  fit,
+  onShowMatch,
+}: {
+  fit: Tender['experience_fit']
+  onShowMatch?: () => void
+}) {
   if (!fit) return <span>—</span>
   const type =
     fit.status === 'puede_aplicar' ? 'green' : fit.status === 'no_aplica' ? 'red' : 'gray'
+  const tag = (
+    <Tag type={type} size="sm">
+      {FIT_LABEL[fit.status]}
+    </Tag>
+  )
+  if (!onShowMatch) {
+    return <span title={fit.reason}>{tag}</span>
+  }
   return (
-    <span title={fit.reason}>
-      <Tag type={type} size="sm">
-        {FIT_LABEL[fit.status]}
-      </Tag>
-    </span>
+    <button
+      type="button"
+      className="tender-table-fit-button"
+      title="Ver el contrato de la experiencia con el que hay match"
+      onClick={onShowMatch}
+    >
+      {tag}
+    </button>
+  )
+}
+
+function MatchContractsModal({ tender, onClose }: { tender: Tender; onClose: () => void }) {
+  const contracts = (tender.experience_fit?.contracts || []).filter((row) => row.in_general_sum)
+  return (
+    <Modal
+      open
+      passiveModal
+      size="md"
+      modalHeading="Contratos con match"
+      onRequestClose={onClose}
+    >
+      <p className="tender-table-match-intro">
+        {tender.entity_name}. El objeto de la licitación coincide con estos contratos de la experiencia.
+      </p>
+      <ul className="tender-table-match-list">
+        {contracts.map((contract) => (
+          <li key={contract.experience_id} className="tender-table-match-item">
+            <p className="tender-table-match-title">
+              {contract.contract_number || 'Sin número'}
+            </p>
+            <p className="tender-table-match-meta">
+              {[
+                contract.contracting_entity,
+                contract.amount_smmlv != null
+                  ? `${new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(contract.amount_smmlv)} SMMLV`
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' · ') || 'Sin entidad'}
+            </p>
+            {contract.object_text && (
+              <p className="tender-table-match-object">{contract.object_text}</p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Modal>
   )
 }
 

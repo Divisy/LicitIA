@@ -110,6 +110,7 @@ export interface ExperienceFitContract {
   in_general_sum: boolean;
   specific_met: boolean;
   matched_activity: string | null;
+  object_text?: string | null;
 }
 
 export interface ExperienceFit {

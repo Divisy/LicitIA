@@ -1727,41 +1727,26 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
               </div>
             </div>
             <p className="tender-detail-panel__object">{tender.object_text}</p>
-            {tender.experience_fit && (
+            {tender.experience_fit?.status === 'puede_aplicar' &&
+              tender.experience_fit.contracts.some((row) => row.in_general_sum) && (
               <div className="tender-detail-panel__meta">
                 <div>
-                  <span className="tender-detail-panel__meta-label">Experiencia de la empresa</span>
+                  <span className="tender-detail-panel__meta-label">Match con la experiencia</span>
                   <span>
-                    {tender.experience_fit.status === 'puede_aplicar'
-                      ? 'Puede aplicar'
-                      : tender.experience_fit.status === 'no_aplica'
-                        ? 'No aplica'
-                        : 'No se puede afirmar'}
-                    {tender.experience_fit.reason ? `. ${tender.experience_fit.reason}` : ''}
-                    {tender.experience_fit.general_sum_smmlv != null &&
-                    tender.experience_fit.general_minimum_smmlv != null
-                      ? `. Suma ${tender.experience_fit.general_sum_smmlv} SMMLV de ${tender.experience_fit.general_minimum_smmlv} SMMLV.`
-                      : ''}
+                    {tender.experience_fit.contracts
+                      .filter((row) => row.in_general_sum)
+                      .map((row) =>
+                        [
+                          row.contract_number || 'Sin número',
+                          row.contracting_entity,
+                          row.object_text,
+                        ]
+                          .filter(Boolean)
+                          .join(' — ')
+                      )
+                      .join(' | ')}
                   </span>
                 </div>
-                {tender.experience_fit.contracts.filter((row) => row.in_general_sum).length > 0 && (
-                  <div>
-                    <span className="tender-detail-panel__meta-label">Contratos que entran</span>
-                    <span>
-                      {tender.experience_fit.contracts
-                        .filter((row) => row.in_general_sum)
-                        .map((row) => {
-                          const bits = [
-                            row.contract_number || 'Sin número',
-                            row.amount_smmlv != null ? `${row.amount_smmlv} SMMLV` : '',
-                            row.specific_met ? row.matched_activity || 'partidas' : '',
-                          ].filter(Boolean)
-                          return bits.join(' · ')
-                        })
-                        .join(' | ')}
-                    </span>
-                  </div>
-                )}
               </div>
             )}
             <div className="tender-detail-panel__meta">
