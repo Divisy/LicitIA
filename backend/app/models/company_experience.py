@@ -47,6 +47,7 @@ class CompanyExperience(Base):
 
     # Experiencia específica: no viene en el RUP; se carga con certificado o acta.
     specific_experience = Column(Text, nullable=True)
+    acta_partidas = Column(Text, nullable=True)  # ítems y cantidades ejecutadas del acta
     project_typologies = Column(Text, nullable=True)  # JSON array from the contract object
     specific_evidence_filename = Column(String(255), nullable=True)
     specific_evidence_key = Column(String(500), nullable=True)

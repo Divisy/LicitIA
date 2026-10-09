@@ -51,6 +51,94 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
+def _fit_experience_rows(db: Session, owner_email: Optional[str], company_name: Optional[str]) -> list:
+    """Stored company contracts used by the two-step fit. Empty when no account is given."""
+    if not ((owner_email or "").strip() or (company_name or "").strip()):
+        return []
+    from sqlalchemy import and_, or_
+
+    from app.api.v1.experiences import ensure_acta_partidas_column
+    from app.models.company_experience import CompanyExperience
+    from app.services.rup_contract_kind import kind_payload_for_experience
+    from app.services.rup_import import normalize_owner_email
+
+    ensure_acta_partidas_column(db)
+    email = normalize_owner_email(owner_email)
+    query = db.query(CompanyExperience)
+    if email and company_name:
+        name = company_name.strip()
+        query = query.filter(
+            or_(
+                CompanyExperience.owner_email == email,
+                and_(
+                    CompanyExperience.owner_email.is_(None),
+                    CompanyExperience.company_name.ilike(f"%{name}%"),
+                ),
+            )
+        )
+    elif email:
+        query = query.filter(CompanyExperience.owner_email == email)
+    else:
+        query = query.filter(CompanyExperience.company_name.ilike(f"%{company_name.strip()}%"))
+
+    rows = []
+    for experience in query.all():
+        kind, _label = kind_payload_for_experience(
+            engineering_area=experience.engineering_area,
+            project_description=experience.project_description,
+            category=experience.category,
+            contract_number=experience.contract_number,
+            specific_experience=experience.specific_experience,
+            contract_kind=experience.contract_kind,
+        )
+        rows.append(
+            {
+                "experience_id": str(experience.id),
+                "contract_number": experience.contract_number,
+                "contracting_entity": experience.contracting_entity,
+                "contract_kind": kind,
+                "object_text": experience.specific_experience or "",
+                "partidas": experience.acta_partidas or "",
+                "amount_smmlv": float(experience.amount_smmlv)
+                if experience.amount_smmlv is not None
+                else None,
+                "completion_date": experience.completion_date,
+                "has_acta": bool((experience.specific_evidence_key or "").strip()),
+            }
+        )
+    return rows
+
+
+def _requirements_by_id(db: Session, tender_ids: list) -> dict:
+    if not tender_ids:
+        return {}
+    records = (
+        db.query(TenderRequirements)
+        .filter(TenderRequirements.tender_id.in_(tender_ids))
+        .all()
+    )
+    return {record.tender_id: record.requirements_json for record in records}
+
+
+def _attach_experience_fit(response: TenderResponse, tender: Tender, fit_experiences: list, requirements) -> None:
+    if not fit_experiences:
+        return
+    from app.schemas.tender import ExperienceFit
+    from app.services.experience_fit import evaluate_experience_fit, publication_as_date
+    from app.services.tender_summary.contract_kind import detect_contract_kind
+
+    result = evaluate_experience_fit(
+        tender_kind=detect_contract_kind(tender).value,
+        tender_object=tender.object_text or "",
+        tender_amount=float(tender.amount) if tender.amount is not None else None,
+        publication_date=publication_as_date(tender.publication_date),
+        requirements=requirements,
+        experiences=fit_experiences,
+    )
+    response.experience_fit = ExperienceFit.model_validate(result.as_dict())
+    response.experience_match_score = None
+
+
 @router.get("/tenders", response_model=TenderListResponse)
 async def list_tenders(
     department: Optional[str] = Query(None, description="Filter by department"),
@@ -66,7 +154,12 @@ async def list_tenders(
         None,
         description="Project typology filter (repeatable or CSV). OR among values.",
     ),
-    match_experience: bool = Query(False, description="Only show tenders matching company experiences"),
+    match_experience: bool = Query(False, description="Ignored. Semantic match stays off."),
+    experience_fit: Optional[str] = Query(
+        None,
+        description="puede_aplicar, no_aplica, or no_se_puede_afirmar",
+    ),
+    owner_email: Optional[str] = Query(None, description="Registered user email"),
     only_interventoria: bool = Query(False, description="Deprecated: use contract_kind=interventoria"),
     contract_kind: Optional[str] = Query(
         None,
@@ -119,10 +212,11 @@ async def list_tenders(
             query = apply_contract_kind_filter(query, kind)
         logger.info("Filtered by only_interventoria (legacy): %s tenders", query.count())
     
-    # Matching vs RUP is paused until the company↔tender match is designed.
-    # Keep listing the radar (active tenders) regardless of match_experience.
+    # Semantic similarity stays off. Experience fit uses stored actas and the pliego.
     experiences = []
     match_experience = False
+    fit_experiences = _fit_experience_rows(db, owner_email, company_name)
+    wanted_fit = (experience_fit or "").strip().lower() or None
     
     # If matching is required, we need to match tenders first, then paginate
     # OPTIMIZATION: 
@@ -187,32 +281,55 @@ async def list_tenders(
             Tender.closing_date.desc().nulls_last(),
             Tender.entity_name.asc()
         )
-        if selected_typologies:
+        if wanted_fit and not fit_experiences:
+            return TenderListResponse(items=[], total=0, limit=limit, offset=offset)
+
+        if selected_typologies or wanted_fit:
             all_tenders = ordered.all()
             kept = [
                 tender
                 for tender in all_tenders
-                if typologies_intersect(tender.object_text or "", selected_typologies)
+                if not selected_typologies
+                or typologies_intersect(tender.object_text or "", selected_typologies)
             ]
-            total = len(kept)
-            tenders = kept[offset : offset + limit]
+            requirements = _requirements_by_id(db, [tender.id for tender in kept]) if fit_experiences else {}
+            fitted = []
+            for tender in kept:
+                tender_response = TenderResponse.model_validate(tender)
+                _attach_experience_fit(
+                    tender_response,
+                    tender,
+                    fit_experiences,
+                    requirements.get(tender.id),
+                )
+                if wanted_fit and (
+                    tender_response.experience_fit is None
+                    or tender_response.experience_fit.status != wanted_fit
+                ):
+                    continue
+                fitted.append(tender_response)
+            total = len(fitted)
+            items = fitted[offset : offset + limit]
         else:
             total = query.count()
             tenders = ordered.offset(offset).limit(limit).all()
-        
-        # Build response with match scores (optional, for display)
-        items = []
-        for tender in tenders:
-            tender_response = TenderResponse.model_validate(tender)
-            
-            if experiences:
-                match_score, matching_experiences = match_tender_against_experiences(
-                    tender, experiences, min_score=min_match_score
+            requirements = _requirements_by_id(db, [tender.id for tender in tenders]) if fit_experiences else {}
+            items = []
+            for tender in tenders:
+                tender_response = TenderResponse.model_validate(tender)
+                if experiences:
+                    match_score, matching_experiences = match_tender_against_experiences(
+                        tender, experiences, min_score=min_match_score
+                    )
+                    tender_response.experience_match_score = match_score if match_score > 0 else None
+                    tender_response.matching_experiences = matching_experiences if matching_experiences else None
+                _attach_experience_fit(
+                    tender_response,
+                    tender,
+                    fit_experiences,
+                    requirements.get(tender.id),
                 )
-                tender_response.experience_match_score = match_score if match_score > 0 else None
-                tender_response.matching_experiences = matching_experiences if matching_experiences else None
-            
-            items.append(tender_response)
+                items.append(tender_response)
         
         # Sort items by closing_date (most distant future first), then by match score (highest first)
         items.sort(

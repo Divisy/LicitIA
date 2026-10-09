@@ -26,23 +26,15 @@ const MatchPreviewStep: React.FC<MatchPreviewStepProps> = ({
       setLoading(true)
       try {
         const response = await getTenders({
-          limit: 50,
+          limit: 3,
           offset: 0,
           company_name: companyName,
-          match_experience: true,
+          experience_fit: 'puede_aplicar',
         })
 
         if (cancelled) return
 
-        const sorted = [...(response.items || [])]
-          .filter((t) => t.experience_match_score != null)
-          .sort(
-            (a, b) =>
-              (b.experience_match_score ?? 0) - (a.experience_match_score ?? 0)
-          )
-          .slice(0, 3)
-
-        setTenders(sorted)
+        setTenders((response.items || []).slice(0, 3))
       } catch {
         if (!cancelled) {
           setTenders([])
@@ -70,12 +62,6 @@ const MatchPreviewStep: React.FC<MatchPreviewStepProps> = ({
     }).format(amount)
   }
 
-  const getMatchTagKind = (score: number): 'green' | 'yellow' | 'red' => {
-    if (score >= 0.6) return 'green'
-    if (score >= 0.4) return 'yellow'
-    return 'red'
-  }
-
   const subtitle = useMemo(() => {
     if (loading) return 'Buscando licitaciones relevantes para tu empresa...'
     if (tenders.length === 0) {
@@ -100,12 +86,11 @@ const MatchPreviewStep: React.FC<MatchPreviewStepProps> = ({
         ) : (
           <div className="onboarding-match-preview-list">
             {tenders.map((tender) => {
-              const score = tender.experience_match_score ?? 0
               return (
                 <Tile key={tender.id} className="onboarding-match-preview-card">
                   <div className="onboarding-match-preview-card__top">
-                    <Tag type={getMatchTagKind(score)} size="sm">
-                      {Math.round(score * 100)}% match
+                    <Tag type="green" size="sm">
+                      Puede aplicar
                     </Tag>
                     <span className="onboarding-match-preview-card__amount">
                       {formatCurrency(tender.amount)}

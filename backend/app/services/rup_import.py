@@ -312,7 +312,7 @@ def replace_experiences_from_rup(
     else:
         existing_query = existing_query.filter(CompanyExperience.company_name == company_name)
     existing = existing_query.all()
-    evidence_by_contract: dict[str, tuple[Optional[str], Optional[str], Optional[str]]] = {}
+    evidence_by_contract: dict[str, tuple[Optional[str], Optional[str], Optional[str], Optional[str]]] = {}
     for row in existing:
         number = (row.contract_number or "").strip().upper()
         if not number:
@@ -322,6 +322,7 @@ def replace_experiences_from_rup(
                 getattr(row, "specific_experience", None),
                 getattr(row, "specific_evidence_filename", None),
                 getattr(row, "specific_evidence_key", None),
+                getattr(row, "acta_partidas", None),
             )
     db.query(CompanyExperience).filter(
         CompanyExperience.owner_email == email if email else CompanyExperience.company_name == company_name
@@ -337,6 +338,7 @@ def replace_experiences_from_rup(
         specific_text = previous[0] if previous else None
         specific_name = previous[1] if previous else None
         specific_key = previous[2] if previous else None
+        acta_partidas = previous[3] if previous else None
         experience = CompanyExperience(
             id=uuid.uuid4(),
             company_name=_clip(company_name, 255) or "Mi Empresa",
@@ -377,6 +379,7 @@ def replace_experiences_from_rup(
             if contract.unspsc_codes
             else None,
             specific_experience=specific_text,
+            acta_partidas=acta_partidas,
             specific_evidence_filename=_clip(specific_name, 255),
             specific_evidence_key=_clip(specific_key, 500),
             created_at=now,

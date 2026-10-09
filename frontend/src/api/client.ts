@@ -100,6 +100,26 @@ export interface LeadCreate {
   sectors?: string[];
 }
 
+export type ExperienceFitStatus = 'puede_aplicar' | 'no_aplica' | 'no_se_puede_afirmar'
+
+export interface ExperienceFitContract {
+  experience_id: string;
+  contract_number: string | null;
+  contracting_entity: string | null;
+  amount_smmlv: number | null;
+  in_general_sum: boolean;
+  specific_met: boolean;
+  matched_activity: string | null;
+}
+
+export interface ExperienceFit {
+  status: ExperienceFitStatus;
+  reason: string;
+  general_sum_smmlv: number | null;
+  general_minimum_smmlv: number | null;
+  contracts: ExperienceFitContract[];
+}
+
 export interface MatchingExperience {
   experience_id: string;
   project_description: string;
@@ -136,6 +156,7 @@ export interface Tender {
   documents_extraction_attempted_at: string | null;
   experience_match_score: number | null;
   matching_experiences: MatchingExperience[] | null;
+  experience_fit?: ExperienceFit | null;
   created_at: string;
   updated_at: string;
 }
@@ -164,6 +185,7 @@ export interface TenderFilters {
   entity?: string;
   typology?: string[];
   match_experience?: boolean;
+  experience_fit?: ExperienceFitStatus;
   only_interventoria?: boolean;
   company_name?: string;
   min_match_score?: number;
@@ -174,7 +196,7 @@ export interface TenderFilters {
 export async function getTenders(
   filters: TenderFilters = {}
 ): Promise<TenderListResponse> {
-  const params = new URLSearchParams();
+  const params = withOwnerEmail(new URLSearchParams());
 
   if (filters.department) {
     params.append("department", filters.department);
@@ -201,6 +223,9 @@ export async function getTenders(
     filters.typology.forEach((value) => {
       if (value) params.append("typology", value);
     });
+  }
+  if (filters.experience_fit) {
+    params.append("experience_fit", filters.experience_fit);
   }
   if (filters.match_experience !== undefined) {
     params.append("match_experience", filters.match_experience.toString());
@@ -507,6 +532,7 @@ export interface CompanyExperience {
   contract_kind: string | null;
   contract_kind_label: string | null;
   specific_experience: string | null;
+  has_acta_partidas?: boolean;
   specific_evidence_filename: string | null;
   project_typologies: string[] | null;
   unspsc_codes: string[] | null;

@@ -66,6 +66,7 @@ const Dashboard: React.FC = () => {
     )
   )
   const [showAll, setShowAll] = useState<boolean>(false)
+  const [onlyApplicable, setOnlyApplicable] = useState(false)
   const [selectedTender, setSelectedTender] = useState<Tender | null>(null)
 
   const portfolioReady = portfolioStatus === 'ready'
@@ -95,6 +96,7 @@ const Dashboard: React.FC = () => {
       if (department) params.department = department
       if (appliedEntity) params.entity = appliedEntity
       if (effectiveContractKind) params.contract_kind = effectiveContractKind
+      if (onlyApplicable) params.experience_fit = 'puede_aplicar'
       
       const response = await getTenders(params)
       
@@ -116,6 +118,7 @@ const Dashboard: React.FC = () => {
     dateTo,
     department,
     appliedEntity,
+    onlyApplicable,
   ])
   
   useEffect(() => {
@@ -281,6 +284,16 @@ const Dashboard: React.FC = () => {
                 <div className="dashboard-results-info">
                   <p className="dashboard-results-text">
                     Mostrando <strong>{tenders.length}</strong> de <strong>{total}</strong> licitaciones
+                  </p>
+                  <Button
+                    kind={onlyApplicable ? 'primary' : 'ghost'}
+                    size="sm"
+                    onClick={() => setOnlyApplicable((current) => !current)}
+                  >
+                    Puede aplicar
+                  </Button>
+                  <p className="dashboard-results-text">
+                    Puede aplicar cuando la suma de SMMLV cubre la experiencia general del pliego y las partidas del acta cubren la experiencia específica. Si falta el pliego o las partidas, no se afirma.
                   </p>
                   {!showAll && tenders.length < total && (
                     <Button

@@ -20,6 +20,7 @@ class CompanyExperienceBase(BaseModel):
     contract_kind: Optional[str] = None
     contract_kind_label: Optional[str] = None
     specific_experience: Optional[str] = None
+    has_acta_partidas: bool = False
     specific_evidence_filename: Optional[str] = None
     project_typologies: List[str] = Field(default_factory=list)
 

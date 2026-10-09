@@ -37,6 +37,7 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 router = APIRouter()
 _contract_kind_column_ready = False
+_acta_partidas_column_ready = False
 
 
 def ensure_contract_kind_column(db: Session) -> None:
@@ -52,6 +53,19 @@ def ensure_contract_kind_column(db: Session) -> None:
     )
     db.commit()
     _contract_kind_column_ready = True
+
+
+def ensure_acta_partidas_column(db: Session) -> None:
+    global _acta_partidas_column_ready
+    if _acta_partidas_column_ready:
+        return
+    from sqlalchemy import text
+
+    db.execute(
+        text("ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS acta_partidas TEXT")
+    )
+    db.commit()
+    _acta_partidas_column_ready = True
 
 
 def _razon_social_for(
@@ -119,6 +133,7 @@ def _experience_dict(
         "contract_kind": kind,
         "contract_kind_label": label,
         "specific_experience": experience.specific_experience,
+        "has_acta_partidas": bool((getattr(experience, "acta_partidas", None) or "").strip()),
         "specific_evidence_filename": experience.specific_evidence_filename,
         "project_typologies": apply_project_typologies(experience),
         "unspsc_codes": unspsc_codes_from_stored(
@@ -149,6 +164,7 @@ async def create_experience(
     payload = experience.model_dump()
     payload.pop("project_typologies", None)
     payload.pop("contract_kind_label", None)
+    payload.pop("has_acta_partidas", None)
     payload["owner_email"] = normalize_owner_email(owner_email)
     db_experience = CompanyExperience(
         **payload,
@@ -185,6 +201,7 @@ async def list_experiences(
     ensure_specific_experience_columns(db)
     ensure_owner_email_columns(db)
     ensure_contract_kind_column(db)
+    ensure_acta_partidas_column(db)
     query = db.query(CompanyExperience)
     email = normalize_owner_email(owner_email)
     if email and company_name:
@@ -221,6 +238,9 @@ async def list_experiences(
         page = all_experiences[offset : offset + limit]
         backfill_rup_fields_from_stored_pdf(db, page)
         backfill_objetos_from_stored_actas(db, page)
+        from app.services.acta_partidas import backfill_partidas_from_stored_actas
+
+        backfill_partidas_from_stored_actas(db, page)
     dirty = False
     for exp in all_experiences:
         previous = getattr(exp, "project_typologies", None)
@@ -348,9 +368,11 @@ async def upload_specific_evidence(
     )
     from app.services.project_typology import apply_project_typologies
     from app.services.rup_contract_kind import apply_kind_from_specific_experience
+    from app.services.acta_partidas import extract_acta_partidas_from_pdf_bytes
     from app.services.specific_experience import extract_specific_experience_from_pdf_bytes
 
     ensure_specific_experience_columns(db)
+    ensure_acta_partidas_column(db)
     experience = db.query(CompanyExperience).filter(CompanyExperience.id == experience_id).first()
     if not experience:
         raise HTTPException(status_code=404, detail="Experience not found")
@@ -389,12 +411,20 @@ async def upload_specific_evidence(
     db.commit()
 
     extracted = await asyncio.to_thread(extract_specific_experience_from_pdf_bytes, content)
+    partidas = await asyncio.to_thread(
+        extract_acta_partidas_from_pdf_bytes, content, extracted
+    )
+    if partidas:
+        experience.acta_partidas = partidas
     if extracted:
         experience.specific_experience = extracted
         apply_kind_from_specific_experience(experience, extracted)
         apply_project_typologies(experience)
         keywords = extract_keywords(extracted)
         experience.keywords = json.dumps(keywords) if keywords else experience.keywords
+        experience.updated_at = datetime.utcnow()
+        db.commit()
+    elif partidas:
         experience.updated_at = datetime.utcnow()
         db.commit()
     else:

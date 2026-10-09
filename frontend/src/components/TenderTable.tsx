@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { DataTable, Table, TableHead, TableRow, TableHeader, TableBody, TableCell, Tag, Link, Tile, IconButton } from '@carbon/react'
-import { Tender } from '../api/client'
+import { ExperienceFitStatus, Tender } from '../api/client'
 import { Launch, Star, StarFilled, ArrowUp, ArrowDown, ArrowsVertical } from '@carbon/icons-react'
 import {
   DEFAULT_TENDER_SORT_DIRECTION,
@@ -94,6 +94,7 @@ const TenderTable: React.FC<TenderTableProps> = ({
       { key: 'entity', header: 'Entidad' },
       { key: 'department', header: 'Departamento' },
       { key: 'amount', header: 'Monto' },
+      { key: 'experience_fit', header: 'Experiencia' },
       { key: 'state', header: 'Estado' },
       { key: 'link', header: 'Enlace' },
     ]
@@ -142,6 +143,7 @@ const TenderTable: React.FC<TenderTableProps> = ({
       amount: (
         <span className="tender-table-amount">{formatCurrency(tender.amount)}</span>
       ),
+      experience_fit: <ExperienceFitTag fit={tender.experience_fit} />,
       state: tender.state ? (
         <Tag type={getEstadoTagKind(tender.state)} size="sm">
           {tender.state}
@@ -275,6 +277,25 @@ const TenderTable: React.FC<TenderTableProps> = ({
         )}
       </DataTable>
     </div>
+  )
+}
+
+const FIT_LABEL: Record<ExperienceFitStatus, string> = {
+  puede_aplicar: 'Puede aplicar',
+  no_aplica: 'No aplica',
+  no_se_puede_afirmar: 'No se puede afirmar',
+}
+
+function ExperienceFitTag({ fit }: { fit: Tender['experience_fit'] }) {
+  if (!fit) return <span>—</span>
+  const type =
+    fit.status === 'puede_aplicar' ? 'green' : fit.status === 'no_aplica' ? 'red' : 'gray'
+  return (
+    <span title={fit.reason}>
+      <Tag type={type} size="sm">
+        {FIT_LABEL[fit.status]}
+      </Tag>
+    </span>
   )
 }
 

@@ -5,6 +5,26 @@ from typing import Optional, List
 from uuid import UUID
 
 
+class ExperienceFitContract(BaseModel):
+    """A company contract that entered the general-experience sum."""
+    experience_id: str
+    contract_number: Optional[str] = None
+    contracting_entity: Optional[str] = None
+    amount_smmlv: Optional[float] = None
+    in_general_sum: bool = False
+    specific_met: bool = False
+    matched_activity: Optional[str] = None
+
+
+class ExperienceFit(BaseModel):
+    """Whether the company can bid, from acta partidas and the pliego."""
+    status: str
+    reason: str
+    general_sum_smmlv: Optional[float] = None
+    general_minimum_smmlv: Optional[float] = None
+    contracts: List[ExperienceFitContract] = Field(default_factory=list)
+
+
 class TenderResponse(BaseModel):
     """Tender response schema."""
     id: UUID
@@ -31,6 +51,7 @@ class TenderResponse(BaseModel):
     documents_extraction_attempted_at: Optional[datetime] = None
     experience_match_score: Optional[float] = Field(None, description="Match score against company experiences (0-1)")
     matching_experiences: Optional[List[dict]] = Field(None, description="List of matching experiences")
+    experience_fit: Optional[ExperienceFit] = None
     created_at: datetime
     updated_at: datetime
 
