@@ -59,6 +59,12 @@ type UnspscModalState = {
   codes: string[]
 }
 
+type ObjectModalState = {
+  contract: string
+  entity: string
+  objectText: string
+}
+
 const ExperienceList: React.FC<ExperienceListProps> = ({
   experiences,
   companyName,
@@ -70,6 +76,7 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [codesModal, setCodesModal] = useState<UnspscModalState | null>(null)
+  const [objectModal, setObjectModal] = useState<ObjectModalState | null>(null)
   const [filters, setFilters] = useState<ExperienceListFilters>(EMPTY_EXPERIENCE_FILTERS)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -204,10 +211,10 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
 
   const headers = [
     { key: 'number', header: '#' },
+    { key: 'object', header: 'Objeto del contrato' },
     { key: 'contractor', header: 'Contratista' },
     { key: 'kind', header: 'Tipo de contrato' },
     { key: 'specific', header: 'Acta' },
-    { key: 'object', header: 'Objeto del contrato' },
     { key: 'typology', header: 'Tipología' },
     { key: 'entity', header: 'Entidad contratante' },
     { key: 'contract', header: 'Contrato' },
@@ -220,8 +227,8 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
     const kind = experience.contract_kind
     const unspscCodes = (experience.unspsc_codes || []).filter(Boolean)
     const specificText = (experience.specific_experience || '').trim()
-    const description = (experience.project_description || '').trim()
-    const objectText = description || specificText
+    const hasActa = Boolean((experience.specific_evidence_filename || '').trim())
+    const objectText = hasActa ? specificText : ''
     const uploading = uploadingId === experience.id
     const contractor = (experience.contractor_name || '').trim()
     const partner = (experience.partner_name || '').trim()
@@ -274,9 +281,20 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
         />
       ),
       object: objectText ? (
-        <p className="experience-list-object" title={objectText}>
+        <button
+          type="button"
+          className="experience-list-object"
+          title="Ver el objeto completo"
+          onClick={() =>
+            setObjectModal({
+              contract: experience.contract_number || 'Sin número',
+              entity: experience.contracting_entity || '',
+              objectText,
+            })
+          }
+        >
           {objectText}
-        </p>
+        </button>
       ) : (
         <span className="experience-list-object-empty">—</span>
       ),
@@ -443,6 +461,23 @@ const ExperienceList: React.FC<ExperienceListProps> = ({
         <p className="experience-list-filter-empty">
           Ningún contrato coincide con estos filtros.
         </p>
+      )}
+      {objectModal && (
+        <Modal
+          open
+          passiveModal
+          size="md"
+          modalHeading="Objeto del contrato"
+          onRequestClose={() => setObjectModal(null)}
+        >
+          <div className="experience-list-object-modal">
+            <p className="experience-list-object-modal-meta">
+              <strong>{objectModal.contract}</strong>
+              {objectModal.entity ? ` · ${objectModal.entity}` : ''}
+            </p>
+            <p className="experience-list-object-modal-text">{objectModal.objectText}</p>
+          </div>
+        </Modal>
       )}
       {codesModal && (
         <Modal

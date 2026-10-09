@@ -145,14 +145,37 @@
 
 .experience-list-object {
   @include type-style('body-compact-01');
-  color: var(--cds-text-primary);
+  color: var(--cds-link-primary);
   margin: 0;
-  max-width: 280px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  max-width: 320px;
   line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.experience-list-object-modal-meta {
+  margin: 0 0 $spacing-04;
+  @include type-style('label-01');
+  color: var(--cds-text-secondary);
+}
+
+.experience-list-object-modal-text {
+  margin: 0;
+  @include type-style('body-01');
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .experience-list-object-empty {

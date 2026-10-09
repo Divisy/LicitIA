@@ -107,12 +107,61 @@ describe('ExperienceList UNSPSC preview', () => {
         companyName="BEC"
       />
     )
-    expect(screen.getByText('Objeto del contrato')).toBeInTheDocument()
-    expect(screen.getByText('Obra Paipa')).toBeInTheDocument()
+    const headers = screen.getAllByRole('columnheader').map((header) => header.textContent || '')
+    expect(headers[0]?.endsWith('#')).toBe(true)
+    expect(headers[1]?.includes('Objeto del contrato')).toBe(true)
+    expect(screen.getByText('Construcción y mejoramiento de la malla vial en Paipa.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Obra Paipa' })).not.toBeInTheDocument()
     expect(screen.getByText('Otto Harry · 25%')).toBeInTheDocument()
     expect(screen.getAllByText('Tipología').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Vías').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: /Reemplazar/ })).toBeInTheDocument()
+  })
+
+  it('opens the full contract object when the truncated text is clicked', async () => {
+    const user = userEvent.setup()
+    const fullObject =
+      'INTERVENTORÍA TÉCNICA, ADMINISTRATIVA Y CONTABLE DE LOS CONTRATOS DE OBRA DE REFORZAMIENTO ESTRUCTURAL DE PLANTAS FÍSICAS.'
+    render(
+      <ExperienceList
+        experiences={[
+          experience({
+            project_description: 'Texto de la planilla que no debe verse',
+            specific_experience: fullObject,
+            specific_evidence_filename: 'ACTA.pdf',
+            contract_number: '3396 DE 2008',
+            contracting_entity: 'SECRETARIA DE INTEGRACION SOCIAL',
+          }),
+        ]}
+        companyName="BEC"
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: fullObject }))
+    expect(screen.getByRole('heading', { name: 'Objeto del contrato' })).toBeInTheDocument()
+    expect(screen.getAllByText('3396 DE 2008').length).toBeGreaterThan(1)
+    expect(screen.getAllByText(/SECRETARIA DE INTEGRACION SOCIAL/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(fullObject).length).toBeGreaterThan(1)
+    expect(screen.queryByText('Texto de la planilla que no debe verse')).not.toBeInTheDocument()
+  })
+
+  it('leaves the object column empty when no acta is uploaded', () => {
+    render(
+      <ExperienceList
+        experiences={[
+          experience({
+            project_description: 'Obra de la planilla',
+            specific_experience: 'Experiencia escrita en la planilla',
+            specific_evidence_filename: null,
+          }),
+        ]}
+        companyName="BEC"
+      />
+    )
+
+    expect(screen.queryByText('Obra de la planilla')).not.toBeInTheDocument()
+    expect(screen.queryByText('Experiencia escrita en la planilla')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /planilla/ })).not.toBeInTheDocument()
   })
 
   it('saves the contract type the user picks', async () => {
