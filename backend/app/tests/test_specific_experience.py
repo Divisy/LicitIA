@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 from app.services.specific_experience import (
+    _vision_batch,
     extract_specific_experience_from_pdf_bytes,
     extract_specific_experience_from_text,
     extract_specific_experience_with_vision,
@@ -46,6 +47,32 @@ def test_extracts_tiene_por_objeto():
     assert result is not None
     assert "acueducto" in result.lower()
     assert "santa isabel" in result.lower()
+
+
+def test_extracts_objetivo_field_on_a_certificate():
+    text = """
+    CERTIFICA
+    OBJETIVO: INTERVENTORÍA TÉCNICA, ADMINISTRATIVA Y AMBIENTAL PARA EL MEJORAMIENTO DE LA VÍA LAS MARGARITAS.
+    FECHA DE INICIACION: Septiembre 11 de 2006
+    """
+    result = extract_specific_experience_from_text(text)
+    assert result is not None
+    assert "margaritas" in result.lower()
+    assert "fecha" not in result.lower()
+
+
+def test_vision_reads_the_scan_at_high_detail():
+    client = MagicMock()
+    message = MagicMock()
+    message.content = (
+        '{"objeto": "INTERVENTORIA TECNICA PARA EL MEJORAMIENTO DE LA VIA LAS MARGARITAS CAUYA"}'
+    )
+    client.chat.completions.create.return_value.choices = [MagicMock(message=message)]
+    result = _vision_batch(client, [(1, b"\xff\xd8\xff" + b"x" * 40)])
+    content = client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+    image = next(part["image_url"] for part in content if part.get("type") == "image_url")
+    assert image["detail"] == "high"
+    assert "margaritas" in result.lower()
 
 
 def test_returns_none_when_no_objeto():

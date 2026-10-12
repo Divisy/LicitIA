@@ -55,6 +55,10 @@ _OBJETO_RES = (
         r"(?:el\s+presente\s+contrato\s+(?:tiene\s+por\s+objeto|consiste\s+en))\s*(.+)",
         re.IGNORECASE | re.DOTALL,
     ),
+    re.compile(
+        r"\bobjetivo\s*[:.\-–]\s*(.+)",
+        re.IGNORECASE | re.DOTALL,
+    ),
 )
 
 _PAGE_HINT = re.compile(
@@ -265,11 +269,11 @@ def _vision_batch(client, pages: list[tuple[int, bytes]]) -> Optional[str]:
             "type": "text",
             "text": (
                 "Estas páginas son un certificado o acta de finalización de un contrato "
-                "público colombiano, a menudo escaneado y a veces un compilado de varias "
-                "actas. Extrae ÚNICAMENTE el objeto del contrato (objeto contractual / "
-                "descripción de la obra o del proyecto). "
+                "público colombiano, a menudo escaneado. "
+                "Copia el texto del campo OBJETO, OBJETIVO u OBJETO DEL CONTRATO. "
+                "No devuelvas el título del documento, la entidad ni la palabra certificación. "
                 "Devuelve JSON: {\"objeto\": \"texto\"}. "
-                "Si no hay objeto en estas páginas, {\"objeto\": null}. "
+                "Si no está ese campo, {\"objeto\": null}. "
                 "No inventes. No copies firmas ni valores."
             ),
         }
@@ -282,7 +286,7 @@ def _vision_batch(client, pages: list[tuple[int, bytes]]) -> Optional[str]:
                 "type": "image_url",
                 "image_url": {
                     "url": f"data:image/jpeg;base64,{encoded}",
-                    "detail": "low",
+                    "detail": "high",
                 },
             }
         )

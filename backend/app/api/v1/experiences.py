@@ -234,6 +234,8 @@ async def list_experiences(
         CompanyExperience.completion_date.desc()
     )
     all_experiences = ordered.all()
+    # Scanned actas can be stored before the object is read. Retry a few on each visit.
+    backfill_objetos_from_stored_actas(db, all_experiences)
     if hydrate_rup:
         page = all_experiences[offset : offset + limit]
         backfill_rup_fields_from_stored_pdf(db, page)
