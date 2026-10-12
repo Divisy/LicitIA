@@ -59,7 +59,15 @@ _OBJETO_RES = (
         r"\bobjetivo\s*[:.\-–]\s*(.+)",
         re.IGNORECASE | re.DOTALL,
     ),
+    re.compile(
+        r"\ben\s+la\s+((?:adecuaci[oó]n|construcci[oó]n|mejoramiento|mantenimiento|"
+        r"remodelaci[oó]n|interventor[ií]a|ampliaci[oó]n|pavimentaci[oó]n).+?)"
+        r"(?:,?\s+valor\b)",
+        re.IGNORECASE | re.DOTALL,
+    ),
 )
+
+_PARTIDAS_HEADING = re.compile(r"obras\s+ejecutadas\s+consistieron", re.IGNORECASE)
 
 _PAGE_HINT = re.compile(
     r"objeto|contractual|acta|finalizaci[oó]n|recibo|consorcio|interventor",
@@ -67,14 +75,39 @@ _PAGE_HINT = re.compile(
 )
 
 
+def _looks_like_partidas(text: str) -> bool:
+    if _PARTIDAS_HEADING.search(text or ""):
+        return True
+    numbered = re.findall(r"(?:^|\s)\d{1,2}\s*[-–]\s+\S", text or "")
+    return len(numbered) >= 3
+
+
+def _narrative_clause(text: str) -> Optional[str]:
+    """Object written inside the certificate sentence, before the contract value."""
+    if not re.search(r"contrato|certifica", text or "", re.IGNORECASE):
+        return None
+    match = _OBJETO_RES[-1].search(text or "")
+    if not match:
+        return None
+    clause = re.sub(r"\s+", " ", match.group(1)).strip(" ,.")
+    if len(clause) < 20 or _looks_like_partidas(clause):
+        return None
+    return clause
+
+
 def _clean_objeto(snippet: str) -> Optional[str]:
     text = (snippet or "").strip()
+    narrative = _narrative_clause(text)
+    if narrative:
+        text = narrative
+    elif _looks_like_partidas(text):
+        return None
     stop = "|".join(_STOP)
     cut = re.search(rf"(?:\n|\.)\s*(?:{stop})\b", text, re.IGNORECASE)
     if cut:
         text = text[: cut.start()]
     text = re.sub(r"\s+", " ", text).strip(" :-.")
-    if len(text) < 20:
+    if len(text) < 20 or _looks_like_partidas(text):
         return None
     return text[:2000]
 
@@ -271,9 +304,12 @@ def _vision_batch(client, pages: list[tuple[int, bytes]]) -> Optional[str]:
                 "Estas páginas son un certificado o acta de finalización de un contrato "
                 "público colombiano, a menudo escaneado. "
                 "Copia el texto del campo OBJETO, OBJETIVO u OBJETO DEL CONTRATO. "
+                "Si no hay ese campo, copia solo la frase del certificado que dice "
+                "en qué consistió el contrato, la que va antes del valor. "
+                "No copies la lista de obras ejecutadas, partidas, cantidades ni precios. "
                 "No devuelvas el título del documento, la entidad ni la palabra certificación. "
                 "Devuelve JSON: {\"objeto\": \"texto\"}. "
-                "Si no está ese campo, {\"objeto\": null}. "
+                "Si no está esa frase, {\"objeto\": null}. "
                 "No inventes. No copies firmas ni valores."
             ),
         }
@@ -334,6 +370,12 @@ def backfill_objetos_from_stored_actas(db, experiences, *, limit: int = 3) -> in
     ]
     if not pending:
         return 0
+
+    # A replaced acta has an empty object and the newest timestamp. Read that one first.
+    pending.sort(
+        key=lambda row: getattr(row, "updated_at", None) or datetime.min,
+        reverse=True,
+    )
 
     storage = get_document_storage()
     filled = 0

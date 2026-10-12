@@ -409,6 +409,9 @@ async def upload_specific_evidence(
 
     experience.specific_evidence_filename = filename[:255]
     experience.specific_evidence_key = object_key[:500]
+    # The column shows this acta only. Drop the previous object before the slow read.
+    experience.specific_experience = None
+    experience.acta_partidas = None
     experience.updated_at = datetime.utcnow()
     db.commit()
 

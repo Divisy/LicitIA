@@ -75,6 +75,34 @@ def test_vision_reads_the_scan_at_high_detail():
     assert "margaritas" in result.lower()
 
 
+def test_reads_the_object_inside_the_certificate_sentence():
+    text = """
+    CERTIFICA:
+    Que el contratista ejecutó las obras del Contrato de Obra Pública No. 031 de 1990,
+    en la adecuación y construcción de canchas, en los barrios Aurora II y San Luis Sur,
+    valor de $ 9.970.530.
+    Las obras ejecutadas consistieron principalmente en:
+    1- Excavación para sub-razante.
+    2- Relleno en material proveniente del corte.
+    3- Compactación.
+    """
+    result = extract_specific_experience_from_text(text)
+    assert result is not None
+    assert "canchas" in result.lower()
+    assert "aurora" in result.lower()
+    assert "excav" not in result.lower()
+
+
+def test_rejects_the_executed_works_list_as_objeto():
+    text = (
+        "Las obras ejecutadas consistieron principalmente en: "
+        "1- Excavación para sub-razante. "
+        "2- Relleno en material proveniente del corte. "
+        "3- Compactación de la base."
+    )
+    assert extract_specific_experience_from_text(text) is None
+
+
 def test_returns_none_when_no_objeto():
     text = "Certificado de existencia y representación legal de la sociedad. " * 5
     assert extract_specific_experience_from_text(text) is None
@@ -173,3 +201,50 @@ def test_vision_reads_objeto_json():
         mock_settings.OPENAI_MODEL_NAME = "gpt-4o-mini"
         result = extract_specific_experience_with_vision(b"%PDF")
     assert "Pavimentación" in result
+
+
+def test_backfill_reads_the_replaced_acta_before_older_pending_files():
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from app.services.specific_experience import backfill_objetos_from_stored_actas
+
+    older = SimpleNamespace(
+        id="old",
+        specific_experience=None,
+        specific_evidence_key="old-key",
+        specific_evidence_filename="acta-vieja.pdf",
+        updated_at=datetime(2020, 1, 1),
+        keywords=None,
+    )
+    newer = SimpleNamespace(
+        id="new",
+        specific_experience="  ",
+        specific_evidence_key="new-key",
+        specific_evidence_filename="acta-nueva.pdf",
+        updated_at=datetime(2026, 10, 12),
+        keywords=None,
+    )
+    storage = MagicMock()
+    storage.iter_file_chunks.return_value = [b"%PDF"]
+    objeto = "INTERVENTORIA TECNICA PARA EL MEJORAMIENTO DE LA VIA LAS MARGARITAS CAUYA."
+    with patch(
+        "app.services.document_storage.get_document_storage",
+        return_value=storage,
+    ), patch(
+        "app.services.specific_experience.extract_specific_experience_from_pdf_bytes",
+        return_value=objeto,
+    ), patch(
+        "app.services.rup_contract_kind.apply_kind_from_specific_experience",
+    ), patch(
+        "app.services.project_typology.apply_project_typologies",
+    ), patch(
+        "app.services.experience_matching.extract_keywords",
+        return_value=["via"],
+    ):
+        filled = backfill_objetos_from_stored_actas(MagicMock(), [older, newer], limit=1)
+
+    assert filled == 1
+    assert newer.specific_experience == objeto
+    assert older.specific_experience is None
+    storage.iter_file_chunks.assert_called_once_with("new-key")

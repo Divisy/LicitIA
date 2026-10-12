@@ -1,14 +1,20 @@
+import { useState } from 'react'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ExperienceList from './ExperienceList'
-import { CompanyExperience, updateExperienceContractKind } from '../api/client'
+import {
+  CompanyExperience,
+  updateExperienceContractKind,
+  uploadSpecificExperienceEvidence,
+} from '../api/client'
 
 vi.mock('../api/client', async () => {
   const actual = await vi.importActual<typeof import('../api/client')>('../api/client')
   return {
     ...actual,
     updateExperienceContractKind: vi.fn(),
+    uploadSpecificExperienceEvidence: vi.fn(),
   }
 })
 
@@ -143,6 +149,47 @@ describe('ExperienceList UNSPSC preview', () => {
     expect(screen.getAllByText(/SECRETARIA DE INTEGRACION SOCIAL/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(fullObject).length).toBeGreaterThan(1)
     expect(screen.queryByText('Texto de la planilla que no debe verse')).not.toBeInTheDocument()
+  })
+
+  it('replaces the contract object with the one read from the new acta', async () => {
+    const user = userEvent.setup()
+    const previous = 'INTERVENTORIA DE LA VIA ANTERIOR QUE NO DEBE QUEDAR EN LA COLUMNA.'
+    const next = 'INTERVENTORIA TECNICA PARA EL MEJORAMIENTO DE LA VIA LAS MARGARITAS CAUYA.'
+    vi.mocked(uploadSpecificExperienceEvidence).mockResolvedValue(
+      experience({
+        specific_experience: next,
+        specific_evidence_filename: 'acta-nueva.pdf',
+      })
+    )
+
+    function ListWithState() {
+      const [items, setItems] = useState([
+        experience({
+          specific_experience: previous,
+          specific_evidence_filename: 'acta-vieja.pdf',
+        }),
+      ])
+      return (
+        <ExperienceList
+          experiences={items}
+          companyName="BEC"
+          onUpdated={(updated) =>
+            setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+          }
+        />
+      )
+    }
+
+    render(<ListWithState />)
+    expect(screen.getByRole('button', { name: previous })).toBeInTheDocument()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await user.click(screen.getByRole('button', { name: /Reemplazar/ }))
+    await user.upload(input, new File(['%PDF'], 'acta-nueva.pdf', { type: 'application/pdf' }))
+
+    expect(await screen.findByRole('button', { name: next })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: previous })).not.toBeInTheDocument()
+    expect(screen.getByText('acta-nueva.pdf')).toBeInTheDocument()
   })
 
   it('leaves the object column empty when no acta is uploaded', () => {
