@@ -46,6 +46,26 @@ def _clip(text: str) -> str:
     return " ".join((text or "").split())[:_OBJECT_CHARS]
 
 
+def _specialties(text: str) -> set[str]:
+    """Specific work types only. Generic construction does not count as a specialty."""
+    from app.services.project_typology import classify_project_typologies
+
+    return {
+        item
+        for item in classify_project_typologies(text)
+        if item not in {"construccion", "otro"}
+    }
+
+
+def specialties_compatible(tender_object: str, acta_object: str) -> bool:
+    """False when both texts name a specialty and none is shared."""
+    tender = _specialties(tender_object)
+    acta = _specialties(acta_object)
+    if not tender or not acta:
+        return True
+    return bool(tender & acta)
+
+
 def _prompt(tenders: list[dict], experiences: list[dict]) -> str:
     tender_lines = [
         {"tender_id": item["id"], "objeto": _clip(item["object"])} for item in tenders
@@ -134,7 +154,9 @@ def judge_object_matches(
                 if cache_key not in _CACHE:
                     missing = True
                     break
-                if _CACHE[cache_key]:
+                if _CACHE[cache_key] and specialties_compatible(
+                    tender["object"], row["object_text"]
+                ):
                     resolved.add(str(row["experience_id"]))
             if missing:
                 pending.append(tender)
@@ -160,9 +182,14 @@ def judge_object_matches(
             if result is None:
                 failed.update(item["id"] for item in batch)
                 continue
+            objects = {str(row["experience_id"]): row["object_text"] for row in candidates}
             for tender in batch:
                 tender_key = _digest(tender["object"])
-                chosen = result.get(tender["id"], set())
+                chosen = {
+                    experience_id
+                    for experience_id in result.get(tender["id"], set())
+                    if specialties_compatible(tender["object"], objects.get(experience_id, ""))
+                }
                 matches[tender["id"]] = chosen
                 for row in candidates:
                     cache_key = (tender_key, _digest(f"{row['experience_id']}|{row['object_text']}"))

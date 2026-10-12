@@ -70,6 +70,72 @@ def test_openai_failure_cannot_be_affirmed():
     assert "comparar" in result.reason.lower()
 
 
+def test_road_tender_does_not_match_a_sewer_acta_even_if_the_model_says_yes():
+    from unittest.mock import patch
+
+    from app.services.object_match import _CACHE, judge_object_matches
+
+    _CACHE.clear()
+    tenders = [
+        {
+            "id": "t-barrios-unidos",
+            "kind": "ejecucion_obra",
+            "object": (
+                "OBRAS DE CONSERVACIÓN DE LA MALLA VIAL LOCAL E INTERMEDIA Y DEL "
+                "ESPACIO PÚBLICO EN LA LOCALIDAD DE BARRIOS UNIDOS"
+            ),
+        }
+    ]
+    experiences = [
+        {
+            "experience_id": "exp-042",
+            "contract_kind": "ejecucion_obra",
+            "has_acta": True,
+            "object_text": (
+                "la construcción y la reparación de redes de alcantarillado "
+                "localizadas en Kennedy y Bosa"
+            ),
+        }
+    ]
+    with patch(
+        "app.services.object_match._call_openai",
+        return_value={"t-barrios-unidos": {"exp-042"}},
+    ):
+        matches, failed = judge_object_matches(tenders, experiences, client=object())
+    assert matches["t-barrios-unidos"] == set()
+    assert failed == set()
+
+
+def test_same_road_specialty_keeps_the_model_match():
+    from unittest.mock import patch
+
+    from app.services.object_match import _CACHE, judge_object_matches
+
+    _CACHE.clear()
+    tenders = [
+        {
+            "id": "t-via",
+            "kind": "ejecucion_obra",
+            "object": "Conservación de la malla vial local",
+        }
+    ]
+    experiences = [
+        {
+            "experience_id": "exp-via",
+            "contract_kind": "ejecucion_obra",
+            "has_acta": True,
+            "object_text": "Mejoramiento vial y pavimentación de la vía urbana",
+        }
+    ]
+    with patch(
+        "app.services.object_match._call_openai",
+        return_value={"t-via": {"exp-via"}},
+    ):
+        matches, failed = judge_object_matches(tenders, experiences, client=object())
+    assert matches["t-via"] == {"exp-via"}
+    assert failed == set()
+
+
 def test_parser_keeps_only_ids_from_the_prompt():
     parsed = parse_object_match_payload(
         {"tenders": [{"tender_id": "t1", "experience_ids": ["exp-1", "invented"]}]},
