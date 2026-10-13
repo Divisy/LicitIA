@@ -65,7 +65,7 @@ client.interceptors.response.use(
 export function formatApiError(error: unknown, fallback = "Error al cargar el RUP"): string {
   const err = error as {
     message?: string;
-    response?: { data?: { detail?: unknown } };
+    response?: { status?: number; data?: { detail?: unknown } };
   };
   const detail = err.response?.data?.detail;
   if (typeof detail === "string" && detail.trim()) return detail;
@@ -83,6 +83,9 @@ export function formatApiError(error: unknown, fallback = "Error al cargar el RU
   }
   if (!err.response) {
     return "No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.";
+  }
+  if (err.response.status === 413) {
+    return "El archivo supera el tamaño máximo (25 MB).";
   }
   return fallback;
 }
