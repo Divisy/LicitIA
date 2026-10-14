@@ -1,4 +1,6 @@
 """Tender API endpoints."""
+import asyncio
+
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -303,7 +305,9 @@ async def list_tenders(
                 if not selected_typologies
                 or typologies_intersect(tender.object_text or "", selected_typologies)
             ]
-            object_matches, failed_matches = _prepare_object_matches(kept, fit_experiences)
+            object_matches, failed_matches = await asyncio.to_thread(
+                _prepare_object_matches, kept, fit_experiences
+            )
             fitted = []
             for tender in kept:
                 tender_response = TenderResponse.model_validate(tender)
@@ -325,7 +329,9 @@ async def list_tenders(
         else:
             total = query.count()
             tenders = ordered.offset(offset).limit(limit).all()
-            object_matches, failed_matches = _prepare_object_matches(tenders, fit_experiences)
+            object_matches, failed_matches = await asyncio.to_thread(
+                _prepare_object_matches, tenders, fit_experiences
+            )
             items = []
             for tender in tenders:
                 tender_response = TenderResponse.model_validate(tender)

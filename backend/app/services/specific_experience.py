@@ -234,7 +234,7 @@ def extract_objeto_from_text_with_llm(text: str) -> Optional[str]:
     try:
         from openai import OpenAI
 
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        client = OpenAI(api_key=settings.OPENAI_API_KEY, timeout=40.0, max_retries=0)
         response = client.chat.completions.create(
             model=settings.OPENAI_MODEL_NAME or "gpt-4o-mini",
             messages=[
@@ -287,7 +287,7 @@ def extract_specific_experience_with_vision(
 
     from openai import OpenAI
 
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    client = OpenAI(api_key=settings.OPENAI_API_KEY, timeout=40.0, max_retries=0)
     for start in range(0, len(pages), VISION_BATCH):
         batch = pages[start : start + VISION_BATCH]
         objeto = _vision_batch(client, batch)

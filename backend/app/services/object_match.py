@@ -125,7 +125,7 @@ def judge_object_matches(
             return matches, {item["id"] for item in tenders}
         from openai import OpenAI
 
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        client = OpenAI(api_key=settings.OPENAI_API_KEY, timeout=25.0, max_retries=0)
 
     grouped: dict[str, list[dict]] = {}
     for tender in tenders:
