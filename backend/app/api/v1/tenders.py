@@ -133,12 +133,36 @@ def _prepare_object_matches(payload: list, fit_experiences: list) -> tuple[dict,
     return judge_object_matches(payload, fit_experiences)
 
 
+def _fit_context(db: Session, tenders: list) -> dict[str, dict]:
+    """Copy budget, date and stored general experience before the object comparison."""
+    from app.models.tender_requirements import TenderRequirements
+
+    ids = [tender.id for tender in tenders]
+    stored = {}
+    if ids:
+        stored = {
+            str(row.tender_id): row.requirements_json or {}
+            for row in db.query(TenderRequirements)
+            .filter(TenderRequirements.tender_id.in_(ids))
+            .all()
+        }
+    return {
+        str(tender.id): {
+            "amount": float(tender.amount) if tender.amount is not None else None,
+            "publication_date": tender.publication_date,
+            "requirements": stored.get(str(tender.id)),
+        }
+        for tender in tenders
+    }
+
+
 def _attach_experience_fit(
     response: TenderResponse,
     tender: Tender,
     fit_experiences: list,
     matched_ids: set[str],
     comparison_available: bool,
+    context: Optional[dict] = None,
 ) -> None:
     if not fit_experiences:
         return
@@ -146,12 +170,16 @@ def _attach_experience_fit(
     from app.services.experience_fit import evaluate_experience_fit
     from app.services.tender_summary.contract_kind import detect_contract_kind
 
+    context = context or {}
     result = evaluate_experience_fit(
         tender_kind=detect_contract_kind(tender).value,
         tender_object=tender.object_text or "",
         experiences=fit_experiences,
         matched_experience_ids=matched_ids,
         comparison_available=comparison_available,
+        tender_amount=context.get("amount"),
+        publication_date=context.get("publication_date"),
+        requirements=context.get("requirements"),
     )
     response.experience_fit = ExperienceFit.model_validate(result.as_dict())
     response.experience_match_score = None
@@ -311,6 +339,7 @@ async def list_tenders(
                 or typologies_intersect(tender.object_text or "", selected_typologies)
             ]
             payload = _object_match_payload(kept)
+            fit_context = _fit_context(db, kept)
             db.commit()
             object_matches, failed_matches = await asyncio.to_thread(
                 _prepare_object_matches, payload, fit_experiences
@@ -324,6 +353,7 @@ async def list_tenders(
                     fit_experiences,
                     object_matches.get(str(tender.id), set()),
                     str(tender.id) not in failed_matches,
+                    fit_context.get(str(tender.id)),
                 )
                 if wanted_fit and (
                     tender_response.experience_fit is None
@@ -337,6 +367,7 @@ async def list_tenders(
             total = query.count()
             tenders = ordered.offset(offset).limit(limit).all()
             payload = _object_match_payload(tenders)
+            fit_context = _fit_context(db, tenders)
             db.commit()
             object_matches, failed_matches = await asyncio.to_thread(
                 _prepare_object_matches, payload, fit_experiences
@@ -356,6 +387,7 @@ async def list_tenders(
                     fit_experiences,
                     object_matches.get(str(tender.id), set()),
                     str(tender.id) not in failed_matches,
+                    fit_context.get(str(tender.id)),
                 )
                 items.append(tender_response)
         

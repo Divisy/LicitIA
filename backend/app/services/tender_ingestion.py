@@ -240,6 +240,10 @@ def fetch_and_store_new_tenders(lookback_days: Optional[int] = None) -> None:
             doc_stats["tenders_processed"],
             doc_stats["documents_saved"],
         )
+        from app.services.general_experience import extract_general_experience_batch
+
+        general_saved = extract_general_experience_batch(db)
+        logger.info("General experience saved for %s active tenders", general_saved)
 
         for tender in new_tenders:
             try:

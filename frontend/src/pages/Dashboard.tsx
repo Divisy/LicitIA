@@ -293,7 +293,7 @@ const Dashboard: React.FC = () => {
                     Puede aplicar
                   </Button>
                   <p className="dashboard-results-text">
-                    Puede aplicar cuando el objeto del acta coincide con el objeto de la licitación, dentro del mismo tipo de contrato. Si no hay acta con objeto, no se afirma.
+                    Puede aplicar cuando el objeto del acta coincide con el de la licitación, en el mismo tipo de contrato, y la suma de SMMLV cubre el mínimo de la experiencia general. Si el pliego todavía no está leído, no se afirma.
                   </p>
                   {!showAll && tenders.length < total && (
                     <Button

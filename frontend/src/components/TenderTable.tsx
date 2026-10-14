@@ -342,7 +342,11 @@ function MatchContractsModal({ tender, onClose }: { tender: Tender; onClose: () 
       onRequestClose={onClose}
     >
       <p className="tender-table-match-intro">
-        {tender.entity_name}. El objeto de la licitación coincide con estos contratos de la experiencia.
+        {tender.entity_name}. El objeto de la licitación coincide con estos contratos y su suma cubre el mínimo de la experiencia general.
+        {tender.experience_fit?.general_sum_smmlv != null &&
+        tender.experience_fit?.general_minimum_smmlv != null
+          ? ` Suma ${new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(tender.experience_fit.general_sum_smmlv)} SMMLV de un mínimo de ${new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(tender.experience_fit.general_minimum_smmlv)}.`
+          : ''}
       </p>
       <ul className="tender-table-match-list">
         {contracts.map((contract) => (

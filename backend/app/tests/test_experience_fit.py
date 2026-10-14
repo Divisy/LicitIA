@@ -1,10 +1,15 @@
+from datetime import date
+
 from app.services.experience_fit import (
     NO_APLICA,
     NO_SE_PUEDE_AFIRMAR,
     PUEDE_APLICAR,
     evaluate_experience_fit,
 )
+from app.services.general_experience import general_experience_is_saved
 from app.services.object_match import parse_object_match_payload
+
+_SMMLV_2026 = 1_423_500.0
 
 
 def _contract(**overrides) -> dict:
@@ -34,14 +39,158 @@ def _evaluate(experiences, matched=None, available=True, **tender):
     return evaluate_experience_fit(**payload)
 
 
-def test_same_kind_and_openai_match_can_apply_without_typology_or_pliego():
+def _general_requirements(**items):
+    stored = {
+        "min_percentage_budget": items.get("percentage", 100),
+        "time_window_years": items.get("years"),
+        "contracts_minimum": items.get("contracts"),
+        "min_amount_smmlv": items.get("direct"),
+    }
+    return {
+        "extraction_version": "general-1",
+        "general_experience_extracted": True,
+        "sections": [
+            {
+                "key": "experiencia_general",
+                "items": [
+                    {"key": key, "value": value}
+                    for key, value in stored.items()
+                    if value is not None
+                ],
+            }
+        ],
+    }
+
+
+def _budget_for(smmlv: float) -> float:
+    return smmlv * _SMMLV_2026
+
+
+def test_object_match_without_a_read_pliego_cannot_be_affirmed():
     result = _evaluate(
         [_contract(object_text="Interventoría de redes de acueducto")],
         matched=["exp-1232"],
         requirements=None,
     )
+    assert result.status == NO_SE_PUEDE_AFIRMAR
+    assert "pliego" in result.reason.lower()
+
+
+def test_sum_below_the_pliego_minimum_does_not_apply():
+    result = _evaluate(
+        [_contract(amount_smmlv=222, completion_date=date(2024, 1, 10))],
+        matched=["exp-1232"],
+        requirements=_general_requirements(percentage=100),
+        tender_amount=_budget_for(300),
+        publication_date=date(2026, 6, 1),
+    )
+    assert result.status == NO_APLICA
+    assert result.general_sum_smmlv == 222
+    assert result.general_minimum_smmlv == 300
+
+
+def test_sum_that_covers_the_minimum_can_apply():
+    result = _evaluate(
+        [
+            _contract(amount_smmlv=150, completion_date=date(2024, 1, 10)),
+            _contract(
+                experience_id="exp-2",
+                contract_number="0681 DE 2002",
+                amount_smmlv=160,
+                completion_date=date(2023, 5, 1),
+            ),
+        ],
+        matched=["exp-1232", "exp-2"],
+        requirements=_general_requirements(percentage=100),
+        tender_amount=_budget_for(300),
+        publication_date=date(2026, 6, 1),
+    )
     assert result.status == PUEDE_APLICAR
-    assert result.contracts[0].experience_id == "exp-1232"
+    assert result.general_sum_smmlv == 310
+    assert result.general_minimum_smmlv == 300
+
+
+def test_a_contract_outside_the_date_window_stays_out_of_the_sum():
+    result = _evaluate(
+        [
+            _contract(amount_smmlv=400, completion_date=date(2010, 1, 1)),
+            _contract(
+                experience_id="exp-2",
+                amount_smmlv=100,
+                completion_date=date(2024, 1, 1),
+            ),
+        ],
+        matched=["exp-1232", "exp-2"],
+        requirements=_general_requirements(percentage=100, years=5),
+        tender_amount=_budget_for(300),
+        publication_date=date(2026, 6, 1),
+    )
+    assert result.status == NO_APLICA
+    assert result.general_sum_smmlv == 100
+
+
+def test_a_missing_date_inside_a_required_window_cannot_be_affirmed():
+    result = _evaluate(
+        [_contract(amount_smmlv=400, completion_date=None)],
+        matched=["exp-1232"],
+        requirements=_general_requirements(percentage=100, years=5),
+        tender_amount=_budget_for(300),
+        publication_date=date(2026, 6, 1),
+    )
+    assert result.status == NO_SE_PUEDE_AFIRMAR
+
+
+def test_without_a_window_an_old_contract_still_counts():
+    result = _evaluate(
+        [_contract(amount_smmlv=400, completion_date=date(1990, 1, 1))],
+        matched=["exp-1232"],
+        requirements=_general_requirements(percentage=100),
+        tender_amount=_budget_for(300),
+        publication_date=date(2026, 6, 1),
+    )
+    assert result.status == PUEDE_APLICAR
+    assert result.general_sum_smmlv == 400
+
+
+def test_contract_count_uses_the_largest_contracts_that_fit_the_range():
+    result = _evaluate(
+        [
+            _contract(amount_smmlv=200),
+            _contract(experience_id="exp-2", amount_smmlv=180),
+        ],
+        matched=["exp-1232", "exp-2"],
+        requirements=_general_requirements(
+            percentage=100,
+            contracts={"minimum": 1, "maximum": 1},
+        ),
+        tender_amount=_budget_for(300),
+        publication_date=date(2026, 6, 1),
+    )
+    assert result.status == NO_APLICA
+    assert result.general_sum_smmlv == 200
+
+
+def test_salary_copied_into_the_smmlv_column_stays_out_of_the_sum():
+    result = _evaluate(
+        [_contract(amount_smmlv=81510)],
+        matched=["exp-1232"],
+        requirements=_general_requirements(direct=100),
+        tender_amount=_budget_for(300),
+        publication_date=date(2026, 6, 1),
+    )
+    assert result.status == NO_APLICA
+    assert result.general_sum_smmlv == 0
+
+
+def test_a_full_requirements_extract_counts_as_already_read():
+    assert general_experience_is_saved(
+        {
+            "extraction_version": "1.9.11",
+            "sections": [{"key": "experiencia_general", "items": []}],
+        }
+    )
+    assert not general_experience_is_saved(None)
+    assert not general_experience_is_saved({"sections": []})
 
 
 def test_same_kind_without_object_match_does_not_apply():

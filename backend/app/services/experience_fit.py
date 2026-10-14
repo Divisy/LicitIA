@@ -1,11 +1,13 @@
-"""Decide if a company can bid from the same contract type and an object match.
+"""Decide if a company can bid from the same contract type, the object match and the pliego minimum.
 
-The object comparison is done by OpenAI before this function runs. Typology
-keywords, pliego minimums and acta line items do not decide this result.
+OpenAI compares objects before this function runs. The SMMLV sum, the date
+window and the contract count use the general-experience section already
+stored for the tender. Acta line items do not decide this result.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import Any, Optional
 
 PUEDE_APLICAR = "puede_aplicar"
@@ -18,6 +20,9 @@ _REAL_KINDS = {
     "estudios_disenos",
     "estudios_disenos_y_obra",
 }
+
+# The year's salary was stored in the SMMLV column of six old rows.
+_SALARY_COPIED_AS_SMMLV = 81510.0
 
 
 @dataclass
@@ -74,6 +79,153 @@ def _candidates(experiences: list[dict], kind: str) -> list[dict]:
     return rows
 
 
+def _as_date(value) -> Optional[date]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return None
+
+
+def _years_before(day: date, years: int) -> date:
+    try:
+        return day.replace(year=day.year - years)
+    except ValueError:
+        return day.replace(year=day.year - years, day=28)
+
+
+def _general_items(requirements: Optional[dict]) -> Optional[list[dict]]:
+    """Items already stored for general experience. None means the pliego is still unread."""
+    if not requirements:
+        return None
+    section = next(
+        (
+            item
+            for item in requirements.get("sections") or []
+            if item.get("key") == "experiencia_general"
+        ),
+        None,
+    )
+    if section is None:
+        return None
+    version = str(requirements.get("extraction_version") or "")
+    if requirements.get("general_experience_extracted") or (version and not version.startswith("general-")):
+        return list(section.get("items") or [])
+    if section.get("items"):
+        return list(section.get("items") or [])
+    return None
+
+
+def _item_value(items: list[dict], key: str) -> Any:
+    for item in items:
+        if item.get("key") == key:
+            return item.get("value")
+    return None
+
+
+def _number(value: Any) -> Optional[float]:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        cleaned = value.strip().replace(",", ".")
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
+    return None
+
+
+def _usable_smmlv(value: Any) -> Optional[float]:
+    amount = _number(value)
+    if amount is None:
+        return None
+    if abs(amount - _SALARY_COPIED_AS_SMMLV) < 1 or abs(amount - 81.51) < 0.02:
+        return None
+    return amount
+
+
+def _count_bounds(value: Any) -> tuple[Optional[int], Optional[int]]:
+    if isinstance(value, dict):
+        low = _number(value.get("minimum"))
+        high = _number(value.get("maximum"))
+        return (int(low) if low else None, int(high) if high else None)
+    number = _number(value)
+    if number and number > 0:
+        return int(number), None
+    return None, None
+
+
+def _tiers(value: Any) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    return [tier for tier in value if isinstance(tier, dict)]
+
+
+def _tier_percentage(tiers: list[dict], count: int) -> Optional[float]:
+    for tier in tiers:
+        bounds = str(tier.get("contract_range") or "")
+        if "-" not in bounds:
+            continue
+        low_text, high_text = bounds.split("-", 1)
+        low = _number(low_text)
+        high = _number(high_text)
+        percentage = _number(tier.get("percentage"))
+        if low is None or high is None or percentage is None:
+            continue
+        if int(low) <= count <= int(high):
+            return percentage
+    return None
+
+
+def _budget_smmlv(tender_amount: Optional[float], publication_date) -> Optional[float]:
+    day = _as_date(publication_date)
+    amount = _number(tender_amount)
+    if day is None or amount is None or amount <= 0:
+        return None
+    from app.services.rup_parser import _SMMLV_BY_YEAR
+
+    year_smmlv = _SMMLV_BY_YEAR.get(day.year)
+    if not year_smmlv:
+        return None
+    return amount / year_smmlv
+
+
+def _minimum_for_count(
+    *,
+    count: int,
+    percentage: Optional[float],
+    direct_smmlv: Optional[float],
+    tiers: list[dict],
+    budget_smmlv: Optional[float],
+) -> Optional[float]:
+    if tiers:
+        tier_percentage = _tier_percentage(tiers, count)
+        if tier_percentage is None or budget_smmlv is None:
+            return None
+        return budget_smmlv * tier_percentage / 100
+    if percentage is not None:
+        if budget_smmlv is None:
+            return None
+        return budget_smmlv * percentage / 100
+    return direct_smmlv
+
+
+def _fit_contract(row: dict, *, in_sum: bool, amount: Optional[float]) -> FitContract:
+    return FitContract(
+        experience_id=str(row.get("experience_id")),
+        contract_number=row.get("contract_number"),
+        contracting_entity=row.get("contracting_entity"),
+        amount_smmlv=amount,
+        in_general_sum=in_sum,
+        specific_met=False,
+        object_text=(row.get("object_text") or "").strip() or None,
+    )
+
+
 def evaluate_experience_fit(
     *,
     tender_kind: Optional[str],
@@ -85,12 +237,7 @@ def evaluate_experience_fit(
     publication_date=None,
     requirements: Optional[dict] = None,
 ) -> ExperienceFitResult:
-    """Match when the contract type is the same and OpenAI aligned the objects.
-
-    The extra arguments stay so older callers can pass pliego data without
-    changing the result.
-    """
-    del tender_amount, publication_date, requirements
+    """Require the same contract type, an object match, and the stored general-experience minimum."""
     kind = (tender_kind or "").strip().lower()
     if kind not in _REAL_KINDS:
         return ExperienceFitResult(
@@ -116,33 +263,110 @@ def evaluate_experience_fit(
         )
 
     matched = {str(item) for item in (matched_experience_ids or set())}
-    contracts: list[FitContract] = []
-    any_match = False
-    for row in candidates:
-        experience_id = str(row.get("experience_id"))
-        is_match = experience_id in matched
-        any_match = any_match or is_match
-        amount = row.get("amount_smmlv")
-        contracts.append(
-            FitContract(
-                experience_id=experience_id,
-                contract_number=row.get("contract_number"),
-                contracting_entity=row.get("contracting_entity"),
-                amount_smmlv=float(amount) if amount is not None else None,
-                in_general_sum=is_match,
-                specific_met=False,
-                object_text=(row.get("object_text") or "").strip() or None,
-            )
+    matched_rows = [row for row in candidates if str(row.get("experience_id")) in matched]
+    if not matched_rows:
+        return ExperienceFitResult(
+            status=NO_APLICA,
+            reason="Ningún objeto de acta de este tipo coincide con la licitación",
+            contracts=[],
         )
 
-    if any_match:
+    items = _general_items(requirements)
+    if items is None:
+        return ExperienceFitResult(
+            status=NO_SE_PUEDE_AFIRMAR,
+            reason="La experiencia general del pliego todavía no está leída",
+        )
+
+    percentage = _number(_item_value(items, "min_percentage_budget"))
+    direct = _number(_item_value(items, "min_amount_smmlv"))
+    tiers = _tiers(_item_value(items, "experience_value_tiers"))
+    low_count, high_count = _count_bounds(_item_value(items, "contracts_minimum"))
+    window_years = _number(_item_value(items, "time_window_years"))
+    published = _as_date(publication_date)
+    cutoff = _years_before(published, int(window_years)) if published and window_years else None
+    budget = _budget_smmlv(tender_amount, publication_date)
+
+    if percentage is None and direct is None and not tiers:
+        return ExperienceFitResult(
+            status=NO_SE_PUEDE_AFIRMAR,
+            reason="El pliego no dejó un mínimo de experiencia general utilizable",
+        )
+    if (percentage is not None or tiers) and budget is None and direct is None:
+        return ExperienceFitResult(
+            status=NO_SE_PUEDE_AFIRMAR,
+            reason="Falta el presupuesto para convertir el porcentaje del pliego a SMMLV",
+        )
+
+    eligible: list[tuple[dict, float]] = []
+    uncertain = False
+    for row in matched_rows:
+        amount = _usable_smmlv(row.get("amount_smmlv"))
+        raw_amount = _number(row.get("amount_smmlv"))
+        completion = _as_date(row.get("completion_date"))
+        if cutoff is not None:
+            if completion is None:
+                uncertain = True
+                continue
+            if completion < cutoff:
+                continue
+        if amount is None:
+            if raw_amount is None:
+                uncertain = True
+            continue
+        eligible.append((row, amount))
+
+    eligible.sort(key=lambda item: item[1], reverse=True)
+    count_low = low_count or 1
+    count_high = high_count or len(eligible)
+    if count_high < count_low:
+        count_high = count_low
+
+    best: Optional[tuple[float, float, list[tuple[dict, float]]]] = None
+    for count in range(count_low, min(count_high, len(eligible)) + 1):
+        minimum = _minimum_for_count(
+            count=count,
+            percentage=percentage,
+            direct_smmlv=direct,
+            tiers=tiers,
+            budget_smmlv=budget,
+        )
+        if minimum is None:
+            continue
+        chosen = eligible[:count]
+        total = sum(amount for _, amount in chosen)
+        if total + 1e-6 >= minimum and (best is None or total > best[0]):
+            best = (total, minimum, chosen)
+
+    if best is not None:
+        total, minimum, chosen = best
         return ExperienceFitResult(
             status=PUEDE_APLICAR,
-            reason="El objeto del acta coincide con el objeto de la licitación",
-            contracts=[row for row in contracts if row.in_general_sum],
+            reason="La suma de SMMLV cubre el mínimo de la experiencia general",
+            general_sum_smmlv=round(total, 2),
+            general_minimum_smmlv=round(minimum, 2),
+            contracts=[_fit_contract(row, in_sum=True, amount=amount) for row, amount in chosen],
+        )
+
+    judged = eligible[: min(count_high, len(eligible))]
+    total = sum(amount for _, amount in judged)
+    sample_count = count_low if len(eligible) < count_low else min(count_high, len(eligible))
+    minimum = _minimum_for_count(
+        count=max(sample_count, 1),
+        percentage=percentage,
+        direct_smmlv=direct,
+        tiers=tiers,
+        budget_smmlv=budget,
+    )
+    if uncertain or minimum is None:
+        return ExperienceFitResult(
+            status=NO_SE_PUEDE_AFIRMAR,
+            reason="Falta la fecha o el SMMLV de un contrato que podría cubrir el mínimo",
         )
     return ExperienceFitResult(
         status=NO_APLICA,
-        reason="Ningún objeto de acta de este tipo coincide con la licitación",
-        contracts=[],
+        reason="La suma de SMMLV no alcanza el mínimo de la experiencia general",
+        general_sum_smmlv=round(total, 2),
+        general_minimum_smmlv=round(minimum, 2),
+        contracts=[_fit_contract(row, in_sum=True, amount=amount) for row, amount in judged],
     )
