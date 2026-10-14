@@ -111,13 +111,11 @@ def _fit_experience_rows(db: Session, owner_email: Optional[str], company_name: 
     return rows
 
 
-def _prepare_object_matches(tenders: list, fit_experiences: list) -> tuple[dict, set]:
-    if not fit_experiences or not tenders:
-        return {}, set()
-    from app.services.object_match import judge_object_matches
+def _object_match_payload(tenders: list) -> list[dict]:
+    """Copy the fields the matcher needs so the database lock can be released."""
     from app.services.tender_summary.contract_kind import detect_contract_kind
 
-    payload = [
+    return [
         {
             "id": str(tender.id),
             "kind": detect_contract_kind(tender).value,
@@ -125,6 +123,13 @@ def _prepare_object_matches(tenders: list, fit_experiences: list) -> tuple[dict,
         }
         for tender in tenders
     ]
+
+
+def _prepare_object_matches(payload: list, fit_experiences: list) -> tuple[dict, set]:
+    if not fit_experiences or not payload:
+        return {}, set()
+    from app.services.object_match import judge_object_matches
+
     return judge_object_matches(payload, fit_experiences)
 
 
@@ -305,8 +310,10 @@ async def list_tenders(
                 if not selected_typologies
                 or typologies_intersect(tender.object_text or "", selected_typologies)
             ]
+            payload = _object_match_payload(kept)
+            db.commit()
             object_matches, failed_matches = await asyncio.to_thread(
-                _prepare_object_matches, kept, fit_experiences
+                _prepare_object_matches, payload, fit_experiences
             )
             fitted = []
             for tender in kept:
@@ -329,8 +336,10 @@ async def list_tenders(
         else:
             total = query.count()
             tenders = ordered.offset(offset).limit(limit).all()
+            payload = _object_match_payload(tenders)
+            db.commit()
             object_matches, failed_matches = await asyncio.to_thread(
-                _prepare_object_matches, tenders, fit_experiences
+                _prepare_object_matches, payload, fit_experiences
             )
             items = []
             for tender in tenders:

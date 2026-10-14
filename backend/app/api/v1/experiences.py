@@ -438,6 +438,8 @@ async def assign_acta_by_contract_number(
             status_code=400,
             detail="Primero carga el RUP para tener los contratos a los que asignar las actas.",
         )
+    # Drop the read lock before the slow PDF read so the rest of the API keeps answering.
+    db.commit()
 
     identity = await asyncio.to_thread(read_acta_identity, content)
     filename_number = extract_contract_number_from_filename(filename)

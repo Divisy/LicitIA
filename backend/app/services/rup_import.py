@@ -24,6 +24,7 @@ from app.services.rup_parser import RupParseResult, extract_text_from_pdf_bytes,
 
 logger = get_logger(__name__)
 _owner_email_schema_ready = False
+_specific_experience_schema_ready = False
 
 _CREATE_CAPACITY_SQL = """
 CREATE TABLE IF NOT EXISTS company_capacity (
@@ -214,6 +215,14 @@ def _backfill_owner_email_from_leads(db: Session) -> None:
 
 
 def ensure_specific_experience_columns(db: Session) -> None:
+    """Add acta columns once per process.
+
+    ALTER TABLE takes an exclusive lock. Running it on every RUP load blocks
+    behind the tender list, and that wait freezes the API.
+    """
+    global _specific_experience_schema_ready
+    if _specific_experience_schema_ready:
+        return
     db.execute(
         text(
             "ALTER TABLE company_experiences ADD COLUMN IF NOT EXISTS specific_experience TEXT"
@@ -254,6 +263,7 @@ def ensure_specific_experience_columns(db: Session) -> None:
     )
     db.commit()
     ensure_owner_email_columns(db)
+    _specific_experience_schema_ready = True
 
 
 
