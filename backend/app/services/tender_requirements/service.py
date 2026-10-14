@@ -86,7 +86,10 @@ def _section_status(
     return "no_encontrado"
 
 
-def build_tender_requirements(tender: Tender) -> dict[str, Any]:
+def build_tender_requirements(
+    tender: Tender,
+    focused_general_section: Optional[dict] = None,
+) -> dict[str, Any]:
     """Extract participation requirements from pliego and anexo documents."""
     if not settings.TENDER_REQUIREMENTS_EXTRACTION_ENABLED:
         return {
@@ -319,13 +322,24 @@ def build_tender_requirements(tender: Tender) -> dict[str, Any]:
             }
         )
 
-    return {
+    payload = {
         "tender_external_id": tender.external_id,
         "extraction_version": EXTRACTION_VERSION,
         "extracted_at": datetime.utcnow().isoformat(),
         "sections": sections,
         "warnings": warnings,
     }
+    if focused_general_section is not None or pliego_text.strip():
+        from app.services.general_experience import replace_general_experience_with_focused_reading
+
+        payload = replace_general_experience_with_focused_reading(
+            payload,
+            text=pliego_text,
+            tender_external_id=tender.external_id,
+            source_document_id=pliego.id if pliego else None,
+            saved_section=focused_general_section,
+        )
+    return payload
 
 
 _FINANCIAL_METRIC_ITEM_KEYS = frozenset(

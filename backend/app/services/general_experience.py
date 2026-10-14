@@ -33,7 +33,6 @@ GENERAL_EXPERIENCE_VERSION = "general-1"
 GENERAL_EXPERIENCE_LLM_VERSION = "general-llm-1"
 BATCH_LIMIT = 12
 _UNREADABLE_WARNING = "No se pudo leer texto del pliego"
-_LLM_METHODS = {"llm", "hybrid", "llm_fallback"}
 _job_lock = threading.Lock()
 
 
@@ -61,37 +60,108 @@ def general_experience_is_saved(payload: Optional[dict]) -> bool:
 
 
 def general_experience_llm_is_saved(payload: Optional[dict]) -> bool:
-    """True when general experience was already read with AI, including a full US 1.5 extract."""
+    """True only after the focused general-experience reading, not after the full pliego extract."""
     if not payload:
         return False
-    if payload.get("general_experience_llm") is True:
-        return True
-    version = str(payload.get("extraction_version") or "")
-    if not version or version.startswith("general-"):
-        return False
-    section = next(
-        (
-            item
-            for item in payload.get("sections") or []
-            if item.get("key") == "experiencia_general"
-        ),
-        None,
-    )
-    if section is None:
-        return False
-    return any(
-        str(item.get("extraction_method") or "") in _LLM_METHODS
-        for item in section.get("items") or []
-    )
+    return payload.get("general_experience_llm") is True
 
 
 def _section(items: list[dict]) -> dict:
     return {
         "key": "experiencia_general",
         "title": "Experiencia general",
-        "status": "encontrado" if items else "no_encontrado",
+        "status": "extraido" if items else "no_encontrado",
         "items": items,
     }
+
+
+def focused_general_experience_section(
+    text: str,
+    tender_external_id: str,
+    source_document_id,
+) -> Optional[dict]:
+    """The background reading. None means the model call failed and the caller should retry."""
+    if not (text or "").strip():
+        return None
+    excerpt = general_experience_excerpt(text)
+    if not excerpt.strip():
+        return None
+    fields = extract_general_experience_with_llm(
+        tender_external_id=tender_external_id,
+        excerpt=excerpt,
+    )
+    if fields is None:
+        return None
+    return _section(general_experience_items_from_fields(fields, source_document_id))
+
+
+def _general_experience_section(payload: Optional[dict]) -> Optional[dict]:
+    if not payload:
+        return None
+    return next(
+        (
+            section
+            for section in payload.get("sections") or []
+            if section.get("key") == "experiencia_general"
+        ),
+        None,
+    )
+
+
+def apply_focused_general_experience_section(payload: dict, section: dict) -> dict:
+    """Keep every other section. Experiencia general becomes the focused reading."""
+    updated = deepcopy(payload)
+    stored = deepcopy(section)
+    stored["key"] = "experiencia_general"
+    stored.setdefault("title", "Experiencia general")
+    if stored.get("status") == "encontrado":
+        stored["status"] = "extraido"
+    sections = []
+    replaced = False
+    for current in updated.get("sections") or []:
+        if current.get("key") == "experiencia_general":
+            sections.append(stored)
+            replaced = True
+        else:
+            sections.append(current)
+    if not replaced:
+        sections.append(stored)
+    updated["sections"] = sections
+    updated["general_experience_llm"] = True
+    return updated
+
+
+def replace_general_experience_with_focused_reading(
+    payload: dict,
+    *,
+    text: str,
+    tender_external_id: str,
+    source_document_id,
+    saved_section: Optional[dict] = None,
+) -> dict:
+    section = saved_section
+    if section is None:
+        section = focused_general_experience_section(text, tender_external_id, source_document_id)
+    if section is None:
+        return payload
+    return apply_focused_general_experience_section(payload, section)
+
+
+def refresh_focused_general_experience(db: Session, tender: Tender, payload: dict) -> dict:
+    """Patch a full extract in place. The database is free while the pliego is read."""
+    if general_experience_llm_is_saved(payload):
+        return payload
+    pliego = _pliego_document(db, tender.id)
+    if pliego is None:
+        return payload
+    snapshot = _StoredPliego(pliego)
+    external_id = tender.external_id
+    db.commit()
+    text = _read_pliego_text(snapshot)
+    section = focused_general_experience_section(text, external_id, snapshot.id)
+    if section is None:
+        return payload
+    return apply_focused_general_experience_section(payload, section)
 
 
 def _is_full_extract(payload: Optional[dict]) -> bool:

@@ -32,6 +32,11 @@ from app.schemas.tender_requirements import (
     TenderRequirementSectionResponse,
     TenderRequirementItemResponse,
 )
+from app.services.general_experience import (
+    _general_experience_section,
+    general_experience_llm_is_saved,
+    refresh_focused_general_experience,
+)
 from app.services.tender_requirements.service import (
     EXTRACTION_VERSION,
     build_tender_requirements,
@@ -672,6 +677,10 @@ async def get_tender_requirements(
         if refresh
         else db.query(TenderRequirements).filter(TenderRequirements.tender_id == tender_id).first()
     )
+    saved_section = None
+    if cached and cached.requirements_json and general_experience_llm_is_saved(cached.requirements_json):
+        saved_section = _general_experience_section(cached.requirements_json)
+
     if cached and cached.requirements_json:
         cached_version = cached.extraction_version or cached.requirements_json.get(
             "extraction_version"
@@ -680,6 +689,16 @@ async def get_tender_requirements(
         if cached_version == EXTRACTION_VERSION and not requirements_cache_is_stale(
             tender, payload
         ):
+            if not general_experience_llm_is_saved(payload):
+                payload = refresh_focused_general_experience(db, tender, payload)
+                if general_experience_llm_is_saved(payload):
+                    record = persist_tender_requirements(db, tender, payload)
+                    return _requirements_response_from_payload(
+                        tender,
+                        payload,
+                        extracted_at=record.extracted_at,
+                        cached=False,
+                    )
             return _requirements_response_from_payload(
                 tender,
                 payload,
@@ -687,7 +706,7 @@ async def get_tender_requirements(
                 cached=True,
             )
 
-    payload = build_tender_requirements(tender)
+    payload = build_tender_requirements(tender, focused_general_section=saved_section)
     record = persist_tender_requirements(db, tender, payload)
     return _requirements_response_from_payload(
         tender,

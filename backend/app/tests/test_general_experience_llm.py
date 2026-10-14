@@ -115,34 +115,45 @@ def test_ai_numbers_are_what_the_smmlv_match_reads():
     assert items[0]["extraction_method"] == "llm"
 
 
-def test_regex_rows_are_read_again_and_a_full_ai_extract_is_skipped():
+def test_a_full_extract_keeps_the_focused_general_experience_section():
+    from app.services.general_experience import apply_focused_general_experience_section
+
     regex_row = {
         "extraction_version": GENERAL_EXPERIENCE_VERSION,
         "general_experience_extracted": True,
         "sections": [{"key": "experiencia_general", "items": [{"key": "min_percentage_budget"}]}],
     }
-    full_ai = {
+    full_extract = {
         "extraction_version": "1.9.11",
         "sections": [
+            {"key": "indicadores_financieros", "items": [{"key": "liquidez_corriente"}]},
             {
                 "key": "experiencia_general",
-                "items": [{"key": "requirement_description", "extraction_method": "llm"}],
-            }
+                "items": [
+                    {
+                        "key": "requirement_description",
+                        "value": "párrafo de la lectura completa",
+                        "extraction_method": "llm",
+                    }
+                ],
+                "status": "revisar",
+            },
         ],
     }
-    full_regex = {
-        "extraction_version": "1.9.11",
-        "sections": [
-            {
-                "key": "experiencia_general",
-                "items": [{"key": "min_percentage_budget", "extraction_method": "regex"}],
-            }
-        ],
+    focused = {
+        "key": "experiencia_general",
+        "title": "Experiencia general",
+        "status": "extraido",
+        "items": [{"key": "min_percentage_budget", "value": 100, "extraction_method": "llm"}],
     }
 
     assert not general_experience_llm_is_saved(regex_row)
-    assert general_experience_llm_is_saved(full_ai)
-    assert not general_experience_llm_is_saved(full_regex)
+    assert not general_experience_llm_is_saved(full_extract)
+    patched = apply_focused_general_experience_section(full_extract, focused)
+    assert general_experience_llm_is_saved(patched)
+    assert patched["extraction_version"] == "1.9.11"
+    assert patched["sections"][0]["key"] == "indicadores_financieros"
+    assert patched["sections"][1]["items"][0]["value"] == 100
     assert general_experience_llm_is_saved({"general_experience_llm": True, "sections": []})
 
 
