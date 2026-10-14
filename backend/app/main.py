@@ -226,17 +226,30 @@ async def startup_event():
         print(f"[STARTUP] Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 10 minutes)")
         logger.info(f"Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 10 minutes)")
 
-        from app.services.general_experience import run_general_experience_job
+        from apscheduler.triggers.date import DateTrigger
+        from app.services.general_experience import (
+            run_general_experience_drain,
+            run_general_experience_job,
+        )
 
+        scheduler.add_job(
+            run_general_experience_drain,
+            trigger=DateTrigger(run_date=datetime.utcnow() + timedelta(minutes=3)),
+            id="general_experience_drain",
+            name="Read general experience from stored pliegos once",
+            replace_existing=True,
+        )
         scheduler.add_job(
             run_general_experience_job,
             trigger=IntervalTrigger(hours=3),
             id="general_experience",
-            name="Read general experience from stored pliegos",
+            name="Retry general experience reads",
             replace_existing=True,
-            next_run_time=datetime.utcnow() + timedelta(minutes=3),
+            next_run_time=datetime.utcnow() + timedelta(hours=3),
         )
-        logger.info("Scheduled general experience read every 3 hours (first run in 3 minutes)")
+        logger.info(
+            "Scheduled general experience drain in 3 minutes and a retry every 3 hours"
+        )
         
         # NOTE: Semantic AI model will be loaded lazily on first use
         # This avoids downloading the model (~470MB) during startup/build

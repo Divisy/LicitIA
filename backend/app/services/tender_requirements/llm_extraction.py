@@ -714,3 +714,198 @@ def extract_scoring_fallback_with_llm(
         return []
 
     return reconciled
+
+
+_GENERAL_EXPERIENCE_KEYS = (
+    "requirement_description",
+    "min_percentage_budget",
+    "min_amount_smmlv",
+    "time_window_years",
+    "contracts_minimum",
+    "experience_value_tiers",
+)
+
+# The year's salary was copied into an SMMLV column elsewhere. It is not a pliego minimum.
+_SALARY_COPIED_AS_SMMLV = 81510.0
+
+
+def _unwrap_general_experience_payload(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    if any(key in payload for key in _GENERAL_EXPERIENCE_KEYS):
+        return payload
+    nested = payload.get("experiencia_general")
+    if isinstance(nested, dict):
+        return nested
+    return payload
+
+
+def _bounded_number(value: Any, low: float, high: float) -> Optional[float]:
+    if isinstance(value, str):
+        cleaned = value.strip().replace("%", "").replace(" ", "").replace(",", ".")
+        if not cleaned:
+            return None
+        try:
+            value = float(cleaned)
+        except ValueError:
+            return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not low <= number <= high:
+        return None
+    return number
+
+
+def _contract_range(value: Any) -> Optional[str]:
+    numbers = re.findall(r"\d{1,2}", str(value or ""))
+    if len(numbers) != 2:
+        return None
+    start, end = int(numbers[0]), int(numbers[1])
+    if start <= 0 or end < start or end > 20:
+        return None
+    return f"{start}-{end}"
+
+
+def _clean_evidence(value: Any) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) > 200:
+        return text[:197] + "..."
+    return text
+
+
+def parse_general_experience_llm_payload(payload: Any) -> dict[str, Any]:
+    """Keep only general-experience fields the model actually returned as usable values."""
+    raw = _unwrap_general_experience_payload(payload)
+    evidence_raw = raw.get("evidence") if isinstance(raw.get("evidence"), dict) else {}
+    parsed: dict[str, Any] = {}
+    evidence: dict[str, str] = {}
+
+    description = raw.get("requirement_description")
+    if isinstance(description, str):
+        text = re.sub(r"\s+", " ", description).strip()
+        if len(text) > 500:
+            text = text[:497] + "..."
+        if len(text) >= 15:
+            parsed["requirement_description"] = text
+            evidence["requirement_description"] = _clean_evidence(evidence_raw.get("requirement_description"))
+
+    percentage = _bounded_number(raw.get("min_percentage_budget"), 1, 300)
+    if percentage is not None:
+        parsed["min_percentage_budget"] = percentage
+        evidence["min_percentage_budget"] = _clean_evidence(evidence_raw.get("min_percentage_budget"))
+
+    amount = _bounded_number(raw.get("min_amount_smmlv"), 1, 50_000)
+    if amount is not None and abs(amount - _SALARY_COPIED_AS_SMMLV) >= 1 and abs(amount - 81.51) >= 0.02:
+        parsed["min_amount_smmlv"] = amount
+        evidence["min_amount_smmlv"] = _clean_evidence(evidence_raw.get("min_amount_smmlv"))
+
+    years = _bounded_number(raw.get("time_window_years"), 1, 25)
+    if years is not None:
+        parsed["time_window_years"] = int(years)
+        evidence["time_window_years"] = _clean_evidence(evidence_raw.get("time_window_years"))
+
+    contracts = raw.get("contracts_minimum")
+    if isinstance(contracts, dict):
+        minimum = _bounded_number(contracts.get("minimum"), 1, 20)
+        maximum = _bounded_number(contracts.get("maximum"), 1, 20)
+        if minimum is not None:
+            value: dict[str, int] = {"minimum": int(minimum)}
+            if maximum is not None and maximum >= minimum:
+                value["maximum"] = int(maximum)
+            parsed["contracts_minimum"] = value
+            evidence["contracts_minimum"] = _clean_evidence(evidence_raw.get("contracts_minimum"))
+    else:
+        only_minimum = _bounded_number(contracts, 1, 20)
+        if only_minimum is not None:
+            parsed["contracts_minimum"] = {"minimum": int(only_minimum)}
+            evidence["contracts_minimum"] = _clean_evidence(evidence_raw.get("contracts_minimum"))
+
+    tiers_raw = raw.get("experience_value_tiers")
+    tiers: list[dict[str, Any]] = []
+    seen_ranges: set[str] = set()
+    if isinstance(tiers_raw, list):
+        for tier in tiers_raw:
+            if not isinstance(tier, dict):
+                continue
+            contract_range = _contract_range(tier.get("contract_range"))
+            tier_percentage = _bounded_number(tier.get("percentage"), 1, 300)
+            if contract_range is None or tier_percentage is None or contract_range in seen_ranges:
+                continue
+            seen_ranges.add(contract_range)
+            tiers.append({"contract_range": contract_range, "percentage": tier_percentage})
+    if tiers:
+        parsed["experience_value_tiers"] = tiers
+        evidence["experience_value_tiers"] = _clean_evidence(evidence_raw.get("experience_value_tiers"))
+
+    if evidence:
+        parsed["evidence"] = evidence
+    return parsed
+
+
+def _general_experience_prompt(tender_external_id: str, excerpt: str) -> str:
+    return (
+        f"Licitación: {tender_external_id}\n\n"
+        "Fragmento de experiencia general del pliego:\n"
+        f"{excerpt}\n\n"
+        "Devuelve únicamente este JSON, con null en cada dato que el fragmento no escriba:\n"
+        "{\n"
+        '  "requirement_description": null,\n'
+        '  "min_percentage_budget": null,\n'
+        '  "min_amount_smmlv": null,\n'
+        '  "time_window_years": null,\n'
+        '  "contracts_minimum": null,\n'
+        '  "experience_value_tiers": null,\n'
+        '  "evidence": {}\n'
+        "}\n\n"
+        "Reglas:\n"
+        "- Lee solo la experiencia general. Ignora experiencia específica, indicadores, puntaje y requisitos legales.\n"
+        "- Devuelve siempre las seis claves. Si el pliego escribe el párrafo, el porcentaje, el monto en SMMLV, la ventana, el número de contratos y la tabla, guarda los seis. No pongas null en una clave porque otra ya tenga valor.\n"
+        "- Si un dato no está escrito en el fragmento, pon null. No completes con un porcentaje, una ventana o un número de contratos habitual.\n"
+        "- min_percentage_budget es un número. min_amount_smmlv es un número de SMMLV solo cuando el pliego escribe la cifra. "
+        "La frase «expresado en SMMLV» sin cifra va null.\n"
+        "- time_window_years es el entero de años de la ventana.\n"
+        "- contracts_minimum lleva minimum y maximum solo si el texto los dice.\n"
+        "- experience_value_tiers solo cuando el porcentaje del presupuesto cambia según el número de contratos. "
+        "contract_range con la forma mínimo-máximo, por ejemplo 1-2.\n"
+        "- requirement_description copia el requisito de experiencia general, sin inventar actividades.\n"
+        "- evidence cita como máximo 200 caracteres del fragmento por campo presente."
+    )
+
+
+def extract_general_experience_with_llm(
+    *,
+    tender_external_id: str,
+    excerpt: str,
+) -> Optional[dict[str, Any]]:
+    """One general-experience reading. None means the call failed and the caller should retry."""
+    if not settings.TENDER_REQUIREMENTS_USE_LLM or not _openai_client:
+        return None
+    fragment = (excerpt or "").strip()
+    if not fragment:
+        return None
+    fragment = fragment[: settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS]
+    try:
+        response = _openai_client.chat.completions.create(
+            model=settings.OPENAI_MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Eres un analista de pliegos de condiciones de Colombia. "
+                        "Extraes solo la experiencia general que el texto escribe. "
+                        "Responde únicamente JSON válido."
+                    ),
+                },
+                {"role": "user", "content": _general_experience_prompt(tender_external_id, fragment)},
+            ],
+            temperature=0,
+            max_tokens=900,
+            timeout=45,
+            response_format={"type": "json_object"},
+        )
+        payload = _parse_json_content(response.choices[0].message.content or "{}")
+    except Exception as exc:
+        logger.warning("General experience LLM failed for %s: %s", tender_external_id, exc)
+        return None
+    return parse_general_experience_llm_payload(payload)
