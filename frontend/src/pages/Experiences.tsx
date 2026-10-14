@@ -11,6 +11,7 @@ import {
   Information
 } from '@carbon/icons-react'
 import ExperienceUpload from '../components/ExperienceUpload'
+import ActaBatchUpload from '../components/ActaBatchUpload'
 import ExperienceList from '../components/ExperienceList'
 import RupCapacityCard from '../components/RupCapacityCard'
 import Logo from '../components/Logo'
@@ -75,6 +76,21 @@ const Experiences: React.FC = () => {
     setRefreshKey(prev => prev + 1)
   }
 
+  const refreshExperiencesQuietly = async () => {
+    const name = companyName.trim()
+    const queryName = name || 'Mi Empresa'
+    try {
+      const [data, profile] = await Promise.all([
+        getExperiences(queryName),
+        getRupProfile(queryName).catch(() => null),
+      ])
+      setExperiences(data.items)
+      setRupProfile(profile)
+    } catch (err) {
+      console.error('Error refreshing experiences:', err)
+    }
+  }
+
   const handleDeleteSuccess = () => {
     setRefreshKey(prev => prev + 1)
   }
@@ -131,8 +147,8 @@ const Experiences: React.FC = () => {
           </h2>
         </div>
         <p className="experiences-step-description">
-          El RUP no incluye el objeto de cada contrato. Carga el acta en PDF; si se lee el objeto,
-          aparece en Objeto del contrato y la tipología (vías, acueducto, puentes…) para filtrar el radar.
+          El RUP no incluye el objeto de cada contrato. Puedes cargar las actas juntas:
+          cada PDF se guarda en el contrato con el mismo número y el objeto queda en la columna.
         </p>
         
         {loading && (
@@ -153,6 +169,10 @@ const Experiences: React.FC = () => {
 
         {!loading && !error && experiences.length > 0 && (
           <div className="experiences-step-content">
+            <ActaBatchUpload
+              companyName={companyName || 'Mi Empresa'}
+              onAssigned={refreshExperiencesQuietly}
+            />
             <ExperienceList 
               experiences={experiences}
               companyName={companyName}

@@ -66,3 +66,13 @@ class ExcelImportResponse(BaseModel):
     errors: List[str] = []
     message: str
 
+
+class ActaAssignmentResponse(BaseModel):
+    """One acta matched to RUP rows by contract number."""
+    filename: str
+    status: str
+    contract_number: Optional[str] = None
+    object_text: Optional[str] = None
+    matched_contract_numbers: List[str] = Field(default_factory=list)
+    detail: Optional[str] = None
+

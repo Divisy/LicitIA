@@ -13,6 +13,7 @@ from app.schemas.company_experience import (
     CompanyExperienceCreate,
     CompanyExperienceResponse,
     CompanyExperienceListResponse,
+    ActaAssignmentResponse,
     ExcelImportResponse,
     ExperienceContractKindUpdate,
 )
@@ -234,8 +235,8 @@ async def list_experiences(
         CompanyExperience.completion_date.desc()
     )
     all_experiences = ordered.all()
-    # Scanned actas can be stored before the object is read. Retry a few on each visit.
-    backfill_objetos_from_stored_actas(db, all_experiences)
+    # Reading stored actas calls the model and would freeze every other request,
+    # including login. It only runs for an explicit hydrate.
     if hydrate_rup:
         page = all_experiences[offset : offset + limit]
         backfill_rup_fields_from_stored_pdf(db, page)
@@ -344,6 +345,159 @@ async def update_experience_contract_kind(
                 db, experience.company_name, getattr(experience, "owner_email", None)
             ),
         )
+    )
+
+
+def _account_experiences(db: Session, company_name: Optional[str], owner_email: Optional[str]):
+    from sqlalchemy import and_, or_
+
+    ensure_specific_experience_columns(db)
+    ensure_owner_email_columns(db)
+    ensure_contract_kind_column(db)
+    ensure_acta_partidas_column(db)
+    query = db.query(CompanyExperience)
+    email = normalize_owner_email(owner_email)
+    name = (company_name or "").strip()
+    if email and name:
+        query = query.filter(
+            or_(
+                CompanyExperience.owner_email == email,
+                and_(
+                    CompanyExperience.owner_email.is_(None),
+                    CompanyExperience.company_name.ilike(f"%{name}%"),
+                ),
+            )
+        )
+    elif email:
+        query = query.filter(CompanyExperience.owner_email == email)
+    elif name:
+        query = query.filter(CompanyExperience.company_name.ilike(f"%{name}%"))
+    else:
+        return []
+    return query.all()
+
+
+def _store_acta_on_experience(db: Session, experience: CompanyExperience, filename: str, content: bytes, objeto: Optional[str]):
+    import json
+    from datetime import datetime
+
+    from app.services.document_storage import get_document_storage
+    from app.services.experience_matching import extract_keywords
+    from app.services.project_typology import apply_project_typologies
+    from app.services.rup_contract_kind import apply_kind_from_specific_experience
+    from app.services.rup_import import persist_pdf_bytes, slugify_company
+
+    storage = get_document_storage()
+    slug = slugify_company(experience.company_name or "empresa")
+    object_key = f"rup/{slug}/experiences/{experience.id}/acta.pdf"
+    persist_pdf_bytes(storage, object_key=object_key, content=content)
+    experience.specific_evidence_filename = filename[:255]
+    experience.specific_evidence_key = object_key[:500]
+    experience.specific_experience = objeto
+    experience.acta_partidas = None
+    if objeto:
+        apply_kind_from_specific_experience(experience, objeto)
+        apply_project_typologies(experience)
+        keywords = extract_keywords(objeto)
+        if keywords:
+            experience.keywords = json.dumps(keywords)
+    experience.updated_at = datetime.utcnow()
+    db.commit()
+
+
+@router.post("/experiences/actas", response_model=ActaAssignmentResponse)
+async def assign_acta_by_contract_number(
+    file: UploadFile = File(..., description="Acta o certificado de un contrato, en PDF"),
+    company_name: Optional[str] = Query(None),
+    owner_email: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Read one acta and store it on the RUP row with the same contract number."""
+    import asyncio
+
+    from app.config import settings
+    from app.services.acta_assignment import (
+        extract_contract_number_from_filename,
+        match_contract_rows,
+        read_acta_identity,
+    )
+
+    filename = (file.filename or "").strip()
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Sube cada acta en PDF.")
+    content = await file.read()
+    max_bytes = min(getattr(settings, "RUP_UPLOAD_MAX_BYTES", 26_214_400), 26_214_400)
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=413, detail="El archivo supera el tamaño máximo (25 MB).")
+    if not content:
+        raise HTTPException(status_code=400, detail="El archivo está vacío.")
+
+    rows = _account_experiences(db, company_name, owner_email)
+    if not rows:
+        raise HTTPException(
+            status_code=400,
+            detail="Primero carga el RUP para tener los contratos a los que asignar las actas.",
+        )
+
+    identity = await asyncio.to_thread(read_acta_identity, content)
+    filename_number = extract_contract_number_from_filename(filename)
+    pdf_number = identity.contract_number
+    pdf_match = match_contract_rows(rows, pdf_number) if pdf_number else None
+    file_match = (
+        match_contract_rows(rows, filename_number)
+        if filename_number and filename_number != pdf_number
+        else None
+    )
+    if pdf_match and pdf_match.status in {"assigned", "ambiguous"}:
+        match, used_number = pdf_match, pdf_number
+    elif file_match and file_match.status in {"assigned", "ambiguous"}:
+        match, used_number = file_match, filename_number
+    elif pdf_match:
+        match, used_number = pdf_match, pdf_number
+    elif file_match:
+        match, used_number = file_match, filename_number
+    else:
+        match, used_number = match_contract_rows(rows, " "), None
+
+    if match.status != "assigned":
+        detail = match.detail
+        if used_number and match.status == "unmatched":
+            detail = f"Se leyó el contrato {used_number}. {detail}"
+        elif not used_number:
+            detail = "No se leyó el número de contrato en el acta ni en el nombre del archivo."
+        return ActaAssignmentResponse(
+            filename=filename,
+            status=match.status,
+            contract_number=used_number,
+            object_text=identity.object_text,
+            detail=detail,
+        )
+
+    try:
+        for experience in match.rows:
+            _store_acta_on_experience(db, experience, filename, content, identity.object_text)
+    except Exception as exc:
+        logger.exception("Failed to store assigned acta %s", filename)
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo guardar el acta en el contrato.",
+        ) from exc
+
+    numbers = []
+    for experience in match.rows:
+        label = (experience.contract_number or "").strip()
+        if label and label not in numbers:
+            numbers.append(label)
+    detail = "Acta guardada en " + ", ".join(numbers)
+    if not identity.object_text:
+        detail += ". No se leyó el objeto."
+    return ActaAssignmentResponse(
+        filename=filename,
+        status="assigned",
+        contract_number=used_number,
+        object_text=identity.object_text,
+        matched_contract_numbers=numbers,
+        detail=detail,
     )
 
 

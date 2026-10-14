@@ -586,6 +586,34 @@ export async function updateExperienceContractKind(
   return response.data;
 }
 
+export interface ActaAssignment {
+  filename: string;
+  status: "assigned" | "unmatched" | "ambiguous" | "error" | string;
+  contract_number?: string | null;
+  object_text?: string | null;
+  matched_contract_numbers: string[];
+  detail?: string | null;
+}
+
+export async function assignActaToContract(
+  file: File,
+  companyName: string
+): Promise<ActaAssignment> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  const params = withOwnerEmail(
+    new URLSearchParams({
+      company_name: companyName.trim() || "Mi Empresa",
+    })
+  );
+  const response = await client.post<ActaAssignment>(
+    `/experiences/actas?${params.toString()}`,
+    formData,
+    { timeout: 120000 }
+  );
+  return response.data;
+}
+
 export async function uploadSpecificExperienceEvidence(
   experienceId: string,
   file: File

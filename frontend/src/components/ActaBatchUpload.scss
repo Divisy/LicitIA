@@ -1,0 +1,57 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/type' as *;
+
+.acta-batch {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-04;
+  margin-bottom: $spacing-05;
+}
+
+.acta-batch__lead {
+  @include type-style('body-01');
+  margin: 0;
+  max-width: 46rem;
+}
+
+.acta-batch__count,
+.acta-batch__loading p {
+  margin: 0;
+  @include type-style('body-compact-01');
+}
+
+.acta-batch__results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+}
+
+.acta-batch__result {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-02;
+  padding: $spacing-03 $spacing-04;
+  border-left: 3px solid var(--cds-border-strong);
+  background: var(--cds-layer-01);
+
+  strong {
+    @include type-style('label-01');
+  }
+
+  span {
+    @include type-style('body-compact-01');
+  }
+}
+
+.acta-batch__result--assigned {
+  border-left-color: var(--cds-support-success);
+}
+
+.acta-batch__result--unmatched,
+.acta-batch__result--ambiguous,
+.acta-batch__result--error {
+  border-left-color: var(--cds-support-warning);
+}
