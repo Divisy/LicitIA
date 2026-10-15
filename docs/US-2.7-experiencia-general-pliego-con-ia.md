@@ -2,6 +2,8 @@
 
 **Jira:** `2.7 [Backend] Experiencia general del pliego con IA — párrafo, porcentaje, ventana y número de contratos`
 
+**Estado:** Cerrada el 15 de octubre de 2026. La experiencia general de cada pliego se lee desde las páginas impresas y el match de SMMLV usa ese porcentaje, esa ventana y ese número de contratos. La experiencia específica y la comparación del párrafo con las actas quedan en la US 2.8.
+
 ## USER STORY
 
 **As a** personal de licitaciones con el RUP y las actas cargadas  

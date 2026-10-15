@@ -54,6 +54,7 @@ const REQUIREMENT_ITEM_ORDER: Record<string, string[]> = {
     'min_percentage_budget',
     'min_amount_smmlv',
     'time_window_years',
+    'company_duration',
     'accreditation_method',
   ],
   experiencia_especifica: [
@@ -247,7 +248,7 @@ const EXPERIENCE_ACCREDITATION_KEY = 'accreditation_method'
 const EXPERIENCE_METRIC_LABELS: Record<string, string> = {
   min_percentage_budget: '% mínimo del PO',
   min_amount_smmlv: 'Monto en SMMLV',
-  time_window_years: 'Antigüedad',
+  time_window_years: 'Plazo de la experiencia',
   specific_min_percentage: '% mínimo específico',
   contracts_minimum: 'Nº de contratos',
   activity_codes: 'Códigos de actividad',
@@ -1010,6 +1011,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     const officialBudgetTotal = resolveSecopBudgetAmount(tender?.amount)
     const scopeKey = EXPERIENCE_SCOPE_KEY[section.key]
     const scopeItem = scopeKey ? findRequirementItem(items, scopeKey) : undefined
+    const durationItem = findRequirementItem(items, 'company_duration')
     const accreditationItem = findRequirementItem(items, EXPERIENCE_ACCREDITATION_KEY)
     const metricItems = items.filter(
       (item) =>
@@ -1032,6 +1034,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     const otherItems = items.filter(
       (item) =>
         item.key !== scopeKey &&
+        item.key !== 'company_duration' &&
         item.key !== EXPERIENCE_ACCREDITATION_KEY &&
         item.key !== 'specific_area_phases' &&
         item.key !== 'experience_value_tiers' &&
@@ -1140,6 +1143,15 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {durationItem?.display_value && (
+              <div className="tender-detail-panel__experience-block">
+                <h6 className="tender-detail-panel__experience-block-title">
+                  Duración de la persona jurídica
+                </h6>
+                <p className="tender-detail-panel__experience-prose">{durationItem.display_value}</p>
               </div>
             )}
 

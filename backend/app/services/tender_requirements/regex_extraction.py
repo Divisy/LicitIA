@@ -551,7 +551,7 @@ def extract_experiencia_general(
                     key="time_window_years",
                     label="Ventana temporal de experiencia",
                     value=years,
-                    display_value=f"Últimos {years} años",
+                    display_value=f"Los contratos de la experiencia deben ser de los últimos {years} años",
                     source_document=source_document,
                     source_document_id=source_document_id,
                     evidence=_snippet(region, years_match.start(), years_match.end() + 40),

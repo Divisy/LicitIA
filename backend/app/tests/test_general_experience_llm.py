@@ -51,9 +51,29 @@ def test_parser_keeps_written_numbers_and_drops_empty_ones():
 
     assert parsed["min_percentage_budget"] == 100
     assert parsed["time_window_years"] == 5
+    assert "company_duration" not in parsed
     assert parsed["contracts_minimum"] == {"minimum": 1, "maximum": 3}
     assert "min_amount_smmlv" not in parsed
     assert "experience_value_tiers" not in parsed
+
+
+def test_parser_keeps_company_life_out_of_the_experience_window():
+    parsed = parse_general_experience_llm_payload(
+        {
+            "time_window_years": 5,
+            "company_duration": (
+                "El término de duración de la persona jurídica no podrá ser inferior "
+                "al plazo de ejecución del contrato, su liquidación y cinco (5) años más."
+            ),
+            "evidence": {
+                "time_window_years": "liquidación y cinco (5) años más",
+            },
+        }
+    )
+
+    assert "time_window_years" not in parsed
+    assert "persona jurídica" in parsed["company_duration"]
+    assert "cinco (5) años más" in parsed["company_duration"]
 
 
 def test_parser_rejects_a_salary_copied_as_smmlv_and_a_missing_percentage():
@@ -328,7 +348,19 @@ def test_a_text_reading_is_replaced_by_the_printed_pages():
         {"general_experience_llm": True, "general_experience_source": "text", "sections": []}
     )
     assert general_experience_reading_is_final(
+        {"general_experience_llm": True, "general_experience_source": "pages", "sections": []}
+    )
+    assert general_experience_reading_is_final(
         {"general_experience_llm": True, "general_experience_source": "vision", "sections": []}
+    )
+    assert not general_experience_reading_is_final(
+        {
+            "general_experience_llm": True,
+            "general_experience_source": "vision",
+            "sections": [
+                {"key": "experiencia_general", "items": [{"key": "time_window_years", "value": 5}]}
+            ],
+        }
     )
     assert general_experience_reading_is_final(
         {"general_experience_llm": True, "general_experience_source": "no_pages", "sections": []}
@@ -354,7 +386,7 @@ def test_every_pliego_is_read_from_three_printed_pages(_text, _pages, mock_visio
     mock_vision.assert_called_once()
     assert mock_vision.call_args.kwargs["page_images"] == [b"a", b"b", b"c"]
     mock_text_llm.assert_not_called()
-    assert payload["general_experience_source"] == "vision"
+    assert payload["general_experience_source"] == "pages"
     description = payload["sections"][0]["items"][0]["value"]
     assert description.startswith("uno (1) o hasta dos (2)")
 

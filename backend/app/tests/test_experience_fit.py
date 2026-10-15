@@ -255,6 +255,55 @@ def test_road_tender_does_not_match_a_sewer_acta_even_if_the_model_says_yes():
     assert failed == set()
 
 
+def test_general_experience_smmlv_follows_its_percentage_of_the_budget():
+    from app.services.experience_fit import present_general_experience_smmlv
+
+    payload = {
+        "sections": [
+            {
+                "key": "experiencia_general",
+                "items": [
+                    {"key": "min_percentage_budget", "value": 100, "source_document": "pliego_condiciones"},
+                    {"key": "min_amount_smmlv", "value": 35.54, "display_value": "35.54 SMMLV"},
+                ],
+            }
+        ]
+    }
+
+    shown = present_general_experience_smmlv(
+        payload,
+        tender_amount=56_138_545,
+        publication_date=date(2026, 3, 1),
+    )
+
+    amount = shown["sections"][0]["items"][1]
+    assert amount["value"] == round(56_138_545 / _SMMLV_2026, 2)
+    assert amount["display_value"] == "39,44 SMMLV"
+    assert amount["evidence"] == "100% del presupuesto oficial expresado en SMMLV"
+    assert payload["sections"][0]["items"][1]["value"] == 35.54
+
+
+def test_a_direct_smmlv_stays_when_general_experience_states_no_percentage():
+    from app.services.experience_fit import present_general_experience_smmlv
+
+    payload = {
+        "sections": [
+            {
+                "key": "experiencia_general",
+                "items": [{"key": "min_amount_smmlv", "value": 500, "display_value": "500 SMMLV"}],
+            }
+        ]
+    }
+
+    shown = present_general_experience_smmlv(
+        payload,
+        tender_amount=56_138_545,
+        publication_date=date(2026, 3, 1),
+    )
+
+    assert shown["sections"][0]["items"][0]["value"] == 500
+
+
 def test_same_road_specialty_keeps_the_model_match():
     from unittest.mock import patch
 

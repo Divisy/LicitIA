@@ -6,6 +6,7 @@ stored for the tender. Acta line items do not decide this result.
 """
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Optional
@@ -212,6 +213,57 @@ def _minimum_for_count(
             return None
         return budget_smmlv * percentage / 100
     return direct_smmlv
+
+
+def _smmlv_display(amount: float) -> str:
+    text = f"{amount:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{text} SMMLV"
+
+
+def present_general_experience_smmlv(
+    payload: dict,
+    *,
+    tender_amount: Optional[float],
+    publication_date,
+) -> dict:
+    """Show the SMMLV amount the general-experience section itself states.
+
+    A percentage of the official budget is converted with that year's SMMLV.
+    A figure stored beside that percentage is left out of the response.
+    """
+    shown = deepcopy(payload)
+    for section in shown.get("sections") or []:
+        if section.get("key") != "experiencia_general":
+            continue
+        items = list(section.get("items") or [])
+        percentage = _number(_item_value(items, "min_percentage_budget"))
+        tiers = _tiers(_item_value(items, "experience_value_tiers"))
+        if tiers or percentage is None:
+            if tiers:
+                section["items"] = [item for item in items if item.get("key") != "min_amount_smmlv"]
+            continue
+        budget = _budget_smmlv(tender_amount, publication_date)
+        if budget is None:
+            section["items"] = [item for item in items if item.get("key") != "min_amount_smmlv"]
+            continue
+        amount = round(budget * percentage / 100, 2)
+        target = next((item for item in items if item.get("key") == "min_amount_smmlv"), None)
+        if target is None:
+            source = next((item for item in items if item.get("key") == "min_percentage_budget"), {})
+            target = {
+                "key": "min_amount_smmlv",
+                "label": "Monto mínimo en SMMLV",
+                "confidence": source.get("confidence", 0.9),
+                "source_document": source.get("source_document") or "pliego_condiciones",
+                "source_document_id": source.get("source_document_id"),
+            }
+            items.append(target)
+        percentage_text = f"{percentage:g}".replace(".", ",")
+        target["value"] = amount
+        target["display_value"] = _smmlv_display(amount)
+        target["evidence"] = f"{percentage_text}% del presupuesto oficial expresado en SMMLV"
+        section["items"] = items
+    return shown
 
 
 def _fit_contract(row: dict, *, in_sum: bool, amount: Optional[float]) -> FitContract:

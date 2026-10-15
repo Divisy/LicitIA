@@ -32,6 +32,7 @@ from app.schemas.tender_requirements import (
     TenderRequirementSectionResponse,
     TenderRequirementItemResponse,
 )
+from app.services.experience_fit import present_general_experience_smmlv
 from app.services.general_experience import (
     _general_experience_section,
     general_experience_reading_is_final,
@@ -625,6 +626,11 @@ def _requirements_response_from_payload(
     extracted_at: datetime,
     cached: bool,
 ) -> TenderRequirementsResponse:
+    shown = present_general_experience_smmlv(
+        payload,
+        tender_amount=float(tender.amount) if tender.amount is not None else None,
+        publication_date=tender.publication_date,
+    )
     return TenderRequirementsResponse(
         tender_id=tender.id,
         tender_external_id=tender.external_id,
@@ -637,9 +643,9 @@ def _requirements_response_from_payload(
                 status=section["status"],
                 items=[TenderRequirementItemResponse(**item) for item in section.get("items", [])],
             )
-            for section in payload.get("sections", [])
+            for section in shown.get("sections", [])
         ],
-        warnings=payload.get("warnings", []),
+        warnings=shown.get("warnings", []),
         cached=cached,
     )
 

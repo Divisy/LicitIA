@@ -721,6 +721,7 @@ _GENERAL_EXPERIENCE_KEYS = (
     "min_percentage_budget",
     "min_amount_smmlv",
     "time_window_years",
+    "company_duration",
     "contracts_minimum",
     "experience_value_tiers",
 )
@@ -774,6 +775,40 @@ def _clean_evidence(value: Any) -> str:
     return text
 
 
+def _fold_pliego_text(value: str) -> str:
+    folded = value.lower().translate(str.maketrans("áéíóúüñ", "aeiouun"))
+    return re.sub(r"\s+", " ", folded)
+
+
+def _company_duration_text(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    text = re.sub(r"\s+", " ", value).strip()
+    if len(text) > 600:
+        text = text[:597] + "..."
+    if len(text) < 20:
+        return None
+    return text
+
+
+def _years_belong_to_company_life(evidence: str, duration: str) -> bool:
+    """Years added to the company's life are not the experience window."""
+    sample = _fold_pliego_text(f"{evidence} {duration}")
+    if re.search(r"ultim\w*\s+\d+\s+anos", sample):
+        return False
+    return any(
+        phrase in sample
+        for phrase in (
+            "persona juridica",
+            "liquidacion",
+            "anos mas",
+            "termino de duracion",
+            "duracion de la sociedad",
+            "duracion de la persona",
+        )
+    )
+
+
 def parse_general_experience_llm_payload(payload: Any) -> dict[str, Any]:
     """Keep only general-experience fields the model actually returned as usable values."""
     raw = _unwrap_general_experience_payload(payload)
@@ -800,10 +835,19 @@ def parse_general_experience_llm_payload(payload: Any) -> dict[str, Any]:
         parsed["min_amount_smmlv"] = amount
         evidence["min_amount_smmlv"] = _clean_evidence(evidence_raw.get("min_amount_smmlv"))
 
+    duration = _company_duration_text(raw.get("company_duration"))
     years = _bounded_number(raw.get("time_window_years"), 1, 25)
+    years_evidence = _clean_evidence(evidence_raw.get("time_window_years"))
+    if years is not None and _years_belong_to_company_life(years_evidence, duration or ""):
+        if duration is None:
+            duration = _company_duration_text(years_evidence)
+        years = None
+    if duration is not None:
+        parsed["company_duration"] = duration
+        evidence["company_duration"] = _clean_evidence(evidence_raw.get("company_duration")) or duration[:200]
     if years is not None:
         parsed["time_window_years"] = int(years)
-        evidence["time_window_years"] = _clean_evidence(evidence_raw.get("time_window_years"))
+        evidence["time_window_years"] = years_evidence
 
     contracts = raw.get("contracts_minimum")
     if isinstance(contracts, dict):
@@ -854,17 +898,20 @@ def _general_experience_prompt(tender_external_id: str, excerpt: str) -> str:
         '  "min_percentage_budget": null,\n'
         '  "min_amount_smmlv": null,\n'
         '  "time_window_years": null,\n'
+        '  "company_duration": null,\n'
         '  "contracts_minimum": null,\n'
         '  "experience_value_tiers": null,\n'
         '  "evidence": {}\n'
         "}\n\n"
         "Reglas:\n"
         "- Lee solo la experiencia general. Ignora experiencia específica, indicadores, puntaje y requisitos legales.\n"
-        "- Devuelve siempre las seis claves. Si el pliego escribe el párrafo, el porcentaje, el monto en SMMLV, la ventana, el número de contratos y la tabla, guarda los seis. No pongas null en una clave porque otra ya tenga valor.\n"
+        "- Devuelve siempre las claves. Si el pliego escribe el párrafo, el porcentaje, el monto en SMMLV, la ventana, la duración de la persona jurídica, el número de contratos y la tabla, guarda cada uno. No pongas null en una clave porque otra ya tenga valor.\n"
         "- Si un dato no está escrito en el fragmento, pon null. No completes con un porcentaje, una ventana o un número de contratos habitual.\n"
         "- min_percentage_budget es un número. min_amount_smmlv es un número de SMMLV solo cuando el pliego escribe la cifra. "
         "La frase «expresado en SMMLV» sin cifra va null.\n"
-        "- time_window_years es el entero de años de la ventana.\n"
+        "- time_window_years es el entero de años solo cuando los contratos de la experiencia deben haberse ejecutado o terminado en los últimos N años.\n"
+        "- company_duration copia la frase de cuánto debe durar la persona jurídica. "
+        "«Cinco (5) años más» después del plazo del contrato y su liquidación es duración de la empresa, no time_window_years.\n"
         "- contracts_minimum lleva minimum y maximum solo si el texto los dice.\n"
         "- experience_value_tiers solo cuando el porcentaje del presupuesto cambia según el número de contratos. "
         "contract_range con la forma mínimo-máximo, por ejemplo 1-2.\n"
@@ -887,6 +934,7 @@ def _general_experience_vision_prompt(tender_external_id: str) -> str:
         '  "min_percentage_budget": null,\n'
         '  "min_amount_smmlv": null,\n'
         '  "time_window_years": null,\n'
+        '  "company_duration": null,\n'
         '  "contracts_minimum": null,\n'
         '  "experience_value_tiers": null,\n'
         '  "evidence": {}\n'
@@ -894,13 +942,15 @@ def _general_experience_vision_prompt(tender_external_id: str) -> str:
         "Reglas:\n"
         "- requirement_description copia tal cual el apartado «Experiencia general habilitante del proponente», "
         "con el número de contratos y el objeto entre comillas. No lo resumas. Ignora membrete, correo, teléfono y pie de página.\n"
-        "- Devuelve las seis claves. No pongas null en una porque otra ya tenga valor.\n"
+        "- Devuelve las claves. No pongas null en una porque otra ya tenga valor.\n"
         "- Si un dato no está impreso en esas páginas, pon null.\n"
         "- contracts_minimum sale de la frase que dice cuántos contratos o certificaciones se presentan, "
         "por ejemplo uno (1) o hasta dos (2). Un «cinco (5)» de códigos del RUP no es el máximo de contratos.\n"
-        "- min_percentage_budget es un número. min_amount_smmlv es un número de SMMLV solo cuando la página escribe la cifra. "
-        "«Expresado en SMMLV» sin cifra, y cualquier valor en pesos, van null.\n"
-        "- time_window_years es el entero de años, solo si la página lo escribe.\n"
+        "- min_percentage_budget es un número. min_amount_smmlv es un número de SMMLV solo cuando la página de experiencia general escribe la cifra. "
+        "«Expresado en SMMLV» sin cifra, un valor en pesos y el monto de la experiencia específica van null.\n"
+        "- time_window_years es el entero de años solo cuando los contratos de la experiencia deben haberse ejecutado o terminado en los últimos N años.\n"
+        "- company_duration copia la frase de cuánto debe durar la persona jurídica, por ejemplo el plazo del contrato, su liquidación y cinco (5) años más. "
+        "Esos años no son time_window_years.\n"
         "- experience_value_tiers solo cuando el porcentaje cambia según el número de contratos.\n"
         "- evidence cita como máximo 200 caracteres de lo impreso por campo presente."
     )

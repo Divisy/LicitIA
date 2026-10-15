@@ -71,11 +71,22 @@ def general_experience_llm_is_saved(payload: Optional[dict]) -> bool:
     return payload.get("general_experience_llm") is True
 
 
+def _section_has_time_window(payload: Optional[dict]) -> bool:
+    for section in (payload or {}).get("sections") or []:
+        if section.get("key") != "experiencia_general":
+            continue
+        return any(item.get("key") == "time_window_years" for item in section.get("items") or [])
+    return False
+
+
 def general_experience_reading_is_final(payload: Optional[dict]) -> bool:
-    """A page-image reading is kept. A text-only reading is done again from the printed pages."""
+    """A page-image reading is kept. One that stored a year window is read again, so company life is not shown as experience age."""
     if not general_experience_llm_is_saved(payload):
         return False
-    return (payload or {}).get("general_experience_source") in {"vision", "no_pages"}
+    source = (payload or {}).get("general_experience_source")
+    if source in {"pages", "no_pages"}:
+        return True
+    return source == "vision" and not _section_has_time_window(payload)
 
 
 def _section(items: list[dict]) -> dict:
@@ -109,13 +120,11 @@ def _fields_for_general_experience(
     if pliego is not None:
         images = _render_general_experience_pages(pliego)
         if images:
-            return (
-                extract_general_experience_from_page_images(
-                    tender_external_id=tender_external_id,
-                    page_images=images,
-                ),
-                "vision",
+            fields = extract_general_experience_from_page_images(
+                tender_external_id=tender_external_id,
+                page_images=images,
             )
+            return fields, "pages" if fields is not None else "vision"
         logger.info(
             "General experience pages were not found for %s; using the text layer",
             tender_external_id,
@@ -430,9 +439,22 @@ def general_experience_items_from_fields(
                 key="time_window_years",
                 label="Ventana temporal de experiencia",
                 value=years,
-                display_value=f"Últimos {years} años",
+                display_value=f"Los contratos de la experiencia deben ser de los últimos {years} años",
                 source_document_id=source_document_id,
                 evidence=evidence.get("time_window_years") or "",
+            )
+        )
+
+    duration = fields.get("company_duration")
+    if isinstance(duration, str) and duration.strip():
+        items.append(
+            _llm_item(
+                key="company_duration",
+                label="Duración de la persona jurídica",
+                value=duration,
+                display_value=duration,
+                source_document_id=source_document_id,
+                evidence=evidence.get("company_duration") or duration[:200],
             )
         )
 
