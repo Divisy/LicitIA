@@ -1,8 +1,10 @@
 """Store the pliego's general experience for active tenders, without the full requirements pass."""
 from __future__ import annotations
 
+import tempfile
 import threading
 from copy import deepcopy
+from pathlib import Path
 from datetime import datetime
 from typing import Any, Optional
 
@@ -18,7 +20,10 @@ from app.services.document_extraction import deduplicate_visible_documents
 from app.services.secop_documents import is_archive_filename
 from app.services.tender_lifecycle import filter_active_dashboard_tenders
 from app.services.tender_requirements.document_selection import select_pliego_document
-from app.services.tender_requirements.llm_extraction import extract_general_experience_with_llm
+from app.services.tender_requirements.llm_extraction import (
+    extract_general_experience_from_page_images,
+    extract_general_experience_with_llm,
+)
 from app.services.tender_requirements.regex_extraction import (
     _general_experience_region,
     _item,
@@ -66,6 +71,13 @@ def general_experience_llm_is_saved(payload: Optional[dict]) -> bool:
     return payload.get("general_experience_llm") is True
 
 
+def general_experience_reading_is_final(payload: Optional[dict]) -> bool:
+    """A page-image reading is kept. A text-only reading is done again from the printed pages."""
+    if not general_experience_llm_is_saved(payload):
+        return False
+    return (payload or {}).get("general_experience_source") in {"vision", "no_pages"}
+
+
 def _section(items: list[dict]) -> dict:
     return {
         "key": "experiencia_general",
@@ -79,20 +91,129 @@ def focused_general_experience_section(
     text: str,
     tender_external_id: str,
     source_document_id,
+    pliego: Optional[_StoredPliego] = None,
 ) -> Optional[dict]:
     """The background reading. None means the model call failed and the caller should retry."""
-    if not (text or "").strip():
-        return None
-    excerpt = general_experience_excerpt(text)
-    if not excerpt.strip():
-        return None
-    fields = extract_general_experience_with_llm(
-        tender_external_id=tender_external_id,
-        excerpt=excerpt,
-    )
+    fields, _source = _fields_for_general_experience(text, tender_external_id, pliego)
     if fields is None:
         return None
     return _section(general_experience_items_from_fields(fields, source_document_id))
+
+
+def _fields_for_general_experience(
+    text: str,
+    tender_external_id: str,
+    pliego: Optional[_StoredPliego],
+) -> tuple[Optional[dict], str]:
+    """Read the printed pages. The text layer is only the fallback when those pages are not found."""
+    if pliego is not None:
+        images = _render_general_experience_pages(pliego)
+        if images:
+            return (
+                extract_general_experience_from_page_images(
+                    tender_external_id=tender_external_id,
+                    page_images=images,
+                ),
+                "vision",
+            )
+        logger.info(
+            "General experience pages were not found for %s; using the text layer",
+            tender_external_id,
+        )
+    excerpt = general_experience_excerpt(text) if (text or "").strip() else ""
+    if not excerpt.strip():
+        return None, "no_pages"
+    return (
+        extract_general_experience_with_llm(
+            tender_external_id=tender_external_id,
+            excerpt=excerpt,
+        ),
+        "no_pages",
+    )
+
+
+def _render_general_experience_pages(pliego: _StoredPliego, limit: int = 3) -> list[bytes]:
+    """JPEG of the printed general-experience pages. Empty when the heading cannot be found."""
+    import fitz
+
+    from app.services.document_storage import get_document_storage
+
+    storage = get_document_storage()
+    local_path = storage.local_path(pliego.file_path)
+    temp_dir = None
+    if not local_path.is_file():
+        temp_dir = tempfile.TemporaryDirectory(prefix="licitia_pdf_")
+        local_path = Path(temp_dir.name) / Path(pliego.file_name or "pliego.pdf").name
+        with local_path.open("wb") as handle:
+            for chunk in storage.iter_file_chunks(pliego.file_path):
+                handle.write(chunk)
+    images: list[bytes] = []
+    try:
+        document = fitz.open(local_path)
+        try:
+            start = _general_experience_page_index(document)
+            if start is None:
+                return []
+            last = min(start + limit, document.page_count)
+            for index in range(start, last):
+                pixmap = document[index].get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                images.append(pixmap.tobytes("jpeg", jpg_quality=72))
+        finally:
+            document.close()
+    finally:
+        if temp_dir is not None:
+            temp_dir.cleanup()
+    return images
+
+
+def _general_experience_page_index(document) -> Optional[int]:
+    fallback = None
+    for index, page in enumerate(document):
+        normalized = normalize_text(page.get_text("text") or "")
+        if "experiencia general" not in normalized:
+            continue
+        if fallback is None:
+            fallback = index
+        if "habilitante" in normalized or "acreditar" in normalized:
+            return index
+    return fallback
+
+
+def finish_focused_reading(
+    pliego: _StoredPliego,
+    tender_external_id: str,
+    existing: Optional[dict],
+) -> Optional[dict]:
+    """Read one pliego. None means the call failed and the stored row should stay as it is."""
+    text = _read_pliego_text(pliego)
+    fields, source = _fields_for_general_experience(text, tender_external_id, pliego)
+    if fields is None:
+        if source == "vision":
+            return None
+        if not (text or "").strip():
+            payload = mark_general_experience_unreadable(existing, tender_external_id)
+            payload["general_experience_source"] = "no_pages"
+            return payload
+        if general_experience_llm_is_saved(existing):
+            return None
+        return payload_for_general_experience_reading(
+            existing,
+            tender_external_id=tender_external_id,
+            text=text,
+            llm_fields=None,
+            source_document_id=pliego.id,
+        )
+    section = _section(general_experience_items_from_fields(fields, pliego.id))
+    if _is_full_extract(existing):
+        return apply_focused_general_experience_section(existing, section, source)
+    payload = merge_general_experience_reading(
+        existing,
+        tender_external_id=tender_external_id,
+        items=section["items"],
+        llm_done=True,
+    )
+    payload["general_experience_source"] = source
+    return payload
 
 
 def _general_experience_section(payload: Optional[dict]) -> Optional[dict]:
@@ -108,7 +229,11 @@ def _general_experience_section(payload: Optional[dict]) -> Optional[dict]:
     )
 
 
-def apply_focused_general_experience_section(payload: dict, section: dict) -> dict:
+def apply_focused_general_experience_section(
+    payload: dict,
+    section: dict,
+    source: str = "text",
+) -> dict:
     """Keep every other section. Experiencia general becomes the focused reading."""
     updated = deepcopy(payload)
     stored = deepcopy(section)
@@ -128,6 +253,7 @@ def apply_focused_general_experience_section(payload: dict, section: dict) -> di
         sections.append(stored)
     updated["sections"] = sections
     updated["general_experience_llm"] = True
+    updated["general_experience_source"] = source
     return updated
 
 
@@ -138,18 +264,22 @@ def replace_general_experience_with_focused_reading(
     tender_external_id: str,
     source_document_id,
     saved_section: Optional[dict] = None,
+    saved_source: Optional[str] = None,
+    pliego: Optional[_StoredPliego] = None,
 ) -> dict:
+    source = saved_source or "text"
     section = saved_section
     if section is None:
-        section = focused_general_experience_section(text, tender_external_id, source_document_id)
-    if section is None:
-        return payload
-    return apply_focused_general_experience_section(payload, section)
+        fields, source = _fields_for_general_experience(text, tender_external_id, pliego)
+        if fields is None:
+            return payload
+        section = _section(general_experience_items_from_fields(fields, source_document_id))
+    return apply_focused_general_experience_section(payload, section, source)
 
 
 def refresh_focused_general_experience(db: Session, tender: Tender, payload: dict) -> dict:
     """Patch a full extract in place. The database is free while the pliego is read."""
-    if general_experience_llm_is_saved(payload):
+    if general_experience_reading_is_final(payload):
         return payload
     pliego = _pliego_document(db, tender.id)
     if pliego is None:
@@ -157,11 +287,8 @@ def refresh_focused_general_experience(db: Session, tender: Tender, payload: dic
     snapshot = _StoredPliego(pliego)
     external_id = tender.external_id
     db.commit()
-    text = _read_pliego_text(snapshot)
-    section = focused_general_experience_section(text, external_id, snapshot.id)
-    if section is None:
-        return payload
-    return apply_focused_general_experience_section(payload, section)
+    updated = finish_focused_reading(snapshot, external_id, payload)
+    return payload if updated is None else updated
 
 
 def _is_full_extract(payload: Optional[dict]) -> bool:
@@ -211,6 +338,7 @@ def merge_general_experience_reading(
     }
     if llm_done:
         payload["general_experience_llm"] = True
+        payload["general_experience_source"] = "no_pages"
     return payload
 
 
@@ -222,6 +350,7 @@ def mark_general_experience_unreadable(
     if _is_full_extract(existing) and existing is not None:
         updated = deepcopy(existing)
         updated["general_experience_llm"] = True
+        updated["general_experience_source"] = "no_pages"
         warnings = list(updated.get("warnings") or [])
         if _UNREADABLE_WARNING not in warnings:
             warnings.append(_UNREADABLE_WARNING)
@@ -461,7 +590,7 @@ def _pending_tender_ids(db: Session) -> list:
     return [
         tender.id
         for tender in tenders
-        if not general_experience_llm_is_saved(stored.get(tender.id))
+        if not general_experience_reading_is_final(stored.get(tender.id))
     ]
 
 
@@ -474,61 +603,31 @@ def _read_one(db: Session, tender_id) -> str:
             db.commit()
             return "skipped"
         existing = _stored_payload(db, tender_id)
-        if general_experience_llm_is_saved(existing):
+        if general_experience_reading_is_final(existing):
             db.commit()
             return "skipped"
         snapshot = _StoredPliego(pliego)
         external_id = tender.external_id
-        source_document_id = snapshot.id
         db.commit()
 
-        text = _read_pliego_text(snapshot)
-        excerpt = general_experience_excerpt(text) if text.strip() else ""
-        if not text.strip() or not excerpt.strip():
-            tender = db.query(Tender).filter(Tender.id == tender_id).one()
-            existing = _stored_payload(db, tender_id)
-            _persist(db, tender, mark_general_experience_unreadable(existing, external_id))
-            db.commit()
-            logger.info("General experience has no selectable text for %s", external_id)
-            return "saved"
-
-        fields = extract_general_experience_with_llm(
-            tender_external_id=external_id,
-            excerpt=excerpt,
-        )
         tender = db.query(Tender).filter(Tender.id == tender_id).one()
         existing = _stored_payload(db, tender_id)
-        if general_experience_llm_is_saved(existing):
+        if general_experience_reading_is_final(existing):
             db.commit()
             return "skipped"
-        payload = payload_for_general_experience_reading(
-            existing,
-            tender_external_id=external_id,
-            text=text,
-            llm_fields=fields,
-            source_document_id=source_document_id,
-        )
+        payload = finish_focused_reading(snapshot, external_id, existing)
         if payload is None:
             db.commit()
             logger.info("General experience call failed for %s; kept the previous read", external_id)
             return "failed"
         _persist(db, tender, payload)
         db.commit()
-        saved_items = next(
-            (
-                section.get("items") or []
-                for section in payload.get("sections") or []
-                if section.get("key") == "experiencia_general"
-            ),
-            [],
-        )
         logger.info(
-            "Saved general experience for %s (%s items, llm=%s)",
+            "Saved general experience for %s (source=%s)",
             external_id,
-            len(saved_items),
-            bool(payload.get("general_experience_llm")),
+            payload.get("general_experience_source"),
         )
-        if fields is None:
+        if not general_experience_llm_is_saved(payload):
             return "failed"
         return "saved"
     except Exception:

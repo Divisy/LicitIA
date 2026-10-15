@@ -34,7 +34,7 @@ from app.schemas.tender_requirements import (
 )
 from app.services.general_experience import (
     _general_experience_section,
-    general_experience_llm_is_saved,
+    general_experience_reading_is_final,
     refresh_focused_general_experience,
 )
 from app.services.tender_requirements.service import (
@@ -678,8 +678,10 @@ async def get_tender_requirements(
         else db.query(TenderRequirements).filter(TenderRequirements.tender_id == tender_id).first()
     )
     saved_section = None
-    if cached and cached.requirements_json and general_experience_llm_is_saved(cached.requirements_json):
+    saved_source = None
+    if cached and cached.requirements_json and general_experience_reading_is_final(cached.requirements_json):
         saved_section = _general_experience_section(cached.requirements_json)
+        saved_source = cached.requirements_json.get("general_experience_source")
 
     if cached and cached.requirements_json:
         cached_version = cached.extraction_version or cached.requirements_json.get(
@@ -689,9 +691,9 @@ async def get_tender_requirements(
         if cached_version == EXTRACTION_VERSION and not requirements_cache_is_stale(
             tender, payload
         ):
-            if not general_experience_llm_is_saved(payload):
+            if not general_experience_reading_is_final(payload):
                 payload = refresh_focused_general_experience(db, tender, payload)
-                if general_experience_llm_is_saved(payload):
+                if general_experience_reading_is_final(payload):
                     record = persist_tender_requirements(db, tender, payload)
                     return _requirements_response_from_payload(
                         tender,
@@ -706,7 +708,11 @@ async def get_tender_requirements(
                 cached=True,
             )
 
-    payload = build_tender_requirements(tender, focused_general_section=saved_section)
+    payload = build_tender_requirements(
+        tender,
+        focused_general_section=saved_section,
+        focused_general_source=saved_source,
+    )
     record = persist_tender_requirements(db, tender, payload)
     return _requirements_response_from_payload(
         tender,

@@ -4,17 +4,22 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from app.services.experience_fit import PUEDE_APLICAR, evaluate_experience_fit
+from types import SimpleNamespace
+
 from app.services.general_experience import (
     GENERAL_EXPERIENCE_LLM_VERSION,
     GENERAL_EXPERIENCE_VERSION,
     _job_lock,
     extract_general_experience_batch,
+    finish_focused_reading,
     general_experience_excerpt,
     general_experience_items_from_fields,
     general_experience_llm_is_saved,
+    general_experience_reading_is_final,
     payload_for_general_experience_reading,
 )
 from app.services.tender_requirements.llm_extraction import (
+    extract_general_experience_from_page_images,
     extract_general_experience_with_llm,
     parse_general_experience_llm_payload,
 )
@@ -279,6 +284,29 @@ def test_the_call_uses_only_the_general_experience_excerpt(mock_settings, mock_c
 
 @patch("app.services.tender_requirements.llm_extraction._openai_client")
 @patch("app.services.tender_requirements.llm_extraction.settings")
+def test_three_printed_pages_go_to_the_model(mock_settings, mock_client):
+    mock_settings.TENDER_REQUIREMENTS_USE_LLM = True
+    mock_settings.OPENAI_MODEL_NAME = "gpt-4o-mini"
+    message = MagicMock()
+    message.content = '{"requirement_description":"uno (1) o hasta dos (2) contratos","contracts_minimum":{"minimum":1,"maximum":2}}'
+    mock_client.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=message)]
+    )
+
+    parsed = extract_general_experience_from_page_images(
+        tender_external_id="CO1.REQ.1",
+        page_images=[b"one", b"two", b"three", b"four"],
+    )
+
+    content = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+    images = [part for part in content if part["type"] == "image_url"]
+    assert len(images) == 3
+    assert images[0]["image_url"]["detail"] == "high"
+    assert parsed["contracts_minimum"] == {"minimum": 1, "maximum": 2}
+
+
+@patch("app.services.tender_requirements.llm_extraction._openai_client")
+@patch("app.services.tender_requirements.llm_extraction.settings")
 def test_a_failed_model_call_returns_nothing_to_store(mock_settings, mock_client):
     mock_settings.TENDER_REQUIREMENTS_USE_LLM = True
     mock_settings.OPENAI_MODEL_NAME = "gpt-4o-mini"
@@ -292,6 +320,53 @@ def test_a_failed_model_call_returns_nothing_to_store(mock_settings, mock_client
         )
         is None
     )
+
+
+def test_a_text_reading_is_replaced_by_the_printed_pages():
+    assert not general_experience_reading_is_final({"general_experience_llm": True, "sections": []})
+    assert not general_experience_reading_is_final(
+        {"general_experience_llm": True, "general_experience_source": "text", "sections": []}
+    )
+    assert general_experience_reading_is_final(
+        {"general_experience_llm": True, "general_experience_source": "vision", "sections": []}
+    )
+    assert general_experience_reading_is_final(
+        {"general_experience_llm": True, "general_experience_source": "no_pages", "sections": []}
+    )
+
+
+@patch("app.services.general_experience.extract_general_experience_with_llm")
+@patch("app.services.general_experience.extract_general_experience_from_page_images")
+@patch("app.services.general_experience._render_general_experience_pages", return_value=[b"a", b"b", b"c"])
+@patch(
+    "app.services.general_experience._read_pliego_text",
+    return_value="experiencia general habilitante: uno (1) o hasta dos (2) contratos",
+)
+def test_every_pliego_is_read_from_three_printed_pages(_text, _pages, mock_vision, mock_text_llm):
+    mock_vision.return_value = {
+        "requirement_description": "uno (1) o hasta dos (2) contratos de interventoría",
+        "contracts_minimum": {"minimum": 1, "maximum": 2},
+    }
+    pliego = SimpleNamespace(id=uuid4())
+
+    payload = finish_focused_reading(pliego, "CO1.REQ.1", {"general_experience_llm": True, "sections": []})
+
+    mock_vision.assert_called_once()
+    assert mock_vision.call_args.kwargs["page_images"] == [b"a", b"b", b"c"]
+    mock_text_llm.assert_not_called()
+    assert payload["general_experience_source"] == "vision"
+    description = payload["sections"][0]["items"][0]["value"]
+    assert description.startswith("uno (1) o hasta dos (2)")
+
+
+@patch("app.services.general_experience.extract_general_experience_from_page_images", return_value=None)
+@patch("app.services.general_experience._render_general_experience_pages", return_value=[b"a"])
+@patch("app.services.general_experience._read_pliego_text", return_value="")
+def test_a_failed_page_reading_is_retried(_text, _pages, _vision):
+    pliego = SimpleNamespace(id=uuid4())
+    existing = {"general_experience_llm": True, "sections": []}
+
+    assert finish_focused_reading(pliego, "CO1.REQ.1", existing) is None
 
 
 def test_a_running_drain_makes_the_batch_wait_for_the_next_pass():

@@ -784,8 +784,8 @@ def parse_general_experience_llm_payload(payload: Any) -> dict[str, Any]:
     description = raw.get("requirement_description")
     if isinstance(description, str):
         text = re.sub(r"\s+", " ", description).strip()
-        if len(text) > 500:
-            text = text[:497] + "..."
+        if len(text) > 4000:
+            text = text[:3997] + "..."
         if len(text) >= 15:
             parsed["requirement_description"] = text
             evidence["requirement_description"] = _clean_evidence(evidence_raw.get("requirement_description"))
@@ -868,8 +868,41 @@ def _general_experience_prompt(tender_external_id: str, excerpt: str) -> str:
         "- contracts_minimum lleva minimum y maximum solo si el texto los dice.\n"
         "- experience_value_tiers solo cuando el porcentaje del presupuesto cambia según el número de contratos. "
         "contract_range con la forma mínimo-máximo, por ejemplo 1-2.\n"
-        "- requirement_description copia el requisito de experiencia general, sin inventar actividades.\n"
+        "- requirement_description es la copia literal del apartado de experiencia general, no un resumen.\n"
+        "- contracts_minimum sale solo de la frase que dice cuántos contratos se presentan. "
+        "Un número de códigos del RUP no es el máximo de contratos.\n"
+        "- Un valor en pesos no es min_amount_smmlv.\n"
         "- evidence cita como máximo 200 caracteres del fragmento por campo presente."
+    )
+
+
+def _general_experience_vision_prompt(tender_external_id: str) -> str:
+    return (
+        f"Licitación: {tender_external_id}\n\n"
+        "Las imágenes son las páginas del apartado de experiencia general del pliego. "
+        "El texto interno del PDF puede estar dañado. Lee lo que está impreso.\n\n"
+        "Devuelve únicamente este JSON, con null en cada dato que esas páginas no escriban:\n"
+        "{\n"
+        '  "requirement_description": null,\n'
+        '  "min_percentage_budget": null,\n'
+        '  "min_amount_smmlv": null,\n'
+        '  "time_window_years": null,\n'
+        '  "contracts_minimum": null,\n'
+        '  "experience_value_tiers": null,\n'
+        '  "evidence": {}\n'
+        "}\n\n"
+        "Reglas:\n"
+        "- requirement_description copia tal cual el apartado «Experiencia general habilitante del proponente», "
+        "con el número de contratos y el objeto entre comillas. No lo resumas. Ignora membrete, correo, teléfono y pie de página.\n"
+        "- Devuelve las seis claves. No pongas null en una porque otra ya tenga valor.\n"
+        "- Si un dato no está impreso en esas páginas, pon null.\n"
+        "- contracts_minimum sale de la frase que dice cuántos contratos o certificaciones se presentan, "
+        "por ejemplo uno (1) o hasta dos (2). Un «cinco (5)» de códigos del RUP no es el máximo de contratos.\n"
+        "- min_percentage_budget es un número. min_amount_smmlv es un número de SMMLV solo cuando la página escribe la cifra. "
+        "«Expresado en SMMLV» sin cifra, y cualquier valor en pesos, van null.\n"
+        "- time_window_years es el entero de años, solo si la página lo escribe.\n"
+        "- experience_value_tiers solo cuando el porcentaje cambia según el número de contratos.\n"
+        "- evidence cita como máximo 200 caracteres de lo impreso por campo presente."
     )
 
 
@@ -907,5 +940,55 @@ def extract_general_experience_with_llm(
         payload = _parse_json_content(response.choices[0].message.content or "{}")
     except Exception as exc:
         logger.warning("General experience LLM failed for %s: %s", tender_external_id, exc)
+        return None
+    return parse_general_experience_llm_payload(payload)
+
+
+def extract_general_experience_from_page_images(
+    *,
+    tender_external_id: str,
+    page_images: list[bytes],
+) -> Optional[dict[str, Any]]:
+    """Read the printed general-experience pages. None means the call failed."""
+    import base64
+
+    if not settings.TENDER_REQUIREMENTS_USE_LLM or not _openai_client:
+        return None
+    images = [image for image in page_images if image][:3]
+    if not images:
+        return None
+    content: list[dict[str, Any]] = [
+        {"type": "text", "text": _general_experience_vision_prompt(tender_external_id)}
+    ]
+    for image in images:
+        encoded = base64.b64encode(image).decode("ascii")
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{encoded}", "detail": "high"},
+            }
+        )
+    try:
+        response = _openai_client.chat.completions.create(
+            model=settings.OPENAI_MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Eres un analista de pliegos de condiciones de Colombia. "
+                        "Copias la experiencia general tal como está impresa en las páginas. "
+                        "Responde únicamente JSON válido."
+                    ),
+                },
+                {"role": "user", "content": content},
+            ],
+            temperature=0,
+            max_tokens=2200,
+            timeout=60,
+            response_format={"type": "json_object"},
+        )
+        payload = _parse_json_content(response.choices[0].message.content or "{}")
+    except Exception as exc:
+        logger.warning("General experience vision failed for %s: %s", tender_external_id, exc)
         return None
     return parse_general_experience_llm_payload(payload)
