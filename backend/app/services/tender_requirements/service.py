@@ -90,6 +90,8 @@ def build_tender_requirements(
     tender: Tender,
     focused_general_section: Optional[dict] = None,
     focused_general_source: Optional[str] = None,
+    focused_specific_section: Optional[dict] = None,
+    focused_specific_source: Optional[str] = None,
 ) -> dict[str, Any]:
     """Extract participation requirements from pliego and anexo documents."""
     if not settings.TENDER_REQUIREMENTS_EXTRACTION_ENABLED:
@@ -344,6 +346,15 @@ def build_tender_requirements(
             saved_section=focused_general_section,
             saved_source=focused_general_source,
             pliego=_StoredPliego(pliego) if pliego is not None else None,
+        )
+    if focused_specific_section is not None:
+        from app.services.pliego_specific_experience import replace_specific_experience_with_focused_reading
+
+        payload = replace_specific_experience_with_focused_reading(
+            payload,
+            tender_external_id=tender.external_id,
+            saved_section=focused_specific_section,
+            saved_source=focused_specific_source,
         )
     return payload
 

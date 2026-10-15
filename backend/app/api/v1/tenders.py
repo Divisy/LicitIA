@@ -38,6 +38,10 @@ from app.services.general_experience import (
     general_experience_reading_is_final,
     refresh_focused_general_experience,
 )
+from app.services.pliego_specific_experience import (
+    refresh_focused_specific_experience,
+    specific_experience_reading_is_final,
+)
 from app.services.tender_requirements.service import (
     EXTRACTION_VERSION,
     build_tender_requirements,
@@ -685,9 +689,21 @@ async def get_tender_requirements(
     )
     saved_section = None
     saved_source = None
+    saved_specific_section = None
+    saved_specific_source = None
     if cached and cached.requirements_json and general_experience_reading_is_final(cached.requirements_json):
         saved_section = _general_experience_section(cached.requirements_json)
         saved_source = cached.requirements_json.get("general_experience_source")
+    if cached and cached.requirements_json and specific_experience_reading_is_final(cached.requirements_json):
+        saved_specific_section = next(
+            (
+                section
+                for section in cached.requirements_json.get("sections") or []
+                if section.get("key") == "experiencia_especifica"
+            ),
+            None,
+        )
+        saved_specific_source = cached.requirements_json.get("specific_experience_source")
 
     if cached and cached.requirements_json:
         cached_version = cached.extraction_version or cached.requirements_json.get(
@@ -697,16 +713,29 @@ async def get_tender_requirements(
         if cached_version == EXTRACTION_VERSION and not requirements_cache_is_stale(
             tender, payload
         ):
-            if not general_experience_reading_is_final(payload):
+            if general_experience_reading_is_final(payload) and specific_experience_reading_is_final(payload):
+                return _requirements_response_from_payload(
+                    tender,
+                    payload,
+                    extracted_at=cached.extracted_at,
+                    cached=True,
+                )
+            had_general = general_experience_reading_is_final(payload)
+            had_specific = specific_experience_reading_is_final(payload)
+            if not had_general:
                 payload = refresh_focused_general_experience(db, tender, payload)
-                if general_experience_reading_is_final(payload):
-                    record = persist_tender_requirements(db, tender, payload)
-                    return _requirements_response_from_payload(
-                        tender,
-                        payload,
-                        extracted_at=record.extracted_at,
-                        cached=False,
-                    )
+            if not specific_experience_reading_is_final(payload):
+                payload = refresh_focused_specific_experience(db, tender, payload)
+            if general_experience_reading_is_final(payload) != had_general or specific_experience_reading_is_final(
+                payload
+            ) != had_specific:
+                record = persist_tender_requirements(db, tender, payload)
+                return _requirements_response_from_payload(
+                    tender,
+                    payload,
+                    extracted_at=record.extracted_at,
+                    cached=False,
+                )
             return _requirements_response_from_payload(
                 tender,
                 payload,
@@ -718,6 +747,8 @@ async def get_tender_requirements(
         tender,
         focused_general_section=saved_section,
         focused_general_source=saved_source,
+        focused_specific_section=saved_specific_section,
+        focused_specific_source=saved_specific_source,
     )
     record = persist_tender_requirements(db, tender, payload)
     return _requirements_response_from_payload(

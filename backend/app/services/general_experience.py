@@ -594,6 +594,12 @@ def _persist(db: Session, tender: Tender, payload: dict) -> None:
     record.extracted_at = datetime.utcnow()
 
 
+def _specific_reading_is_final(payload: Optional[dict]) -> bool:
+    from app.services.pliego_specific_experience import specific_experience_reading_is_final
+
+    return specific_experience_reading_is_final(payload)
+
+
 def _pending_tender_ids(db: Session) -> list:
     pliego_ids = (
         db.query(TenderDocument.tender_id)
@@ -613,6 +619,7 @@ def _pending_tender_ids(db: Session) -> list:
         tender.id
         for tender in tenders
         if not general_experience_reading_is_final(stored.get(tender.id))
+        or not _specific_reading_is_final(stored.get(tender.id))
     ]
 
 
@@ -625,7 +632,7 @@ def _read_one(db: Session, tender_id) -> str:
             db.commit()
             return "skipped"
         existing = _stored_payload(db, tender_id)
-        if general_experience_reading_is_final(existing):
+        if general_experience_reading_is_final(existing) and _specific_reading_is_final(existing):
             db.commit()
             return "skipped"
         snapshot = _StoredPliego(pliego)
@@ -634,20 +641,36 @@ def _read_one(db: Session, tender_id) -> str:
 
         tender = db.query(Tender).filter(Tender.id == tender_id).one()
         existing = _stored_payload(db, tender_id)
-        if general_experience_reading_is_final(existing):
+        if general_experience_reading_is_final(existing) and _specific_reading_is_final(existing):
             db.commit()
             return "skipped"
-        payload = finish_focused_reading(snapshot, external_id, existing)
-        if payload is None:
-            db.commit()
-            logger.info("General experience call failed for %s; kept the previous read", external_id)
-            return "failed"
+        payload = existing
+        if not general_experience_reading_is_final(existing):
+            payload = finish_focused_reading(snapshot, external_id, existing)
+            if payload is None:
+                db.commit()
+                logger.info("General experience call failed for %s; kept the previous read", external_id)
+                return "failed"
+        if not _specific_reading_is_final(payload):
+            from app.services.pliego_specific_experience import finish_specific_reading
+
+            updated = finish_specific_reading(snapshot, external_id, payload)
+            if updated is None:
+                if payload is not existing:
+                    _persist(db, tender, payload)
+                    db.commit()
+                else:
+                    db.commit()
+                logger.info("Specific experience call failed for %s; kept the previous read", external_id)
+                return "failed"
+            payload = updated
         _persist(db, tender, payload)
         db.commit()
         logger.info(
-            "Saved general experience for %s (source=%s)",
+            "Saved pliego experience for %s (general=%s, specific=%s)",
             external_id,
             payload.get("general_experience_source"),
+            payload.get("specific_experience_source"),
         )
         if not general_experience_llm_is_saved(payload):
             return "failed"

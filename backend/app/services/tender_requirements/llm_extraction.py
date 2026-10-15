@@ -1042,3 +1042,123 @@ def extract_general_experience_from_page_images(
         logger.warning("General experience vision failed for %s: %s", tender_external_id, exc)
         return None
     return parse_general_experience_llm_payload(payload)
+
+
+def _specific_experience_vision_prompt(tender_external_id: str) -> str:
+    return (
+        f"Licitación: {tender_external_id}\n\n"
+        "La imagen es la página del apartado de experiencia específica del pliego. "
+        "Si hay una segunda imagen, es solo la continuación de ese apartado. "
+        "Copia lo impreso de «Experiencia específica habilitante» y detente en el siguiente título.\n\n"
+        "Devuelve únicamente este JSON, con null en cada dato que ese apartado no escriba:\n"
+        "{\n"
+        '  "specific_scope": null,\n'
+        '  "specific_min_percentage": null,\n'
+        '  "min_amount_smmlv": null,\n'
+        '  "contracts_minimum": null,\n'
+        '  "evidence": {}\n'
+        "}\n\n"
+        "Reglas:\n"
+        "- specific_scope copia tal cual el apartado de experiencia específica, con el número de contratos "
+        "y el objeto entre comillas. No lo resumas. Ignora la experiencia general, el personal mínimo, "
+        "el membrete, el correo y el pie de página.\n"
+        "- Si un dato no está impreso en ese apartado, pon null.\n"
+        "- specific_min_percentage es el porcentaje del presupuesto oficial que pide la experiencia específica.\n"
+        "- min_amount_smmlv es un número de SMMLV solo cuando ese apartado escribe la cifra. "
+        "Un valor en pesos no es min_amount_smmlv.\n"
+        "- contracts_minimum sale de la frase que dice cuántos contratos se presentan para la experiencia específica. "
+        "Un número de códigos del RUP no es el máximo.\n"
+        "- evidence cita como máximo 200 caracteres de lo impreso por campo presente."
+    )
+
+
+def parse_specific_experience_llm_payload(payload: Any) -> dict[str, Any]:
+    """Keep only specific-experience fields the model returned from the printed section."""
+    raw = payload if isinstance(payload, dict) else {}
+    evidence_raw = raw.get("evidence") if isinstance(raw.get("evidence"), dict) else {}
+    parsed: dict[str, Any] = {}
+    evidence: dict[str, str] = {}
+
+    scope = raw.get("specific_scope")
+    if isinstance(scope, str):
+        text = re.sub(r"\s+", " ", scope).strip()
+        if len(text) > 4000:
+            text = text[:3997] + "..."
+        if len(text) >= 15:
+            parsed["specific_scope"] = text
+            evidence["specific_scope"] = _clean_evidence(evidence_raw.get("specific_scope"))
+
+    percentage = _bounded_number(raw.get("specific_min_percentage"), 1, 300)
+    if percentage is not None:
+        parsed["specific_min_percentage"] = percentage
+        evidence["specific_min_percentage"] = _clean_evidence(evidence_raw.get("specific_min_percentage"))
+
+    amount = _bounded_number(raw.get("min_amount_smmlv"), 1, 50_000)
+    if amount is not None and abs(amount - _SALARY_COPIED_AS_SMMLV) >= 1 and abs(amount - 81.51) >= 0.02:
+        parsed["min_amount_smmlv"] = amount
+        evidence["min_amount_smmlv"] = _clean_evidence(evidence_raw.get("min_amount_smmlv"))
+
+    contracts = raw.get("contracts_minimum")
+    if isinstance(contracts, dict):
+        minimum = _bounded_number(contracts.get("minimum"), 1, 20)
+        maximum = _bounded_number(contracts.get("maximum"), 1, 20)
+        if minimum is not None:
+            value: dict[str, int] = {"minimum": int(minimum)}
+            if maximum is not None and maximum >= minimum:
+                value["maximum"] = int(maximum)
+            parsed["contracts_minimum"] = value
+            evidence["contracts_minimum"] = _clean_evidence(evidence_raw.get("contracts_minimum"))
+
+    if evidence:
+        parsed["evidence"] = evidence
+    return parsed
+
+
+def extract_specific_experience_from_page_images(
+    *,
+    tender_external_id: str,
+    page_images: list[bytes],
+) -> Optional[dict[str, Any]]:
+    """Read the printed specific-experience page. None means the call failed."""
+    import base64
+
+    if not settings.TENDER_REQUIREMENTS_USE_LLM or not _openai_client:
+        return None
+    images = [image for image in page_images if image][:2]
+    if not images:
+        return None
+    content: list[dict[str, Any]] = [
+        {"type": "text", "text": _specific_experience_vision_prompt(tender_external_id)}
+    ]
+    for image in images:
+        encoded = base64.b64encode(image).decode("ascii")
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{encoded}", "detail": "high"},
+            }
+        )
+    try:
+        response = _openai_client.chat.completions.create(
+            model=settings.OPENAI_MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Eres un analista de pliegos de condiciones de Colombia. "
+                        "Copias la experiencia específica tal como está impresa. "
+                        "Responde únicamente JSON válido."
+                    ),
+                },
+                {"role": "user", "content": content},
+            ],
+            temperature=0,
+            max_tokens=2200,
+            timeout=60,
+            response_format={"type": "json_object"},
+        )
+        payload = _parse_json_content(response.choices[0].message.content or "{}")
+    except Exception as exc:
+        logger.warning("Specific experience vision failed for %s: %s", tender_external_id, exc)
+        return None
+    return parse_specific_experience_llm_payload(payload)
