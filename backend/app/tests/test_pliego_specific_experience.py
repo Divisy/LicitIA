@@ -94,6 +94,45 @@ def test_the_specific_page_image_goes_to_the_model(mock_settings, mock_client):
 
     content = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
     images = [part for part in content if part["type"] == "image_url"]
-    assert len(images) == 2
+    assert len(images) == 3
     assert images[0]["image_url"]["detail"] == "high"
     assert parsed["specific_scope"].startswith("un (1) contrato")
+
+
+def test_a_contract_count_is_not_the_specific_experience_paragraph():
+    count_only = {
+        "specific_experience_llm": True,
+        "specific_experience_source": "pages",
+        "sections": [
+            {
+                "key": "experiencia_especifica",
+                "items": [
+                    {
+                        "key": "specific_scope",
+                        "value": (
+                            "Se aceptará la acreditación mediante un contrato o la sumatoria "
+                            "de hasta dos contratos."
+                        ),
+                    }
+                ],
+            }
+        ],
+    }
+    assert not specific_experience_reading_is_final(count_only)
+
+    with_activity = {
+        "specific_experience_llm": True,
+        "specific_experience_source": "pages",
+        "sections": [
+            {
+                "key": "experiencia_especifica",
+                "items": [
+                    {
+                        "key": "specific_scope",
+                        "value": "Construcción y/o ampliación y/o reconstrucción de edificaciones.",
+                    }
+                ],
+            }
+        ],
+    }
+    assert specific_experience_reading_is_final(with_activity)

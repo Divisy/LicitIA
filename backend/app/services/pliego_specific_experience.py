@@ -10,7 +10,12 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.models.tender import Tender
-from app.services.general_experience import _StoredPliego, _llm_item
+from app.services.general_experience import (
+    _StoredPliego,
+    _llm_item,
+    _printed_page_span,
+    experience_subject_is_written,
+)
 from app.services.tender_requirements.llm_extraction import extract_specific_experience_from_page_images
 from app.services.tender_requirements.regex_extraction import normalize_text
 
@@ -18,10 +23,27 @@ logger = get_logger(__name__)
 
 
 def specific_experience_reading_is_final(payload: Optional[dict]) -> bool:
-    """A page-image reading of the specific section is kept."""
+    """A page reading is kept once it carries the paragraph of what the specific experience must be."""
     if not payload or payload.get("specific_experience_llm") is not True:
         return False
-    return payload.get("specific_experience_source") in {"pages", "no_pages"}
+    source = payload.get("specific_experience_source")
+    if source == "no_pages":
+        return True
+    if source != "pages":
+        return False
+    if payload.get("specific_experience_subject") is True:
+        return True
+    for section in payload.get("sections") or []:
+        if section.get("key") != "experiencia_especifica":
+            continue
+        if section.get("experience_subject") is True:
+            return True
+        for item in section.get("items") or []:
+            if item.get("key") == "specific_scope" and experience_subject_is_written(
+                str(item.get("value") or "")
+            ):
+                return True
+    return False
 
 
 def _specific_section(items: list[dict]) -> dict:
@@ -133,8 +155,7 @@ def _render_specific_experience_pages(pliego: _StoredPliego) -> list[bytes]:
             start = _specific_page_index(document)
             if start is None:
                 return []
-            last = min(start + 2, document.page_count)
-            for index in range(start, last):
+            for index in _printed_page_span(start, document.page_count, 3):
                 pixmap = document[index].get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
                 images.append(pixmap.tobytes("jpeg", jpg_quality=72))
         finally:
@@ -164,6 +185,8 @@ def apply_focused_specific_experience_section(payload: dict, section: dict, sour
     updated["sections"] = sections
     updated["specific_experience_llm"] = True
     updated["specific_experience_source"] = source
+    if stored.get("experience_subject") is True:
+        updated["specific_experience_subject"] = True
     return updated
 
 
@@ -188,6 +211,7 @@ def finish_specific_reading(
     if fields is None:
         return None
     section = _specific_section(specific_experience_items_from_fields(fields, pliego.id))
+    section["experience_subject"] = True
     base = existing or {"tender_external_id": tender_external_id, "sections": []}
     return apply_focused_specific_experience_section(base, section, "pages")
 

@@ -17,6 +17,7 @@ from app.services.general_experience import (
     general_experience_llm_is_saved,
     general_experience_reading_is_final,
     payload_for_general_experience_reading,
+    _printed_page_span,
 )
 from app.services.tender_requirements.llm_extraction import (
     extract_general_experience_from_page_images,
@@ -347,8 +348,47 @@ def test_a_text_reading_is_replaced_by_the_printed_pages():
     assert not general_experience_reading_is_final(
         {"general_experience_llm": True, "general_experience_source": "text", "sections": []}
     )
-    assert general_experience_reading_is_final(
+    assert not general_experience_reading_is_final(
         {"general_experience_llm": True, "general_experience_source": "pages", "sections": []}
+    )
+    assert not general_experience_reading_is_final(
+        {
+            "general_experience_llm": True,
+            "general_experience_source": "pages",
+            "sections": [
+                {
+                    "key": "experiencia_general",
+                    "items": [
+                        {
+                            "key": "requirement_description",
+                            "value": (
+                                "Se deberá presentar un (1) contrato adicional a los cinco (5) "
+                                "inicialmente previstos, para un máximo de seis (6) contratos."
+                            ),
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    assert general_experience_reading_is_final(
+        {
+            "general_experience_llm": True,
+            "general_experience_source": "pages",
+            "sections": [
+                {
+                    "key": "experiencia_general",
+                    "items": [
+                        {
+                            "key": "requirement_description",
+                            "value": (
+                                "Proyectos de construcción y/o ampliación y/o reconstrucción de edificaciones."
+                            ),
+                        }
+                    ],
+                }
+            ],
+        }
     )
     assert general_experience_reading_is_final(
         {"general_experience_llm": True, "general_experience_source": "vision", "sections": []}
@@ -365,6 +405,11 @@ def test_a_text_reading_is_replaced_by_the_printed_pages():
     assert general_experience_reading_is_final(
         {"general_experience_llm": True, "general_experience_source": "no_pages", "sections": []}
     )
+
+
+def test_the_page_before_the_heading_is_included():
+    assert list(_printed_page_span(25, 78, 3)) == [24, 25, 26]
+    assert list(_printed_page_span(0, 78, 3)) == [0, 1, 2]
 
 
 @patch("app.services.general_experience.extract_general_experience_with_llm")

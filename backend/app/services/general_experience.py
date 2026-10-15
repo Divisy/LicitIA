@@ -79,13 +79,73 @@ def _section_has_time_window(payload: Optional[dict]) -> bool:
     return False
 
 
+_EXPERIENCE_SUBJECT_STEMS = (
+    "construc",
+    "intervent",
+    "supervis",
+    "estudio",
+    "diseno",
+    "obra",
+    "edific",
+    "mantenim",
+    "adecuac",
+    "consultor",
+    "restaur",
+    "paviment",
+    "rehabilit",
+    "ampliac",
+    "reconstruc",
+    "suministro",
+    "instalac",
+    "conservac",
+    "remodel",
+    "dragado",
+    "alcantarill",
+    "acueduct",
+    "infraestruct",
+    "vivienda",
+    "puente",
+)
+
+
+def experience_subject_is_written(text: Optional[str]) -> bool:
+    """The sentence says what the experience must be, not only how many contracts are allowed."""
+    folded = normalize_text(text or "")
+    return any(stem in folded for stem in _EXPERIENCE_SUBJECT_STEMS)
+
+
+def _item_text(payload: Optional[dict], section_key: str, item_key: str) -> str:
+    for section in (payload or {}).get("sections") or []:
+        if section.get("key") != section_key:
+            continue
+        for item in section.get("items") or []:
+            if item.get("key") == item_key:
+                return str(item.get("value") or item.get("display_value") or "")
+    return ""
+
+
+def _section_marks_subject(payload: Optional[dict], section_key: str) -> bool:
+    for section in (payload or {}).get("sections") or []:
+        if section.get("key") == section_key and section.get("experience_subject") is True:
+            return True
+    return False
+
+
 def general_experience_reading_is_final(payload: Optional[dict]) -> bool:
-    """A page-image reading is kept. One that stored a year window is read again, so company life is not shown as experience age."""
+    """A page reading is kept once it carries the paragraph of what the experience must be."""
     if not general_experience_llm_is_saved(payload):
         return False
     source = (payload or {}).get("general_experience_source")
-    if source in {"pages", "no_pages"}:
+    if source == "no_pages":
         return True
+    if source == "pages":
+        if (payload or {}).get("general_experience_subject") is True or _section_marks_subject(
+            payload, "experiencia_general"
+        ):
+            return True
+        return experience_subject_is_written(
+            _item_text(payload, "experiencia_general", "requirement_description")
+        )
     return source == "vision" and not _section_has_time_window(payload)
 
 
@@ -163,8 +223,7 @@ def _render_general_experience_pages(pliego: _StoredPliego, limit: int = 3) -> l
             start = _general_experience_page_index(document)
             if start is None:
                 return []
-            last = min(start + limit, document.page_count)
-            for index in range(start, last):
+            for index in _printed_page_span(start, document.page_count, limit):
                 pixmap = document[index].get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
                 images.append(pixmap.tobytes("jpeg", jpg_quality=72))
         finally:
@@ -173,6 +232,12 @@ def _render_general_experience_pages(pliego: _StoredPliego, limit: int = 3) -> l
         if temp_dir is not None:
             temp_dir.cleanup()
     return images
+
+
+def _printed_page_span(start: int, page_count: int, limit: int) -> range:
+    """The located page, the one before it, and the following ones, up to limit."""
+    first = max(0, start - 1)
+    return range(first, min(first + limit, page_count))
 
 
 def _general_experience_page_index(document) -> Optional[int]:
@@ -213,6 +278,8 @@ def finish_focused_reading(
             source_document_id=pliego.id,
         )
     section = _section(general_experience_items_from_fields(fields, pliego.id))
+    if source == "pages":
+        section["experience_subject"] = True
     if _is_full_extract(existing):
         return apply_focused_general_experience_section(existing, section, source)
     payload = merge_general_experience_reading(
@@ -222,6 +289,11 @@ def finish_focused_reading(
         llm_done=True,
     )
     payload["general_experience_source"] = source
+    if source == "pages":
+        payload["general_experience_subject"] = True
+        for stored in payload.get("sections") or []:
+            if stored.get("key") == "experiencia_general":
+                stored["experience_subject"] = True
     return payload
 
 
@@ -263,6 +335,8 @@ def apply_focused_general_experience_section(
     updated["sections"] = sections
     updated["general_experience_llm"] = True
     updated["general_experience_source"] = source
+    if stored.get("experience_subject") is True:
+        updated["general_experience_subject"] = True
     return updated
 
 

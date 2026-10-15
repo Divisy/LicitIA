@@ -915,7 +915,10 @@ def _general_experience_prompt(tender_external_id: str, excerpt: str) -> str:
         "- contracts_minimum lleva minimum y maximum solo si el texto los dice.\n"
         "- experience_value_tiers solo cuando el porcentaje del presupuesto cambia según el número de contratos. "
         "contract_range con la forma mínimo-máximo, por ejemplo 1-2.\n"
-        "- requirement_description es la copia literal del apartado de experiencia general, no un resumen.\n"
+        "- requirement_description es el párrafo que dice en qué hay que tener la experiencia general: "
+        "las actividades, el objeto o el tipo de obras. Cópialo tal cual, también si está en una tabla junto a «General». "
+        "No lo resumas y no lo reemplaces por la frase que solo dice cuántos contratos se presentan, "
+        "la excepción de Mipyme, el porcentaje o la duración de la persona jurídica.\n"
         "- contracts_minimum sale solo de la frase que dice cuántos contratos se presentan. "
         "Un número de códigos del RUP no es el máximo de contratos.\n"
         "- Un valor en pesos no es min_amount_smmlv.\n"
@@ -940,8 +943,11 @@ def _general_experience_vision_prompt(tender_external_id: str) -> str:
         '  "evidence": {}\n'
         "}\n\n"
         "Reglas:\n"
-        "- requirement_description copia tal cual el apartado «Experiencia general habilitante del proponente», "
-        "con el número de contratos y el objeto entre comillas. No lo resumas. Ignora membrete, correo, teléfono y pie de página.\n"
+        "- requirement_description es el párrafo impreso que dice en qué hay que tener la experiencia general: "
+        "las actividades, el objeto o el tipo de obras. Cópialo tal cual, también cuando esté en la celda de «General» "
+        "o de «Tipo de experiencia». No lo resumas. Una frase que solo dice cuántos contratos se presentan, "
+        "la excepción de Mipyme o el porcentaje del presupuesto no es ese párrafo: eso va en contracts_minimum "
+        "o en experience_value_tiers. Si el mismo párrafo trae el objeto y el número de contratos, consérvalo completo.\n"
         "- Devuelve las claves. No pongas null en una porque otra ya tenga valor.\n"
         "- Si un dato no está impreso en esas páginas, pon null.\n"
         "- contracts_minimum sale de la frase que dice cuántos contratos o certificaciones se presentan, "
@@ -1026,7 +1032,7 @@ def extract_general_experience_from_page_images(
                     "role": "system",
                     "content": (
                         "Eres un analista de pliegos de condiciones de Colombia. "
-                        "Copias la experiencia general tal como está impresa en las páginas. "
+                        "Copias el párrafo que dice en qué hay que tener la experiencia general, tal como está impreso. "
                         "Responde únicamente JSON válido."
                     ),
                 },
@@ -1059,9 +1065,11 @@ def _specific_experience_vision_prompt(tender_external_id: str) -> str:
         '  "evidence": {}\n'
         "}\n\n"
         "Reglas:\n"
-        "- specific_scope copia tal cual el apartado de experiencia específica, con el número de contratos "
-        "y el objeto entre comillas. No lo resumas. Ignora la experiencia general, el personal mínimo, "
-        "el membrete, el correo y el pie de página.\n"
+        "- specific_scope es el párrafo impreso que dice en qué hay que tener la experiencia específica: "
+        "las actividades, el objeto o el tipo de obras. Cópialo tal cual, también cuando esté en la celda de «Específica». "
+        "No lo resumas. Ignora la experiencia general, el personal mínimo, el membrete, el correo y el pie de página. "
+        "La nota de que la magnitud se acredita con un contrato o con la suma de máximo dos no es ese párrafo: "
+        "el número de contratos va en contracts_minimum. Si el mismo párrafo trae el objeto y el número, consérvalo completo.\n"
         "- Si un dato no está impreso en ese apartado, pon null.\n"
         "- specific_min_percentage es el porcentaje del presupuesto oficial que pide la experiencia específica.\n"
         "- min_amount_smmlv es un número de SMMLV solo cuando ese apartado escribe la cifra. "
@@ -1124,7 +1132,7 @@ def extract_specific_experience_from_page_images(
 
     if not settings.TENDER_REQUIREMENTS_USE_LLM or not _openai_client:
         return None
-    images = [image for image in page_images if image][:2]
+    images = [image for image in page_images if image][:3]
     if not images:
         return None
     content: list[dict[str, Any]] = [
@@ -1146,7 +1154,7 @@ def extract_specific_experience_from_page_images(
                     "role": "system",
                     "content": (
                         "Eres un analista de pliegos de condiciones de Colombia. "
-                        "Copias la experiencia específica tal como está impresa. "
+                        "Copias el párrafo que dice en qué hay que tener la experiencia específica, tal como está impreso. "
                         "Responde únicamente JSON válido."
                     ),
                 },
