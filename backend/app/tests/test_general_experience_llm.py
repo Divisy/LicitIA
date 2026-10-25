@@ -126,13 +126,26 @@ def test_ai_numbers_are_what_the_smmlv_match_reads():
         ],
         matched_experience_ids={"exp-1"},
         comparison_available=True,
+        paragraph_matched_ids={"exp-1"},
+        paragraph_comparison_available=True,
         tender_amount=300 * _SMMLV_2026,
         publication_date=date(2026, 6, 1),
         requirements={
             "extraction_version": GENERAL_EXPERIENCE_LLM_VERSION,
             "general_experience_extracted": True,
             "general_experience_llm": True,
-            "sections": [{"key": "experiencia_general", "items": items}],
+            "sections": [
+                {"key": "experiencia_general", "items": items},
+                {
+                    "key": "experiencia_especifica",
+                    "items": [
+                        {
+                            "key": "specific_scope",
+                            "value": "No aplica para el presente proceso.",
+                        }
+                    ],
+                },
+            ],
         },
     )
 

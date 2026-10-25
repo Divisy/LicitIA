@@ -144,6 +144,64 @@ def _prepare_object_matches(payload: list, fit_experiences: list) -> tuple[dict,
     return judge_object_matches(payload, fit_experiences)
 
 
+def _prepare_experience_paragraph_matches(
+    payload: list,
+    fit_experiences: list,
+    fit_context: dict,
+    object_matches: dict,
+) -> tuple[dict, set]:
+    """Compare the pliego experience paragraphs with actas that already matched the tender object."""
+    from app.services.experience_fit import experience_paragraphs
+    from app.services.object_match import judge_object_matches
+
+    synthetic = []
+    for tender in payload:
+        tender_id = tender["id"]
+        matched = {str(item) for item in (object_matches.get(tender_id) or set())}
+        if not matched:
+            continue
+        requirements = (fit_context.get(tender_id) or {}).get("requirements")
+        general_text, specific_text, specific_required = experience_paragraphs(requirements)
+        if not general_text:
+            continue
+        synthetic.append(
+            {
+                "id": f"{tender_id}::general",
+                "kind": tender["kind"],
+                "object": general_text,
+                "candidate_ids": matched,
+            }
+        )
+        if specific_required and specific_text:
+            synthetic.append(
+                {
+                    "id": f"{tender_id}::specific",
+                    "kind": tender["kind"],
+                    "object": specific_text,
+                    "candidate_ids": matched,
+                }
+            )
+    if not synthetic:
+        return {}, set()
+    raw, failed = judge_object_matches(synthetic, fit_experiences, purpose="experience")
+    covered: dict[str, set] = {}
+    failed_tenders: set[str] = set()
+    for tender in payload:
+        tender_id = tender["id"]
+        general_key = f"{tender_id}::general"
+        specific_key = f"{tender_id}::specific"
+        if general_key in failed or specific_key in failed:
+            failed_tenders.add(tender_id)
+            continue
+        if general_key not in raw:
+            continue
+        ids = set(raw[general_key])
+        if specific_key in raw:
+            ids &= set(raw[specific_key])
+        covered[tender_id] = ids
+    return covered, failed_tenders
+
+
 def _fit_context(db: Session, tenders: list) -> dict[str, dict]:
     """Copy budget, date and stored general experience before the object comparison."""
     from app.models.tender_requirements import TenderRequirements
@@ -174,6 +232,8 @@ def _attach_experience_fit(
     matched_ids: set[str],
     comparison_available: bool,
     context: Optional[dict] = None,
+    paragraph_ids: Optional[set[str]] = None,
+    paragraph_available: bool = True,
 ) -> None:
     if not fit_experiences:
         return
@@ -191,6 +251,8 @@ def _attach_experience_fit(
         tender_amount=context.get("amount"),
         publication_date=context.get("publication_date"),
         requirements=context.get("requirements"),
+        paragraph_matched_ids=paragraph_ids,
+        paragraph_comparison_available=paragraph_available,
     )
     response.experience_fit = ExperienceFit.model_validate(result.as_dict())
     response.experience_match_score = None
@@ -355,16 +417,26 @@ async def list_tenders(
             object_matches, failed_matches = await asyncio.to_thread(
                 _prepare_object_matches, payload, fit_experiences
             )
+            paragraph_matches, failed_paragraphs = await asyncio.to_thread(
+                _prepare_experience_paragraph_matches,
+                payload,
+                fit_experiences,
+                fit_context,
+                object_matches,
+            )
             fitted = []
             for tender in kept:
                 tender_response = TenderResponse.model_validate(tender)
+                tender_id = str(tender.id)
                 _attach_experience_fit(
                     tender_response,
                     tender,
                     fit_experiences,
-                    object_matches.get(str(tender.id), set()),
-                    str(tender.id) not in failed_matches,
-                    fit_context.get(str(tender.id)),
+                    object_matches.get(tender_id, set()),
+                    tender_id not in failed_matches,
+                    fit_context.get(tender_id),
+                    paragraph_matches.get(tender_id, set()),
+                    tender_id not in failed_paragraphs,
                 )
                 if wanted_fit and (
                     tender_response.experience_fit is None
@@ -383,6 +455,13 @@ async def list_tenders(
             object_matches, failed_matches = await asyncio.to_thread(
                 _prepare_object_matches, payload, fit_experiences
             )
+            paragraph_matches, failed_paragraphs = await asyncio.to_thread(
+                _prepare_experience_paragraph_matches,
+                payload,
+                fit_experiences,
+                fit_context,
+                object_matches,
+            )
             items = []
             for tender in tenders:
                 tender_response = TenderResponse.model_validate(tender)
@@ -392,13 +471,16 @@ async def list_tenders(
                     )
                     tender_response.experience_match_score = match_score if match_score > 0 else None
                     tender_response.matching_experiences = matching_experiences if matching_experiences else None
+                tender_id = str(tender.id)
                 _attach_experience_fit(
                     tender_response,
                     tender,
                     fit_experiences,
-                    object_matches.get(str(tender.id), set()),
-                    str(tender.id) not in failed_matches,
-                    fit_context.get(str(tender.id)),
+                    object_matches.get(tender_id, set()),
+                    tender_id not in failed_matches,
+                    fit_context.get(tender_id),
+                    paragraph_matches.get(tender_id, set()),
+                    tender_id not in failed_paragraphs,
                 )
                 items.append(tender_response)
         

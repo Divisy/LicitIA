@@ -1,11 +1,13 @@
-"""Decide if a company can bid from the same contract type, the object match and the pliego minimum.
+"""Decide if a company can bid from the contract type, both objects, and the pliego minimum.
 
-OpenAI compares objects before this function runs. The SMMLV sum, the date
-window and the contract count use the general-experience section already
-stored for the tender. Acta line items do not decide this result.
+OpenAI first compares the tender object with the acta object. The contracts that
+pass are compared again with the general and specific experience paragraphs.
+The SMMLV sum then uses only those contracts. A specific paragraph that says it
+does not apply to this process is not required.
 """
 from __future__ import annotations
 
+import unicodedata
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -24,6 +26,38 @@ _REAL_KINDS = {
 
 # The year's salary was stored in the SMMLV column of six old rows.
 _SALARY_COPIED_AS_SMMLV = 81510.0
+_SPECIFIC_DOES_NOT_APPLY = (
+    "no aplica para el presente proceso",
+    "no aplica para este proceso",
+    "no aplica en el presente proceso",
+)
+
+
+def _fold(text: str) -> str:
+    folded = unicodedata.normalize("NFKD", text or "")
+    folded = "".join(character for character in folded if not unicodedata.combining(character))
+    return " ".join(folded.lower().split())
+
+
+def specific_requirement_does_not_apply(text: Optional[str]) -> bool:
+    """The printed specific section says this process does not ask for it."""
+    folded = _fold(text or "")
+    return any(phrase in folded for phrase in _SPECIFIC_DOES_NOT_APPLY)
+
+
+def experience_paragraphs(requirements: Optional[dict]) -> tuple[str, str, bool]:
+    """Return the general paragraph, the specific paragraph, and whether specific is required."""
+    general = ""
+    specific = ""
+    for section in (requirements or {}).get("sections") or []:
+        for item in section.get("items") or []:
+            value = str(item.get("value") or item.get("display_value") or "").strip()
+            if section.get("key") == "experiencia_general" and item.get("key") == "requirement_description":
+                general = value
+            if section.get("key") == "experiencia_especifica" and item.get("key") == "specific_scope":
+                specific = value
+    required = not specific_requirement_does_not_apply(specific)
+    return general, specific if required else "", required
 
 
 @dataclass
@@ -266,14 +300,20 @@ def present_general_experience_smmlv(
     return shown
 
 
-def _fit_contract(row: dict, *, in_sum: bool, amount: Optional[float]) -> FitContract:
+def _fit_contract(
+    row: dict,
+    *,
+    in_sum: bool,
+    amount: Optional[float],
+    specific_met: bool = False,
+) -> FitContract:
     return FitContract(
         experience_id=str(row.get("experience_id")),
         contract_number=row.get("contract_number"),
         contracting_entity=row.get("contracting_entity"),
         amount_smmlv=amount,
         in_general_sum=in_sum,
-        specific_met=False,
+        specific_met=specific_met,
         object_text=(row.get("object_text") or "").strip() or None,
     )
 
@@ -288,6 +328,8 @@ def evaluate_experience_fit(
     tender_amount: Optional[float] = None,
     publication_date=None,
     requirements: Optional[dict] = None,
+    paragraph_matched_ids: Optional[set[str]] = None,
+    paragraph_comparison_available: bool = True,
 ) -> ExperienceFitResult:
     """Require the same contract type, an object match, and the stored general-experience minimum."""
     kind = (tender_kind or "").strip().lower()
@@ -328,6 +370,31 @@ def evaluate_experience_fit(
         return ExperienceFitResult(
             status=NO_SE_PUEDE_AFIRMAR,
             reason="La experiencia general del pliego todavía no está leída",
+        )
+
+    general_text, specific_text, specific_required = experience_paragraphs(requirements)
+    if not general_text:
+        return ExperienceFitResult(
+            status=NO_SE_PUEDE_AFIRMAR,
+            reason="La experiencia general del pliego no dice en qué hay que tener experiencia",
+        )
+    if specific_required and not specific_text:
+        return ExperienceFitResult(
+            status=NO_SE_PUEDE_AFIRMAR,
+            reason="La experiencia específica del pliego todavía no está leída",
+        )
+    if not paragraph_comparison_available:
+        return ExperienceFitResult(
+            status=NO_SE_PUEDE_AFIRMAR,
+            reason="No se pudo comparar la experiencia del pliego con los objetos de las actas",
+        )
+    covered = {str(item) for item in (paragraph_matched_ids or set())}
+    matched_rows = [row for row in matched_rows if str(row.get("experience_id")) in covered]
+    if not matched_rows:
+        return ExperienceFitResult(
+            status=NO_APLICA,
+            reason="Ningún objeto de acta cubre la experiencia que pide el pliego",
+            contracts=[],
         )
 
     percentage = _number(_item_value(items, "min_percentage_budget"))
@@ -397,7 +464,10 @@ def evaluate_experience_fit(
             reason="La suma de SMMLV cubre el mínimo de la experiencia general",
             general_sum_smmlv=round(total, 2),
             general_minimum_smmlv=round(minimum, 2),
-            contracts=[_fit_contract(row, in_sum=True, amount=amount) for row, amount in chosen],
+            contracts=[
+                _fit_contract(row, in_sum=True, amount=amount, specific_met=specific_required)
+                for row, amount in chosen
+            ],
         )
 
     judged = eligible[: min(count_high, len(eligible))]
@@ -420,5 +490,8 @@ def evaluate_experience_fit(
         reason="La suma de SMMLV no alcanza el mínimo de la experiencia general",
         general_sum_smmlv=round(total, 2),
         general_minimum_smmlv=round(minimum, 2),
-        contracts=[_fit_contract(row, in_sum=True, amount=amount) for row, amount in judged],
+        contracts=[
+            _fit_contract(row, in_sum=True, amount=amount, specific_met=specific_required)
+            for row, amount in judged
+        ],
     )

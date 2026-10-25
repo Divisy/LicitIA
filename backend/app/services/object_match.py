@@ -66,7 +66,7 @@ def specialties_compatible(tender_object: str, acta_object: str) -> bool:
     return bool(tender & acta)
 
 
-def _prompt(tenders: list[dict], experiences: list[dict]) -> str:
+def _prompt(tenders: list[dict], experiences: list[dict], purpose: str) -> str:
     tender_lines = [
         {"tender_id": item["id"], "objeto": _clip(item["object"])} for item in tenders
     ]
@@ -74,11 +74,22 @@ def _prompt(tenders: list[dict], experiences: list[dict]) -> str:
         {"experience_id": item["experience_id"], "objeto": _clip(item["object_text"])}
         for item in experiences
     ]
+    if purpose == "experience":
+        intro = (
+            "Cada texto es la experiencia que el pliego exige. "
+            "Hay match cuando el objeto del acta acredita esa experiencia: el mismo tipo de trabajo, "
+            "aunque la redacción cambie. "
+            "La interventoría, supervisión o consultoría de una obra acredita la experiencia pedida sobre esa obra. "
+        )
+    else:
+        intro = (
+            "Compara el objeto de cada licitación con los objetos de contratos ya ejecutados. "
+            "Hay match solo cuando el trabajo es el mismo, aunque la redacción cambie "
+            "(por ejemplo, interventoría de pavimentación e interventoría de mejoramiento vial). "
+        )
     return (
-        "Compara el objeto de cada licitación con los objetos de contratos ya ejecutados. "
-        "Hay match solo cuando el trabajo es el mismo, aunque la redacción cambie "
-        "(por ejemplo, interventoría de pavimentación e interventoría de mejoramiento vial). "
-        "No basta con que ambos digan interventoría, obra o estudios. "
+        intro
+        + "No basta con que ambos digan interventoría, obra o estudios. "
         "Si la especialidad es distinta, no hay match. Si dudas, no lo incluyas. "
         "Usa únicamente los ids entregados. "
         'Devuelve JSON: {"tenders":[{"tender_id":"...","experience_ids":["..."]}]}.\n\n'
@@ -87,7 +98,12 @@ def _prompt(tenders: list[dict], experiences: list[dict]) -> str:
     )
 
 
-def _call_openai(client, tenders: list[dict], experiences: list[dict]) -> dict[str, set[str]]:
+def _call_openai(
+    client,
+    tenders: list[dict],
+    experiences: list[dict],
+    purpose: str = "object",
+) -> dict[str, set[str]]:
     allowed = {
         item["id"]: {row["experience_id"] for row in experiences} for item in tenders
     }
@@ -101,17 +117,25 @@ def _call_openai(client, tenders: list[dict], experiences: list[dict]) -> dict[s
                 "role": "system",
                 "content": "Comparas objetos contractuales colombianos. Responde únicamente JSON válido.",
             },
-            {"role": "user", "content": _prompt(tenders, experiences)},
+            {"role": "user", "content": _prompt(tenders, experiences, purpose)},
         ],
     )
     payload = json.loads(response.choices[0].message.content or "{}")
     return parse_object_match_payload(payload, allowed)
 
 
+def _allowed_ids(tender: dict, candidates: list[dict]) -> set[str]:
+    ids = {str(row["experience_id"]) for row in candidates}
+    if tender.get("candidate_ids") is None:
+        return ids
+    return ids & {str(item) for item in tender["candidate_ids"]}
+
+
 def judge_object_matches(
     tenders: list[dict],
     experiences: list[dict],
     client: Optional[Any] = None,
+    purpose: str = "object",
 ) -> tuple[dict[str, set[str]], set[str]]:
     """Return (matches by tender id, tender ids whose comparison failed).
 
@@ -144,13 +168,36 @@ def judge_object_matches(
         if not candidates:
             continue
         kind_tenders = [item for item in kind_tenders if (item.get("object") or "").strip()]
+        allowed_by_tender = {
+            tender["id"]: {
+                str(item) for item in (tender.get("candidate_ids") or [])
+            }
+            for tender in kind_tenders
+            if tender.get("candidate_ids") is not None
+        }
+        if allowed_by_tender:
+            needed = set().union(*allowed_by_tender.values())
+            candidates = [
+                row for row in candidates if str(row["experience_id"]) in needed
+            ]
         pending: list[dict] = []
         for tender in kind_tenders:
             tender_key = _digest(tender["object"])
             resolved: set[str] = set()
             missing = False
-            for row in candidates:
-                cache_key = (tender_key, _digest(f"{row['experience_id']}|{row['object_text']}"))
+            visible = candidates
+            if tender["id"] in allowed_by_tender:
+                visible = [
+                    row
+                    for row in candidates
+                    if str(row["experience_id"]) in allowed_by_tender[tender["id"]]
+                ]
+            for row in visible:
+                cache_key = (
+                    purpose,
+                    tender_key,
+                    _digest(f"{row['experience_id']}|{row['object_text']}"),
+                )
                 if cache_key not in _CACHE:
                     missing = True
                     break
@@ -168,7 +215,7 @@ def judge_object_matches(
     def _run(job):
         batch, candidates = job
         try:
-            return batch, candidates, _call_openai(client, batch, candidates)
+            return batch, candidates, _call_openai(client, batch, candidates, purpose)
         except Exception as exc:
             logger.warning("Object match failed: %s", exc)
             return batch, candidates, None
@@ -185,13 +232,21 @@ def judge_object_matches(
             objects = {str(row["experience_id"]): row["object_text"] for row in candidates}
             for tender in batch:
                 tender_key = _digest(tender["object"])
+                allowed = _allowed_ids(tender, candidates)
                 chosen = {
                     experience_id
                     for experience_id in result.get(tender["id"], set())
-                    if specialties_compatible(tender["object"], objects.get(experience_id, ""))
+                    if experience_id in allowed
+                    and specialties_compatible(tender["object"], objects.get(experience_id, ""))
                 }
                 matches[tender["id"]] = chosen
                 for row in candidates:
-                    cache_key = (tender_key, _digest(f"{row['experience_id']}|{row['object_text']}"))
+                    if str(row["experience_id"]) not in allowed:
+                        continue
+                    cache_key = (
+                        purpose,
+                        tender_key,
+                        _digest(f"{row['experience_id']}|{row['object_text']}"),
+                    )
                     _CACHE[cache_key] = str(row["experience_id"]) in chosen
     return matches, failed

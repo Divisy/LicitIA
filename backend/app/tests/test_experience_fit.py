@@ -28,12 +28,15 @@ def _contract(**overrides) -> dict:
 
 
 def _evaluate(experiences, matched=None, available=True, **tender):
+    matched_ids = set(matched or [])
     payload = {
         "tender_kind": "interventoria",
         "tender_object": "Interventoría al mejoramiento de la vía en pavimento",
         "experiences": experiences,
-        "matched_experience_ids": set(matched or []),
+        "matched_experience_ids": matched_ids,
         "comparison_available": available,
+        "paragraph_matched_ids": tender.pop("paragraph_matched_ids", matched_ids),
+        "paragraph_comparison_available": tender.pop("paragraph_available", True),
     }
     payload.update(tender)
     return evaluate_experience_fit(**payload)
@@ -53,11 +56,29 @@ def _general_requirements(**items):
             {
                 "key": "experiencia_general",
                 "items": [
-                    {"key": key, "value": value}
-                    for key, value in stored.items()
-                    if value is not None
+                    {
+                        "key": "requirement_description",
+                        "value": "Experiencia general en interventoría de obras viales.",
+                    },
+                    *[
+                        {"key": key, "value": value}
+                        for key, value in stored.items()
+                        if value is not None
+                    ],
                 ],
-            }
+            },
+            {
+                "key": "experiencia_especifica",
+                "items": [
+                    {
+                        "key": "specific_scope",
+                        "value": items.get(
+                            "specific",
+                            "No aplica para el presente proceso.",
+                        ),
+                    }
+                ],
+            },
         ],
     }
 
@@ -217,6 +238,81 @@ def test_openai_failure_cannot_be_affirmed():
     result = _evaluate([_contract()], available=False)
     assert result.status == NO_SE_PUEDE_AFIRMAR
     assert "comparar" in result.reason.lower()
+
+
+def test_an_acta_outside_the_pliego_experience_does_not_apply():
+    result = _evaluate(
+        [_contract(amount_smmlv=400, completion_date=date(2024, 1, 1))],
+        matched=["exp-1232"],
+        paragraph_matched_ids=set(),
+        requirements=_general_requirements(
+            percentage=100,
+            specific="Interventoría de obras de drenaje asociadas a la infraestructura de transporte.",
+        ),
+        tender_amount=_budget_for(300),
+        publication_date=date(2026, 6, 1),
+    )
+    assert result.status == NO_APLICA
+    assert "experiencia" in result.reason.lower()
+
+
+def test_unread_specific_experience_cannot_be_affirmed():
+    requirements = _general_requirements(percentage=100)
+    requirements["sections"] = [
+        section
+        for section in requirements["sections"]
+        if section["key"] == "experiencia_general"
+    ]
+    result = _evaluate(
+        [_contract(amount_smmlv=400, completion_date=date(2024, 1, 1))],
+        matched=["exp-1232"],
+        requirements=requirements,
+        tender_amount=_budget_for(300),
+        publication_date=date(2026, 6, 1),
+    )
+    assert result.status == NO_SE_PUEDE_AFIRMAR
+    assert "específica" in result.reason.lower()
+
+
+def test_experience_paragraph_keeps_only_actas_that_already_matched():
+    from unittest.mock import patch
+
+    from app.services.object_match import _CACHE, judge_object_matches
+
+    _CACHE.clear()
+    tenders = [
+        {
+            "id": "tender::general",
+            "kind": "interventoria",
+            "object": "Experiencia en interventoría de obras de drenaje.",
+            "candidate_ids": ["exp-drenaje"],
+        }
+    ]
+    experiences = [
+        {
+            "experience_id": "exp-drenaje",
+            "contract_kind": "interventoria",
+            "has_acta": True,
+            "object_text": "Interventoría de obras de drenaje vial",
+        },
+        {
+            "experience_id": "exp-via",
+            "contract_kind": "interventoria",
+            "has_acta": True,
+            "object_text": "Interventoría de pavimento",
+        },
+    ]
+    with patch(
+        "app.services.object_match._call_openai",
+        return_value={"tender::general": {"exp-drenaje", "exp-via"}},
+    ) as called:
+        matches, failed = judge_object_matches(
+            tenders, experiences, client=object(), purpose="experience"
+        )
+    assert [row["experience_id"] for row in called.call_args.args[2]] == ["exp-drenaje"]
+    assert called.call_args.args[3] == "experience"
+    assert matches["tender::general"] == {"exp-drenaje"}
+    assert failed == set()
 
 
 def test_road_tender_does_not_match_a_sewer_acta_even_if_the_model_says_yes():
