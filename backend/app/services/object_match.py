@@ -167,7 +167,6 @@ def _call_openai_judge(
     )
     kwargs: dict[str, Any] = {
         "model": model,
-        "max_tokens": 800,
         "response_format": {"type": "json_object"},
         "messages": [
             {
@@ -179,9 +178,13 @@ def _call_openai_judge(
     }
     effort = _openai_reasoning_effort(model)
     if effort is None:
+        kwargs["max_tokens"] = 800
         kwargs["temperature"] = 0
     else:
+        # GPT-6 chat completions reject max_tokens; use max_completion_tokens.
+        kwargs["max_completion_tokens"] = 800
         kwargs["reasoning_effort"] = effort
+        # temperature is only valid when reasoning_effort is none.
         if effort == "none":
             kwargs["temperature"] = 0
     response = openai_client.chat.completions.create(**kwargs)
