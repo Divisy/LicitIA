@@ -207,7 +207,7 @@ def _call_anthropic_judge(
     client = Anthropic(api_key=settings.ANTHROPIC_API_KEY, timeout=40.0, max_retries=0)
     response = client.messages.create(
         model=model,
-        max_tokens=800,
+        max_tokens=4096,
         system=(
             "Comparas objetos contractuales colombianos. "
             "Responde únicamente JSON válido, sin markdown."
