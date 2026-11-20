@@ -14,6 +14,7 @@ from datetime import date, datetime
 from typing import Any, Optional
 
 PUEDE_APLICAR = "puede_aplicar"
+CANDIDATA = "candidata"
 NO_APLICA = "no_aplica"
 NO_SE_PUEDE_AFIRMAR = "no_se_puede_afirmar"
 
@@ -460,8 +461,11 @@ def evaluate_experience_fit(
     if best is not None:
         total, minimum, chosen = best
         return ExperienceFitResult(
-            status=PUEDE_APLICAR,
-            reason="La suma de SMMLV cubre el mínimo de la experiencia general",
+            status=CANDIDATA,
+            reason=(
+                "La suma de SMMLV cubre el mínimo de la experiencia general. "
+                "Confirma los contratos para marcar Puede aplicar."
+            ),
             general_sum_smmlv=round(total, 2),
             general_minimum_smmlv=round(minimum, 2),
             contracts=[

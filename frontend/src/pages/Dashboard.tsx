@@ -67,6 +67,7 @@ const Dashboard: React.FC = () => {
   )
   const [showAll, setShowAll] = useState<boolean>(false)
   const [onlyApplicable, setOnlyApplicable] = useState(false)
+  const [onlyCandidates, setOnlyCandidates] = useState(false)
   const [selectedTender, setSelectedTender] = useState<Tender | null>(null)
 
   const portfolioReady = portfolioStatus === 'ready'
@@ -97,6 +98,7 @@ const Dashboard: React.FC = () => {
       if (appliedEntity) params.entity = appliedEntity
       if (effectiveContractKind) params.contract_kind = effectiveContractKind
       if (onlyApplicable) params.experience_fit = 'puede_aplicar'
+      else if (onlyCandidates) params.experience_fit = 'candidata'
       
       const response = await getTenders(params)
       
@@ -119,6 +121,7 @@ const Dashboard: React.FC = () => {
     department,
     appliedEntity,
     onlyApplicable,
+    onlyCandidates,
   ])
   
   useEffect(() => {
@@ -286,14 +289,27 @@ const Dashboard: React.FC = () => {
                     Mostrando <strong>{tenders.length}</strong> de <strong>{total}</strong> licitaciones
                   </p>
                   <Button
+                    kind={onlyCandidates ? 'primary' : 'ghost'}
+                    size="sm"
+                    onClick={() => {
+                      setOnlyCandidates((current) => !current)
+                      setOnlyApplicable(false)
+                    }}
+                  >
+                    Candidatas
+                  </Button>
+                  <Button
                     kind={onlyApplicable ? 'primary' : 'ghost'}
                     size="sm"
-                    onClick={() => setOnlyApplicable((current) => !current)}
+                    onClick={() => {
+                      setOnlyApplicable((current) => !current)
+                      setOnlyCandidates(false)
+                    }}
                   >
                     Puede aplicar
                   </Button>
                   <p className="dashboard-results-text">
-                    Puede aplicar cuando el objeto del acta coincide con el de la licitación, en el mismo tipo de contrato, y la suma de SMMLV cubre el mínimo de la experiencia general. Si el pliego todavía no está leído, no se afirma.
+                    Puede aplicar solo tras confirmación. Antes, Licitia marca Candidata cuando dos modelos coinciden en objeto y párrafos y la suma de SMMLV cubre el mínimo. Si el pliego todavía no está leído, no se afirma.
                   </p>
                   {!showAll && tenders.length < total && (
                     <Button
@@ -333,6 +349,7 @@ const Dashboard: React.FC = () => {
                 <TenderTable
                   tenders={tenders}
                   onSelectTender={setSelectedTender}
+                  onExperienceFitChange={() => fetchTenders(showAll)}
                   showFavoriteColumn
                   isFavorite={isFavorite}
                   onToggleFavorite={toggleFavorite}

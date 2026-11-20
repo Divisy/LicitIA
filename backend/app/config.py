@@ -16,7 +16,15 @@ class Settings(BaseSettings):
     
     # OpenAI
     OPENAI_API_KEY: str = ""
+    # Pliegos/actas/RUP rutinarios (sigue barato hasta migrar extracción a Luna).
     OPENAI_MODEL_NAME: str = "gpt-4o-mini"
+    # Anthropic (Modelo B del consenso de precisión).
+    ANTHROPIC_API_KEY: str = ""
+    # Precision match (diseño): A Luna, B Haiku (otro proveedor), C Sol desempate.
+    OBJECT_MATCH_CONSENSUS: bool = True
+    OBJECT_MATCH_MODEL_A: str = "gpt-6-luna"
+    OBJECT_MATCH_MODEL_B: str = "claude-haiku-5-5"
+    OBJECT_MATCH_MODEL_C: str = "gpt-6.1-sol"
     
     # WhatsApp Cloud API
     WHATSAPP_API_URL: str = "https://graph.facebook.com/v18.0"

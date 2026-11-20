@@ -17,3 +17,4 @@ def test_list_tenders_empty():
     assert isinstance(data["items"], list)
     assert data["total"] == 0
 
+

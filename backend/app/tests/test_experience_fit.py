@@ -1,9 +1,9 @@
 from datetime import date
 
 from app.services.experience_fit import (
+    CANDIDATA,
     NO_APLICA,
     NO_SE_PUEDE_AFIRMAR,
-    PUEDE_APLICAR,
     evaluate_experience_fit,
 )
 from app.services.general_experience import general_experience_is_saved
@@ -126,7 +126,7 @@ def test_sum_that_covers_the_minimum_can_apply():
         tender_amount=_budget_for(300),
         publication_date=date(2026, 6, 1),
     )
-    assert result.status == PUEDE_APLICAR
+    assert result.status == CANDIDATA
     assert result.general_sum_smmlv == 310
     assert result.general_minimum_smmlv == 300
 
@@ -169,7 +169,7 @@ def test_without_a_window_an_old_contract_still_counts():
         tender_amount=_budget_for(300),
         publication_date=date(2026, 6, 1),
     )
-    assert result.status == PUEDE_APLICAR
+    assert result.status == CANDIDATA
     assert result.general_sum_smmlv == 400
 
 
@@ -306,12 +306,99 @@ def test_experience_paragraph_keeps_only_actas_that_already_matched():
         "app.services.object_match._call_openai",
         return_value={"tender::general": {"exp-drenaje", "exp-via"}},
     ) as called:
-        matches, failed = judge_object_matches(
-            tenders, experiences, client=object(), purpose="experience"
-        )
+        with patch("app.services.object_match._warm_cache_from_db"):
+            with patch("app.services.object_match._persist_cache_rows"):
+                matches, failed = judge_object_matches(
+                    tenders, experiences, client=object(), purpose="experience"
+                )
+    assert called.call_args is not None
     assert [row["experience_id"] for row in called.call_args.args[2]] == ["exp-drenaje"]
     assert called.call_args.args[3] == "experience"
     assert matches["tender::general"] == {"exp-drenaje"}
+    assert failed == set()
+
+
+def test_resolve_match_models_uses_precision_stack():
+    from unittest.mock import patch
+
+    from app.services.object_match import resolve_match_models
+
+    with patch("app.services.object_match.settings") as mock_settings:
+        mock_settings.OBJECT_MATCH_CONSENSUS = True
+        mock_settings.OBJECT_MATCH_MODEL_A = "gpt-6-luna"
+        mock_settings.OBJECT_MATCH_MODEL_B = "claude-haiku-5-5"
+        mock_settings.OBJECT_MATCH_MODEL_C = "gpt-6.1-sol"
+        mock_settings.ANTHROPIC_API_KEY = "sk-ant-test"
+        assert resolve_match_models() == (
+            "gpt-6-luna",
+            "claude-haiku-5-5",
+            "gpt-6.1-sol",
+        )
+
+    with patch("app.services.object_match.settings") as mock_settings:
+        mock_settings.OBJECT_MATCH_CONSENSUS = True
+        mock_settings.OBJECT_MATCH_MODEL_A = "gpt-6-luna"
+        mock_settings.OBJECT_MATCH_MODEL_B = "claude-haiku-5-5"
+        mock_settings.OBJECT_MATCH_MODEL_C = "gpt-6.1-sol"
+        mock_settings.ANTHROPIC_API_KEY = ""
+        assert resolve_match_models() == (
+            "gpt-6-luna",
+            "gpt-6.1-terra",
+            "gpt-6.1-sol",
+        )
+
+
+def test_consensus_keeps_only_actas_both_models_accept():
+    from unittest.mock import patch
+
+    from app.services.object_match import _CACHE, judge_object_matches_consensus
+
+    _CACHE.clear()
+    tenders = [
+        {
+            "id": "t-1",
+            "kind": "interventoria",
+            "object": "Interventoría de obras de drenaje vial",
+        }
+    ]
+    experiences = [
+        {
+            "experience_id": "exp-a",
+            "contract_kind": "interventoria",
+            "has_acta": True,
+            "object_text": "Interventoría de drenaje",
+        },
+        {
+            "experience_id": "exp-b",
+            "contract_kind": "interventoria",
+            "has_acta": True,
+            "object_text": "Interventoría de pavimento urbano",
+        },
+    ]
+
+    def fake_call(client, batch, candidates, purpose="object", model=None):
+        # A accepts both; B only exp-a; C (tiebreak) rejects the dispute.
+        if purpose.endswith(":tiebreak"):
+            return {"t-1": set()}
+        if model == "claude-haiku-5-5":
+            return {"t-1": {"exp-a"}}
+        return {"t-1": {"exp-a", "exp-b"}}
+
+    with patch("app.services.object_match.settings") as mock_settings:
+        mock_settings.OBJECT_MATCH_CONSENSUS = True
+        mock_settings.OBJECT_MATCH_MODEL_A = "gpt-6-luna"
+        mock_settings.OBJECT_MATCH_MODEL_B = "claude-haiku-5-5"
+        mock_settings.OBJECT_MATCH_MODEL_C = "gpt-6.1-sol"
+        mock_settings.OPENAI_MODEL_NAME = "gpt-4o-mini"
+        mock_settings.OPENAI_API_KEY = "test"
+        mock_settings.ANTHROPIC_API_KEY = "test"
+        with patch("app.services.object_match._call_openai", side_effect=fake_call):
+            with patch("app.services.object_match._warm_cache_from_db"):
+                with patch("app.services.object_match._persist_cache_rows"):
+                    matches, failed = judge_object_matches_consensus(
+                        tenders, experiences, client=object()
+                    )
+    assert matches["t-1"] == {"exp-a"}
     assert failed == set()
 
 
@@ -346,7 +433,11 @@ def test_road_tender_does_not_match_a_sewer_acta_even_if_the_model_says_yes():
         "app.services.object_match._call_openai",
         return_value={"t-barrios-unidos": {"exp-042"}},
     ):
-        matches, failed = judge_object_matches(tenders, experiences, client=object())
+        with patch("app.services.object_match._warm_cache_from_db"):
+            with patch("app.services.object_match._persist_cache_rows"):
+                matches, failed = judge_object_matches(
+                    tenders, experiences, client=object()
+                )
     assert matches["t-barrios-unidos"] == set()
     assert failed == set()
 

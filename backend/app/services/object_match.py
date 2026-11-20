@@ -1,4 +1,4 @@
-"""Ask OpenAI whether a tender object matches acta objects of the same contract type."""
+"""Compare tender/pliego texts with acta objects, with optional dual-model consensus."""
 from __future__ import annotations
 
 import hashlib
@@ -11,7 +11,7 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-_CACHE: dict[tuple[str, str], bool] = {}
+_CACHE: dict[tuple[str, str, str, str], bool] = {}
 _BATCH = 6
 _OBJECT_CHARS = 700
 
@@ -74,7 +74,8 @@ def _prompt(tenders: list[dict], experiences: list[dict], purpose: str) -> str:
         {"experience_id": item["experience_id"], "objeto": _clip(item["object_text"])}
         for item in experiences
     ]
-    if purpose == "experience":
+    base_purpose = purpose.split(":", 1)[0]
+    if base_purpose == "experience":
         intro = (
             "Cada texto es la experiencia que el pliego exige. "
             "Hay match cuando el objeto del acta acredita esa experiencia: el mismo tipo de trabajo, "
@@ -98,30 +99,140 @@ def _prompt(tenders: list[dict], experiences: list[dict], purpose: str) -> str:
     )
 
 
-def _call_openai(
-    client,
+def _is_claude(model: str) -> bool:
+    return model.lower().startswith("claude")
+
+
+def _has_credentials(model: str) -> bool:
+    if _is_claude(model):
+        return bool((settings.ANTHROPIC_API_KEY or "").strip())
+    return bool((settings.OPENAI_API_KEY or "").strip())
+
+
+def resolve_match_models() -> tuple[str, str, str]:
+    """Return (model_a, model_b, model_c) from the precision design.
+
+    Default: A=gpt-6-luna, B=claude-haiku-5-5, C=gpt-6.1-sol.
+    Without Anthropic key, B falls back to gpt-6.1-terra (still a distinct judge).
+    """
+    primary = (settings.OBJECT_MATCH_MODEL_A or "gpt-6-luna").strip()
+    secondary = (settings.OBJECT_MATCH_MODEL_B or "claude-haiku-5-5").strip()
+    tiebreak = (settings.OBJECT_MATCH_MODEL_C or "gpt-6.1-sol").strip()
+    if _is_claude(secondary) and not (settings.ANTHROPIC_API_KEY or "").strip():
+        logger.warning(
+            "OBJECT_MATCH_MODEL_B=%s requires ANTHROPIC_API_KEY; using gpt-6.1-terra",
+            secondary,
+        )
+        secondary = "gpt-6.1-terra"
+    if _is_claude(tiebreak) and not (settings.ANTHROPIC_API_KEY or "").strip():
+        logger.warning(
+            "OBJECT_MATCH_MODEL_C=%s requires ANTHROPIC_API_KEY; using gpt-6.1-sol",
+            tiebreak,
+        )
+        tiebreak = "gpt-6.1-sol"
+    alternates = ("gpt-6-luna", "claude-haiku-5-5", "gpt-6.1-terra", "gpt-6.1-sol")
+    if settings.OBJECT_MATCH_CONSENSUS and secondary == primary:
+        secondary = next((item for item in alternates if item != primary), "gpt-6.1-terra")
+        if _is_claude(secondary) and not (settings.ANTHROPIC_API_KEY or "").strip():
+            secondary = "gpt-6.1-terra"
+    if tiebreak == secondary:
+        tiebreak = primary if primary != secondary else "gpt-6.1-sol"
+    return primary, secondary, tiebreak
+
+
+def _openai_reasoning_effort(model: str) -> Optional[str]:
+    name = model.lower()
+    if not name.startswith("gpt-6"):
+        return None
+    # Sol/Astra reject "none"; Luna/Terra accept it for fast JSON classify.
+    if "sol" in name or "astra" in name:
+        return "low"
+    return "none"
+
+
+def _call_openai_judge(
     tenders: list[dict],
     experiences: list[dict],
-    purpose: str = "object",
+    purpose: str,
+    model: str,
+    client: Optional[Any] = None,
 ) -> dict[str, set[str]]:
+    from openai import OpenAI
+
     allowed = {
         item["id"]: {row["experience_id"] for row in experiences} for item in tenders
     }
-    response = client.chat.completions.create(
-        model=settings.OPENAI_MODEL_NAME or "gpt-4o-mini",
-        temperature=0,
-        max_tokens=800,
-        response_format={"type": "json_object"},
-        messages=[
+    openai_client = client if client is not None and hasattr(client, "chat") else OpenAI(
+        api_key=settings.OPENAI_API_KEY, timeout=40.0, max_retries=0
+    )
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "max_tokens": 800,
+        "response_format": {"type": "json_object"},
+        "messages": [
             {
                 "role": "system",
                 "content": "Comparas objetos contractuales colombianos. Responde únicamente JSON válido.",
             },
             {"role": "user", "content": _prompt(tenders, experiences, purpose)},
         ],
-    )
+    }
+    effort = _openai_reasoning_effort(model)
+    if effort is None:
+        kwargs["temperature"] = 0
+    else:
+        kwargs["reasoning_effort"] = effort
+        if effort == "none":
+            kwargs["temperature"] = 0
+    response = openai_client.chat.completions.create(**kwargs)
     payload = json.loads(response.choices[0].message.content or "{}")
     return parse_object_match_payload(payload, allowed)
+
+
+def _call_anthropic_judge(
+    tenders: list[dict],
+    experiences: list[dict],
+    purpose: str,
+    model: str,
+) -> dict[str, set[str]]:
+    from anthropic import Anthropic
+
+    allowed = {
+        item["id"]: {row["experience_id"] for row in experiences} for item in tenders
+    }
+    client = Anthropic(api_key=settings.ANTHROPIC_API_KEY, timeout=40.0, max_retries=0)
+    response = client.messages.create(
+        model=model,
+        max_tokens=800,
+        system=(
+            "Comparas objetos contractuales colombianos. "
+            "Responde únicamente JSON válido, sin markdown."
+        ),
+        messages=[
+            {"role": "user", "content": _prompt(tenders, experiences, purpose)},
+        ],
+    )
+    text = "".join(
+        block.text for block in response.content if getattr(block, "type", "") == "text"
+    )
+    payload = json.loads(text or "{}")
+    return parse_object_match_payload(payload, allowed)
+
+
+def _call_openai(
+    client,
+    tenders: list[dict],
+    experiences: list[dict],
+    purpose: str = "object",
+    model: Optional[str] = None,
+) -> dict[str, set[str]]:
+    """Dispatch match judge to OpenAI or Anthropic according to model id."""
+    model_name = (model or settings.OBJECT_MATCH_MODEL_A or "gpt-6-luna").strip()
+    if _is_claude(model_name):
+        return _call_anthropic_judge(tenders, experiences, purpose, model_name)
+    return _call_openai_judge(
+        tenders, experiences, purpose, model_name, client=client
+    )
 
 
 def _allowed_ids(tender: dict, candidates: list[dict]) -> set[str]:
@@ -131,11 +242,48 @@ def _allowed_ids(tender: dict, candidates: list[dict]) -> set[str]:
     return ids & {str(item) for item in tender["candidate_ids"]}
 
 
+def _pair_digest(row: dict) -> str:
+    return _digest(f"{row['experience_id']}|{row['object_text']}")
+
+
+def _warm_cache_from_db(
+    *,
+    purpose: str,
+    model: str,
+    tenders: list[dict],
+    experiences: list[dict],
+) -> None:
+    from app.services.match_store import load_judgments
+
+    keys: list[tuple[str, str]] = []
+    for tender in tenders:
+        tender_key = _digest(tender["object"])
+        for row in experiences:
+            keys.append((tender_key, _pair_digest(row)))
+    stored = load_judgments(purpose=purpose, model=model, keys=keys)
+    for (tender_digest, experience_digest), matched in stored.items():
+        _CACHE[(purpose, model, tender_digest, experience_digest)] = matched
+
+
+def _persist_cache_rows(
+    *,
+    purpose: str,
+    model: str,
+    rows: list[tuple[str, str, bool]],
+) -> None:
+    if not rows:
+        return
+    from app.services.match_store import save_judgments
+
+    save_judgments(purpose=purpose, model=model, rows=rows)
+
+
 def judge_object_matches(
     tenders: list[dict],
     experiences: list[dict],
     client: Optional[Any] = None,
     purpose: str = "object",
+    model: Optional[str] = None,
 ) -> tuple[dict[str, set[str]], set[str]]:
     """Return (matches by tender id, tender ids whose comparison failed).
 
@@ -144,12 +292,9 @@ def judge_object_matches(
     """
     matches: dict[str, set[str]] = {}
     failed: set[str] = set()
-    if client is None:
-        if not settings.OPENAI_API_KEY:
-            return matches, {item["id"] for item in tenders}
-        from openai import OpenAI
-
-        client = OpenAI(api_key=settings.OPENAI_API_KEY, timeout=25.0, max_retries=0)
+    model_name = (model or settings.OBJECT_MATCH_MODEL_A or "gpt-6-luna").strip()
+    if client is None and not _has_credentials(model_name):
+        return matches, {item["id"] for item in tenders}
 
     grouped: dict[str, list[dict]] = {}
     for tender in tenders:
@@ -168,6 +313,9 @@ def judge_object_matches(
         if not candidates:
             continue
         kind_tenders = [item for item in kind_tenders if (item.get("object") or "").strip()]
+        _warm_cache_from_db(
+            purpose=purpose, model=model_name, tenders=kind_tenders, experiences=candidates
+        )
         allowed_by_tender = {
             tender["id"]: {
                 str(item) for item in (tender.get("candidate_ids") or [])
@@ -193,11 +341,7 @@ def judge_object_matches(
                     if str(row["experience_id"]) in allowed_by_tender[tender["id"]]
                 ]
             for row in visible:
-                cache_key = (
-                    purpose,
-                    tender_key,
-                    _digest(f"{row['experience_id']}|{row['object_text']}"),
-                )
+                cache_key = (purpose, model_name, tender_key, _pair_digest(row))
                 if cache_key not in _CACHE:
                     missing = True
                     break
@@ -215,15 +359,18 @@ def judge_object_matches(
     def _run(job):
         batch, candidates = job
         try:
-            return batch, candidates, _call_openai(client, batch, candidates, purpose)
+            return batch, candidates, _call_openai(
+                client, batch, candidates, purpose, model=model_name
+            )
         except Exception as exc:
-            logger.warning("Object match failed: %s", exc)
+            logger.warning("Object match failed (%s): %s", model_name, exc)
             return batch, candidates, None
 
     if not jobs:
         return matches, failed
 
     workers = min(4, len(jobs))
+    persist_rows: list[tuple[str, str, bool]] = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for batch, candidates, result in pool.map(_run, jobs):
             if result is None:
@@ -241,12 +388,89 @@ def judge_object_matches(
                 }
                 matches[tender["id"]] = chosen
                 for row in candidates:
-                    if str(row["experience_id"]) not in allowed:
+                    experience_id = str(row["experience_id"])
+                    if experience_id not in allowed:
                         continue
-                    cache_key = (
-                        purpose,
-                        tender_key,
-                        _digest(f"{row['experience_id']}|{row['object_text']}"),
-                    )
-                    _CACHE[cache_key] = str(row["experience_id"]) in chosen
+                    experience_digest = _pair_digest(row)
+                    matched = experience_id in chosen
+                    _CACHE[(purpose, model_name, tender_key, experience_digest)] = matched
+                    persist_rows.append((tender_key, experience_digest, matched))
+    _persist_cache_rows(purpose=purpose, model=model_name, rows=persist_rows)
     return matches, failed
+
+
+def judge_object_matches_consensus(
+    tenders: list[dict],
+    experiences: list[dict],
+    client: Optional[Any] = None,
+    purpose: str = "object",
+) -> tuple[dict[str, set[str]], set[str]]:
+    """Require two models to agree; a third model breaks ties on disputed actas."""
+    if not settings.OBJECT_MATCH_CONSENSUS:
+        model_a, _, _ = resolve_match_models()
+        return judge_object_matches(
+            tenders, experiences, client=client, purpose=purpose, model=model_a
+        )
+
+    model_a, model_b, model_c = resolve_match_models()
+    matches_a, failed_a = judge_object_matches(
+        tenders, experiences, client=client, purpose=purpose, model=model_a
+    )
+    matches_b, failed_b = judge_object_matches(
+        tenders, experiences, client=client, purpose=purpose, model=model_b
+    )
+    failed = set(failed_a) | set(failed_b)
+    final: dict[str, set[str]] = {}
+    disputed_jobs: list[dict] = []
+
+    by_id = {item["id"]: item for item in tenders}
+    for tender in tenders:
+        tender_id = tender["id"]
+        if tender_id in failed:
+            continue
+        left = set(matches_a.get(tender_id) or set())
+        right = set(matches_b.get(tender_id) or set())
+        agreed = left & right
+        disputed = (left | right) - agreed
+        if not disputed:
+            final[tender_id] = agreed
+            continue
+        disputed_jobs.append(
+            {
+                **tender,
+                "id": tender_id,
+                "candidate_ids": disputed,
+                "_agreed": agreed,
+            }
+        )
+
+    if not disputed_jobs:
+        return final, failed
+
+    # Separate cache namespace so C re-judges even when it shares A's model id.
+    matches_c, failed_c = judge_object_matches(
+        [
+            {
+                "id": item["id"],
+                "kind": item["kind"],
+                "object": item["object"],
+                "candidate_ids": item["candidate_ids"],
+            }
+            for item in disputed_jobs
+        ],
+        experiences,
+        client=client,
+        purpose=f"{purpose}:tiebreak",
+        model=model_c,
+    )
+    failed |= failed_c
+    for item in disputed_jobs:
+        tender_id = item["id"]
+        if tender_id in failed_c:
+            continue
+        agreed = set(item["_agreed"])
+        chosen = set(matches_c.get(tender_id) or set()) & set(item["candidate_ids"])
+        final[tender_id] = agreed | chosen
+        # Keep the original tender entry available for callers that inspect by_id.
+        _ = by_id.get(tender_id)
+    return final, failed

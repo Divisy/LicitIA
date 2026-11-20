@@ -103,7 +103,11 @@ export interface LeadCreate {
   sectors?: string[];
 }
 
-export type ExperienceFitStatus = 'puede_aplicar' | 'no_aplica' | 'no_se_puede_afirmar'
+export type ExperienceFitStatus =
+  | 'puede_aplicar'
+  | 'candidata'
+  | 'no_aplica'
+  | 'no_se_puede_afirmar'
 
 export interface ExperienceFitContract {
   experience_id: string;
@@ -270,6 +274,18 @@ export async function getTenders(
     limit: response.data?.limit || filters.limit || 50,
     offset: response.data?.offset || filters.offset || 0,
   };
+}
+
+export async function confirmExperienceFit(
+  tenderId: string,
+  experienceIds: string[]
+): Promise<{ tender_id: string; status: string; experience_ids: string[] }> {
+  const params = withOwnerEmail(new URLSearchParams());
+  const response = await client.post(
+    `/tenders/${tenderId}/experience-fit/confirm?${params.toString()}`,
+    { experience_ids: experienceIds }
+  );
+  return response.data;
 }
 
 export async function getTender(id: string): Promise<Tender> {

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { DataTable, Table, TableHead, TableRow, TableHeader, TableBody, TableCell, Tag, Link, Tile, IconButton, Modal } from '@carbon/react'
-import { ExperienceFitStatus, Tender } from '../api/client'
+import { confirmExperienceFit, ExperienceFitStatus, Tender } from '../api/client'
 import { Launch, Star, StarFilled, ArrowUp, ArrowDown, ArrowsVertical } from '@carbon/icons-react'
 import {
   DEFAULT_TENDER_SORT_DIRECTION,
@@ -16,6 +16,7 @@ import './TenderTable.scss'
 interface TenderTableProps {
   tenders: Tender[]
   onSelectTender?: (tender: Tender) => void
+  onExperienceFitChange?: () => void
   showFavoriteColumn?: boolean
   isFavorite?: (tenderId: string) => boolean
   onToggleFavorite?: (tender: Tender) => void
@@ -24,6 +25,7 @@ interface TenderTableProps {
 const TenderTable: React.FC<TenderTableProps> = ({
   tenders,
   onSelectTender,
+  onExperienceFitChange,
   showFavoriteColumn = false,
   isFavorite,
   onToggleFavorite,
@@ -148,7 +150,8 @@ const TenderTable: React.FC<TenderTableProps> = ({
         <ExperienceFitTag
           fit={tender.experience_fit}
           onShowMatch={
-            tender.experience_fit?.status === 'puede_aplicar'
+            tender.experience_fit?.status === 'puede_aplicar' ||
+            tender.experience_fit?.status === 'candidata'
               ? () => setMatchTender(tender)
               : undefined
           }
@@ -289,7 +292,14 @@ const TenderTable: React.FC<TenderTableProps> = ({
         )}
       </DataTable>
       {matchTender?.experience_fit && (
-        <MatchContractsModal tender={matchTender} onClose={() => setMatchTender(null)} />
+        <MatchContractsModal
+          tender={matchTender}
+          onClose={() => setMatchTender(null)}
+          onConfirmed={() => {
+            setMatchTender(null)
+            onExperienceFitChange?.()
+          }}
+        />
       )}
     </div>
   )
@@ -297,6 +307,7 @@ const TenderTable: React.FC<TenderTableProps> = ({
 
 const FIT_LABEL: Record<ExperienceFitStatus, string> = {
   puede_aplicar: 'Puede aplicar',
+  candidata: 'Candidata',
   no_aplica: 'No aplica',
   no_se_puede_afirmar: 'No se puede afirmar',
 }
@@ -310,7 +321,13 @@ function ExperienceFitTag({
 }) {
   if (!fit) return <span>—</span>
   const type =
-    fit.status === 'puede_aplicar' ? 'green' : fit.status === 'no_aplica' ? 'red' : 'gray'
+    fit.status === 'puede_aplicar'
+      ? 'green'
+      : fit.status === 'candidata'
+        ? 'blue'
+        : fit.status === 'no_aplica'
+          ? 'red'
+          : 'gray'
   const tag = (
     <Tag type={type} size="sm">
       {FIT_LABEL[fit.status]}
@@ -331,23 +348,64 @@ function ExperienceFitTag({
   )
 }
 
-function MatchContractsModal({ tender, onClose }: { tender: Tender; onClose: () => void }) {
+function MatchContractsModal({
+  tender,
+  onClose,
+  onConfirmed,
+}: {
+  tender: Tender
+  onClose: () => void
+  onConfirmed?: () => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const contracts = (tender.experience_fit?.contracts || []).filter((row) => row.in_general_sum)
+  const isCandidate = tender.experience_fit?.status === 'candidata'
+
+  const handleConfirm = async () => {
+    setConfirming(true)
+    setError(null)
+    try {
+      await confirmExperienceFit(
+        tender.id,
+        contracts.map((row) => row.experience_id)
+      )
+      onConfirmed?.()
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string }
+      setError(
+        axiosErr?.response?.data?.detail ||
+          axiosErr?.message ||
+          'No se pudo confirmar el match'
+      )
+    } finally {
+      setConfirming(false)
+    }
+  }
+
   return (
     <Modal
       open
-      passiveModal
+      passiveModal={!isCandidate}
       size="md"
-      modalHeading="Contratos con match"
+      modalHeading={isCandidate ? 'Confirmar candidata' : 'Contratos con match'}
+      primaryButtonText={isCandidate ? 'Confirmar Puede aplicar' : undefined}
+      secondaryButtonText={isCandidate ? 'Cerrar' : undefined}
+      onRequestSubmit={isCandidate ? handleConfirm : undefined}
+      primaryButtonDisabled={confirming || contracts.length === 0}
       onRequestClose={onClose}
     >
       <p className="tender-table-match-intro">
-        {tender.entity_name}. El objeto de la licitación coincide con estos contratos y su suma cubre el mínimo de la experiencia general.
+        {tender.entity_name}.{' '}
+        {isCandidate
+          ? 'Dos modelos coincidieron en estos contratos y la suma cubre el mínimo. Confirma para marcarlo como Puede aplicar.'
+          : 'El objeto de la licitación coincide con estos contratos y su suma cubre el mínimo de la experiencia general.'}
         {tender.experience_fit?.general_sum_smmlv != null &&
         tender.experience_fit?.general_minimum_smmlv != null
           ? ` Suma ${new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(tender.experience_fit.general_sum_smmlv)} SMMLV de un mínimo de ${new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(tender.experience_fit.general_minimum_smmlv)}.`
           : ''}
       </p>
+      {error && <p className="tender-table-match-error">{error}</p>}
       <ul className="tender-table-match-list">
         {contracts.map((contract) => (
           <li key={contract.experience_id} className="tender-table-match-item">

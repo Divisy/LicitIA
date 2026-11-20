@@ -26,6 +26,11 @@ class ExperienceFit(BaseModel):
     contracts: List[ExperienceFitContract] = Field(default_factory=list)
 
 
+class ExperienceFitConfirmRequest(BaseModel):
+    """Contracts the user confirms for Puede aplicar."""
+    experience_ids: List[str] = Field(default_factory=list)
+
+
 class TenderResponse(BaseModel):
     """Tender response schema."""
     id: UUID

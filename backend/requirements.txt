@@ -18,8 +18,9 @@ requests==2.31.0
 # Object storage (Cloudflare R2 via S3 API)
 boto3==1.34.162
 
-# OpenAI
-openai==1.3.5
+# OpenAI + Anthropic (precision match A/B/C)
+openai==1.109.1
+anthropic==0.75.0
 
 # Email validation
 email-validator==2.1.0

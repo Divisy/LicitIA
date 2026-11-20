@@ -22,6 +22,7 @@ from app.schemas.tender import (
     TenderListResponse,
     TenderDocumentResponse,
     TenderDocumentListResponse,
+    ExperienceFitConfirmRequest,
 )
 from app.config import settings
 from app.models.tender_summary import TenderSummary
@@ -139,9 +140,9 @@ def _object_match_payload(tenders: list) -> list[dict]:
 def _prepare_object_matches(payload: list, fit_experiences: list) -> tuple[dict, set]:
     if not fit_experiences or not payload:
         return {}, set()
-    from app.services.object_match import judge_object_matches
+    from app.services.object_match import judge_object_matches_consensus
 
-    return judge_object_matches(payload, fit_experiences)
+    return judge_object_matches_consensus(payload, fit_experiences)
 
 
 def _prepare_experience_paragraph_matches(
@@ -152,7 +153,7 @@ def _prepare_experience_paragraph_matches(
 ) -> tuple[dict, set]:
     """Compare the pliego experience paragraphs with actas that already matched the tender object."""
     from app.services.experience_fit import experience_paragraphs
-    from app.services.object_match import judge_object_matches
+    from app.services.object_match import judge_object_matches_consensus
 
     synthetic = []
     for tender in payload:
@@ -183,7 +184,9 @@ def _prepare_experience_paragraph_matches(
             )
     if not synthetic:
         return {}, set()
-    raw, failed = judge_object_matches(synthetic, fit_experiences, purpose="experience")
+    raw, failed = judge_object_matches_consensus(
+        synthetic, fit_experiences, purpose="experience"
+    )
     covered: dict[str, set] = {}
     failed_tenders: set[str] = set()
     for tender in payload:
@@ -225,6 +228,22 @@ def _fit_context(db: Session, tenders: list) -> dict[str, dict]:
     }
 
 
+def _fit_confirmations(db: Session, owner_email: Optional[str], tenders: list) -> dict[str, set[str]]:
+    from app.services.match_store import ensure_match_store, get_confirmation
+    from app.services.rup_import import normalize_owner_email
+
+    email = normalize_owner_email(owner_email)
+    if not email or not tenders:
+        return {}
+    ensure_match_store(db)
+    found: dict[str, set[str]] = {}
+    for tender in tenders:
+        confirmed = get_confirmation(db, owner_email=email, tender_id=tender.id)
+        if confirmed is not None:
+            found[str(tender.id)] = confirmed
+    return found
+
+
 def _attach_experience_fit(
     response: TenderResponse,
     tender: Tender,
@@ -234,11 +253,17 @@ def _attach_experience_fit(
     context: Optional[dict] = None,
     paragraph_ids: Optional[set[str]] = None,
     paragraph_available: bool = True,
+    confirmed_ids: Optional[set[str]] = None,
 ) -> None:
     if not fit_experiences:
         return
     from app.schemas.tender import ExperienceFit
-    from app.services.experience_fit import evaluate_experience_fit
+    from app.services.experience_fit import (
+        CANDIDATA,
+        PUEDE_APLICAR,
+        evaluate_experience_fit,
+    )
+    from app.services.match_store import confirmation_matches
     from app.services.tender_summary.contract_kind import detect_contract_kind
 
     context = context or {}
@@ -254,7 +279,19 @@ def _attach_experience_fit(
         paragraph_matched_ids=paragraph_ids,
         paragraph_comparison_available=paragraph_available,
     )
-    response.experience_fit = ExperienceFit.model_validate(result.as_dict())
+    payload = result.as_dict()
+    if result.status == CANDIDATA:
+        current_ids = {
+            str(row.experience_id)
+            for row in result.contracts
+            if row.in_general_sum
+        }
+        if confirmation_matches(confirmed_ids, current_ids):
+            payload["status"] = PUEDE_APLICAR
+            payload["reason"] = (
+                "Confirmado: la suma de SMMLV cubre el mínimo de la experiencia general"
+            )
+    response.experience_fit = ExperienceFit.model_validate(payload)
     response.experience_match_score = None
 
 
@@ -276,7 +313,7 @@ async def list_tenders(
     match_experience: bool = Query(False, description="Ignored. Semantic match stays off."),
     experience_fit: Optional[str] = Query(
         None,
-        description="puede_aplicar, no_aplica, or no_se_puede_afirmar",
+        description="puede_aplicar, candidata, no_aplica, or no_se_puede_afirmar",
     ),
     owner_email: Optional[str] = Query(None, description="Registered user email"),
     only_interventoria: bool = Query(False, description="Deprecated: use contract_kind=interventoria"),
@@ -413,6 +450,7 @@ async def list_tenders(
             ]
             payload = _object_match_payload(kept)
             fit_context = _fit_context(db, kept)
+            confirmations = _fit_confirmations(db, owner_email, kept)
             db.commit()
             object_matches, failed_matches = await asyncio.to_thread(
                 _prepare_object_matches, payload, fit_experiences
@@ -437,6 +475,7 @@ async def list_tenders(
                     fit_context.get(tender_id),
                     paragraph_matches.get(tender_id, set()),
                     tender_id not in failed_paragraphs,
+                    confirmations.get(tender_id),
                 )
                 if wanted_fit and (
                     tender_response.experience_fit is None
@@ -451,6 +490,7 @@ async def list_tenders(
             tenders = ordered.offset(offset).limit(limit).all()
             payload = _object_match_payload(tenders)
             fit_context = _fit_context(db, tenders)
+            confirmations = _fit_confirmations(db, owner_email, tenders)
             db.commit()
             object_matches, failed_matches = await asyncio.to_thread(
                 _prepare_object_matches, payload, fit_experiences
@@ -481,6 +521,7 @@ async def list_tenders(
                     fit_context.get(tender_id),
                     paragraph_matches.get(tender_id, set()),
                     tender_id not in failed_paragraphs,
+                    confirmations.get(tender_id),
                 )
                 items.append(tender_response)
         
@@ -500,6 +541,38 @@ async def list_tenders(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post("/tenders/{tender_id}/experience-fit/confirm")
+async def confirm_experience_fit(
+    tender_id: UUID,
+    payload: ExperienceFitConfirmRequest,
+    owner_email: Optional[str] = Query(None, description="Registered user email"),
+    db: Session = Depends(get_db),
+):
+    """Confirm a candidata match so it becomes Puede aplicar for this account."""
+    from app.services.match_store import save_confirmation
+    from app.services.rup_import import normalize_owner_email
+
+    email = normalize_owner_email(owner_email)
+    if not email:
+        raise HTTPException(status_code=400, detail="owner_email is required")
+    tender = filter_active_dashboard_tenders(
+        db.query(Tender).filter(Tender.id == tender_id)
+    ).first()
+    if tender is None:
+        raise HTTPException(status_code=404, detail="Tender not found")
+    ids = [str(item).strip() for item in payload.experience_ids if str(item).strip()]
+    if not ids:
+        raise HTTPException(status_code=400, detail="experience_ids is required")
+    saved = save_confirmation(
+        db, owner_email=email, tender_id=tender_id, experience_ids=ids
+    )
+    return {
+        "tender_id": str(tender_id),
+        "status": "puede_aplicar",
+        "experience_ids": sorted(saved),
+    }
 
 
 @router.get("/tenders/{tender_id}", response_model=TenderResponse)

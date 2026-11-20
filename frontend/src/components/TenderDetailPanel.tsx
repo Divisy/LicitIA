@@ -610,21 +610,29 @@ function formatExperienceSmmlv(value: number | null | undefined): string | null 
 
 function ExperienceMatchBlock({ tender }: { tender: Tender }) {
   const contracts = (tender.experience_fit?.contracts || []).filter((row) => row.in_general_sum)
-  if (tender.experience_fit?.status !== 'puede_aplicar' || contracts.length === 0) return null
+  const status = tender.experience_fit?.status
+  if ((status !== 'puede_aplicar' && status !== 'candidata') || contracts.length === 0) return null
   const several = contracts.length !== 1
+  const isCandidate = status === 'candidata'
 
   return (
     <section className="tender-detail-panel__match" aria-label="Coincide con tu experiencia">
       <div className="tender-detail-panel__match-header">
         <h4 className="tender-detail-panel__match-title">Coincide con tu experiencia</h4>
-        <Tag type="green" size="sm">
-          {several ? `${contracts.length} contratos` : '1 contrato'}
+        <Tag type={isCandidate ? 'blue' : 'green'} size="sm">
+          {isCandidate
+            ? 'Candidata'
+            : several
+              ? `${contracts.length} contratos`
+              : '1 contrato'}
         </Tag>
       </div>
       <p className="tender-detail-panel__match-intro">
-        {several
-          ? 'El objeto de esta licitación coincide con el objeto de estos contratos del RUP.'
-          : 'El objeto de esta licitación coincide con el objeto de este contrato del RUP.'}
+        {isCandidate
+          ? 'La máquina ya alineó objeto, párrafos y SMMLV. Confirma desde la tabla para marcarlo como Puede aplicar.'
+          : several
+            ? 'El objeto de esta licitación coincide con el objeto de estos contratos del RUP.'
+            : 'El objeto de esta licitación coincide con el objeto de este contrato del RUP.'}
       </p>
       <ul className="tender-detail-panel__match-list">
         {contracts.map((contract) => {
