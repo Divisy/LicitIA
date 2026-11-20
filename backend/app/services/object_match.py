@@ -182,7 +182,8 @@ def _call_openai_judge(
         kwargs["temperature"] = 0
     else:
         # GPT-6 chat completions reject max_tokens; use max_completion_tokens.
-        kwargs["max_completion_tokens"] = 800
+        # Batches of several tenders need headroom so JSON is not truncated.
+        kwargs["max_completion_tokens"] = 4096
         kwargs["reasoning_effort"] = effort
         # temperature is only valid when reasoning_effort is none.
         if effort == "none":
