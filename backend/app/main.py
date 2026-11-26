@@ -226,11 +226,28 @@ async def startup_event():
         print(f"[STARTUP] Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 10 minutes)")
         logger.info(f"Scheduled tender fetch job to run every {settings.FETCH_INTERVAL_HOURS} hours (first run in 10 minutes)")
 
-        from apscheduler.triggers.date import DateTrigger
-        from app.services.general_experience import (
-            run_general_experience_drain,
-            run_general_experience_job,
+        scheduler.add_job(
+            _run_document_backfill,
+            trigger=IntervalTrigger(minutes=settings.DOCUMENT_DOWNLOAD_INTERVAL_MINUTES),
+            kwargs={
+                "batch_size": settings.DOCUMENT_EXTRACTION_BATCH_SIZE,
+                "max_batches": 1,
+            },
+            id="download_pending_documents",
+            name="Download SECOP documents for tenders not yet attempted",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            next_run_time=datetime.utcnow() + timedelta(minutes=2),
         )
+        logger.info(
+            "Scheduled document download every %s minutes, %s tenders per pass",
+            settings.DOCUMENT_DOWNLOAD_INTERVAL_MINUTES,
+            settings.DOCUMENT_EXTRACTION_BATCH_SIZE,
+        )
+
+        from apscheduler.triggers.date import DateTrigger
+        from app.services.general_experience import run_general_experience_drain
 
         scheduler.add_job(
             run_general_experience_drain,
@@ -240,15 +257,17 @@ async def startup_event():
             replace_existing=True,
         )
         scheduler.add_job(
-            run_general_experience_job,
+            run_general_experience_drain,
             trigger=IntervalTrigger(hours=3),
             id="general_experience",
-            name="Retry general experience reads",
+            name="Read general experience from stored pliegos",
             replace_existing=True,
+            max_instances=1,
+            coalesce=True,
             next_run_time=datetime.utcnow() + timedelta(hours=3),
         )
         logger.info(
-            "Scheduled general experience drain in 3 minutes and a retry every 3 hours"
+            "Scheduled general experience drain in 3 minutes and again every 3 hours"
         )
         
         # NOTE: Semantic AI model will be loaded lazily on first use

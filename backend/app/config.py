@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     DOCUMENT_EXTRACTION_BATCH_SIZE: int = 5
     # Smaller cap when extraction runs right after the SECOP fetch job (avoids OOM on Railway).
     DOCUMENT_EXTRACTION_FETCH_BATCH_SIZE: int = 3
+    # Separate pass so the queue of active tenders without a pliego can catch up.
+    # Five tenders every 10 minutes is about 700 a day, above the daily inflow.
+    DOCUMENT_DOWNLOAD_INTERVAL_MINUTES: int = 10
 
     # Archive extraction (US 1.2.4)
     ARCHIVE_EXTRACTION_ENABLED: bool = True
