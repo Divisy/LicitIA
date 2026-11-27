@@ -20,6 +20,11 @@ from app.services.document_extraction import deduplicate_visible_documents
 from app.services.secop_documents import is_archive_filename
 from app.services.tender_lifecycle import filter_active_dashboard_tenders
 from app.services.tender_requirements.document_selection import select_pliego_document
+from app.services.experience_section import (
+    EXPERIENCE_SECTION_VERSION,
+    experience_section_excerpt,
+    reconcile_general_fields,
+)
 from app.services.tender_requirements.llm_extraction import (
     extract_general_experience_from_page_images,
     extract_general_experience_with_llm,
@@ -138,7 +143,9 @@ def general_experience_reading_is_final(payload: Optional[dict]) -> bool:
     source = (payload or {}).get("general_experience_source")
     if source == "no_pages":
         return True
-    if source == "pages":
+    if source in {"pages", "section"}:
+        if (payload or {}).get("experience_section_version") != EXPERIENCE_SECTION_VERSION:
+            return False
         if (payload or {}).get("general_experience_subject") is True or _section_marks_subject(
             payload, "experiencia_general"
         ):
@@ -176,7 +183,16 @@ def _fields_for_general_experience(
     tender_external_id: str,
     pliego: Optional[_StoredPliego],
 ) -> tuple[Optional[dict], str]:
-    """Read the printed pages. The text layer is only the fallback when those pages are not found."""
+    """Read the experience chapter from the text. Images are the fallback when that text is missing."""
+    excerpt = experience_section_excerpt(text) if (text or "").strip() else ""
+    if len(excerpt) >= 40 and "experiencia" in normalize_text(excerpt):
+        fields = extract_general_experience_with_llm(
+            tender_external_id=tender_external_id,
+            excerpt=excerpt,
+        )
+        if fields is None:
+            return None, "section"
+        return reconcile_general_fields(fields, excerpt), "section"
     if pliego is not None:
         images = _render_general_experience_pages(pliego)
         if images:
@@ -185,23 +201,18 @@ def _fields_for_general_experience(
                 page_images=images,
             )
             return fields, "pages" if fields is not None else "vision"
-        logger.info(
-            "General experience pages were not found for %s; using the text layer",
-            tender_external_id,
-        )
-    excerpt = general_experience_excerpt(text) if (text or "").strip() else ""
     if not excerpt.strip():
         return None, "no_pages"
-    return (
-        extract_general_experience_with_llm(
-            tender_external_id=tender_external_id,
-            excerpt=excerpt,
-        ),
-        "no_pages",
+    fields = extract_general_experience_with_llm(
+        tender_external_id=tender_external_id,
+        excerpt=excerpt,
     )
+    if fields is None:
+        return None, "section"
+    return reconcile_general_fields(fields, excerpt), "section"
 
 
-def _render_general_experience_pages(pliego: _StoredPliego, limit: int = 3) -> list[bytes]:
+def _render_general_experience_pages(pliego: _StoredPliego, limit: int = 8) -> list[bytes]:
     """JPEG of the printed general-experience pages. Empty when the heading cannot be found."""
     import fitz
 
@@ -223,7 +234,7 @@ def _render_general_experience_pages(pliego: _StoredPliego, limit: int = 3) -> l
             start = _general_experience_page_index(document)
             if start is None:
                 return []
-            for index in _printed_page_span(start, document.page_count, limit):
+            for index in _experience_image_indexes(document, start, limit):
                 pixmap = document[index].get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
                 images.append(pixmap.tobytes("jpeg", jpg_quality=72))
         finally:
@@ -232,6 +243,31 @@ def _render_general_experience_pages(pliego: _StoredPliego, limit: int = 3) -> l
         if temp_dir is not None:
             temp_dir.cleanup()
     return images
+
+
+_SECTION_END_MARKERS = (
+    "capacidad financiera",
+    "indicadores financieros",
+    "solvencia economica",
+    "criterios de evaluacion",
+    "criterios de calificacion",
+)
+
+
+def _experience_image_indexes(document, start: int, limit: int = 8) -> list[int]:
+    """Pages of the experience chapter. The value table near the end stays when the chapter is long."""
+    first = max(0, start - 1)
+    end = min(document.page_count, start + 1)
+    for index in range(start + 1, min(document.page_count, start + 14)):
+        normalized = normalize_text(document[index].get_text("text") or "")
+        if any(marker in normalized for marker in _SECTION_END_MARKERS):
+            break
+        end = index + 1
+    indexes = list(range(first, end))
+    if len(indexes) <= limit:
+        return indexes
+    head = limit // 2
+    return indexes[:head] + indexes[-(limit - head) :]
 
 
 def _printed_page_span(start: int, page_count: int, limit: int) -> range:
@@ -262,7 +298,7 @@ def finish_focused_reading(
     text = _read_pliego_text(pliego)
     fields, source = _fields_for_general_experience(text, tender_external_id, pliego)
     if fields is None:
-        if source == "vision":
+        if source in {"vision", "section"}:
             return None
         if not (text or "").strip():
             payload = mark_general_experience_unreadable(existing, tender_external_id)
@@ -278,7 +314,7 @@ def finish_focused_reading(
             source_document_id=pliego.id,
         )
     section = _section(general_experience_items_from_fields(fields, pliego.id))
-    if source == "pages":
+    if source in {"pages", "section"}:
         section["experience_subject"] = True
     if _is_full_extract(existing):
         return apply_focused_general_experience_section(existing, section, source)
@@ -289,7 +325,8 @@ def finish_focused_reading(
         llm_done=True,
     )
     payload["general_experience_source"] = source
-    if source == "pages":
+    if source in {"pages", "section"}:
+        payload["experience_section_version"] = EXPERIENCE_SECTION_VERSION
         payload["general_experience_subject"] = True
         for stored in payload.get("sections") or []:
             if stored.get("key") == "experiencia_general":
@@ -335,6 +372,8 @@ def apply_focused_general_experience_section(
     updated["sections"] = sections
     updated["general_experience_llm"] = True
     updated["general_experience_source"] = source
+    if source in {"pages", "section"}:
+        updated["experience_section_version"] = EXPERIENCE_SECTION_VERSION
     if stored.get("experience_subject") is True:
         updated["general_experience_subject"] = True
     return updated

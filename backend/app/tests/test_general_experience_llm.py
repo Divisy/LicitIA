@@ -3,7 +3,7 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from app.services.experience_fit import PUEDE_APLICAR, evaluate_experience_fit
+from app.services.experience_fit import CANDIDATA, evaluate_experience_fit
 from types import SimpleNamespace
 
 from app.services.general_experience import (
@@ -149,7 +149,7 @@ def test_ai_numbers_are_what_the_smmlv_match_reads():
         },
     )
 
-    assert result.status == PUEDE_APLICAR
+    assert result.status == CANDIDATA
     assert result.general_minimum_smmlv == 300
     assert items[0]["extraction_method"] == "llm"
 
@@ -334,7 +334,7 @@ def test_three_printed_pages_go_to_the_model(mock_settings, mock_client):
 
     content = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
     images = [part for part in content if part["type"] == "image_url"]
-    assert len(images) == 3
+    assert len(images) == 4
     assert images[0]["image_url"]["detail"] == "high"
     assert parsed["contracts_minimum"] == {"minimum": 1, "maximum": 2}
 
@@ -384,10 +384,30 @@ def test_a_text_reading_is_replaced_by_the_printed_pages():
             ],
         }
     )
-    assert general_experience_reading_is_final(
+    assert not general_experience_reading_is_final(
         {
             "general_experience_llm": True,
             "general_experience_source": "pages",
+            "sections": [
+                {
+                    "key": "experiencia_general",
+                    "items": [
+                        {
+                            "key": "requirement_description",
+                            "value": (
+                                "Proyectos de construcción y/o ampliación y/o reconstrucción de edificaciones."
+                            ),
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    assert general_experience_reading_is_final(
+        {
+            "general_experience_llm": True,
+            "general_experience_source": "section",
+            "experience_section_version": 2,
             "sections": [
                 {
                     "key": "experiencia_general",
@@ -430,23 +450,31 @@ def test_the_page_before_the_heading_is_included():
 @patch("app.services.general_experience._render_general_experience_pages", return_value=[b"a", b"b", b"c"])
 @patch(
     "app.services.general_experience._read_pliego_text",
-    return_value="experiencia general habilitante: uno (1) o hasta dos (2) contratos",
+    return_value=(
+        "Experiencia general: construcción de vías urbanas. "
+        "Nota: no se acepta experiencia solo en afirmado. "
+        "Experiencia específica: intervención de pavimento. "
+        "Mínimo uno (1) y máximo cinco (5) contratos. "
+        "Valor mínimo a certificar. De 1 hasta 2 75 %. De 3 hasta 4 120 %. Hasta 5 150 %. "
+        "3.6 Capacidad financiera."
+    ),
 )
-def test_every_pliego_is_read_from_three_printed_pages(_text, _pages, mock_vision, mock_text_llm):
-    mock_vision.return_value = {
-        "requirement_description": "uno (1) o hasta dos (2) contratos de interventoría",
-        "contracts_minimum": {"minimum": 1, "maximum": 2},
+def test_a_readable_pliego_is_read_from_the_experience_chapter(_text, _pages, mock_vision, mock_text_llm):
+    mock_text_llm.return_value = {
+        "requirement_description": "construcción de vías urbanas",
+        "min_amount_smmlv": 1001,
     }
     pliego = SimpleNamespace(id=uuid4())
 
     payload = finish_focused_reading(pliego, "CO1.REQ.1", {"general_experience_llm": True, "sections": []})
 
-    mock_vision.assert_called_once()
-    assert mock_vision.call_args.kwargs["page_images"] == [b"a", b"b", b"c"]
-    mock_text_llm.assert_not_called()
-    assert payload["general_experience_source"] == "pages"
-    description = payload["sections"][0]["items"][0]["value"]
-    assert description.startswith("uno (1) o hasta dos (2)")
+    mock_text_llm.assert_called_once()
+    mock_vision.assert_not_called()
+    assert payload["general_experience_source"] == "section"
+    assert payload["experience_section_version"] == 2
+    keys = {item["key"] for item in payload["sections"][0]["items"]}
+    assert "experience_value_tiers" in keys
+    assert "min_amount_smmlv" not in keys
 
 
 @patch("app.services.general_experience.extract_general_experience_from_page_images", return_value=None)

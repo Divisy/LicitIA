@@ -60,9 +60,10 @@ def test_a_text_extract_is_replaced_by_the_printed_specific_page():
     assert not specific_experience_reading_is_final(payload)
 
 
+@patch("app.services.pliego_specific_experience._read_pliego_text", return_value="")
 @patch("app.services.pliego_specific_experience.extract_specific_experience_from_page_images")
 @patch("app.services.pliego_specific_experience._render_specific_experience_pages", return_value=[b"page"])
-def test_the_specific_section_is_read_from_its_printed_page(_pages, mock_vision):
+def test_the_specific_section_is_read_from_its_printed_page(_pages, mock_vision, _text):
     mock_vision.return_value = {
         "specific_scope": "Experiencia específica habilitante: un (1) contrato de interventoría patrimonial.",
         "specific_min_percentage": 100,
@@ -122,7 +123,8 @@ def test_a_contract_count_is_not_the_specific_experience_paragraph():
 
     with_activity = {
         "specific_experience_llm": True,
-        "specific_experience_source": "pages",
+        "specific_experience_source": "section",
+        "experience_section_version": 2,
         "sections": [
             {
                 "key": "experiencia_especifica",

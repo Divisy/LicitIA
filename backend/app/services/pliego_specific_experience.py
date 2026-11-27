@@ -10,13 +10,22 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.models.tender import Tender
+from app.services.experience_section import (
+    EXPERIENCE_SECTION_VERSION,
+    experience_section_excerpt,
+    reconcile_specific_fields,
+)
 from app.services.general_experience import (
     _StoredPliego,
+    _experience_image_indexes,
     _llm_item,
-    _printed_page_span,
+    _read_pliego_text,
     experience_subject_is_written,
 )
-from app.services.tender_requirements.llm_extraction import extract_specific_experience_from_page_images
+from app.services.tender_requirements.llm_extraction import (
+    extract_specific_experience_from_page_images,
+    extract_specific_experience_with_llm,
+)
 from app.services.tender_requirements.regex_extraction import normalize_text
 
 logger = get_logger(__name__)
@@ -29,7 +38,9 @@ def specific_experience_reading_is_final(payload: Optional[dict]) -> bool:
     source = payload.get("specific_experience_source")
     if source == "no_pages":
         return True
-    if source != "pages":
+    if source not in {"pages", "section"}:
+        return False
+    if payload.get("experience_section_version") != EXPERIENCE_SECTION_VERSION:
         return False
     if payload.get("specific_experience_subject") is True:
         return True
@@ -155,7 +166,7 @@ def _render_specific_experience_pages(pliego: _StoredPliego) -> list[bytes]:
             start = _specific_page_index(document)
             if start is None:
                 return []
-            for index in _printed_page_span(start, document.page_count, 3):
+            for index in _experience_image_indexes(document, start):
                 pixmap = document[index].get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
                 images.append(pixmap.tobytes("jpeg", jpg_quality=72))
         finally:
@@ -185,6 +196,8 @@ def apply_focused_specific_experience_section(payload: dict, section: dict, sour
     updated["sections"] = sections
     updated["specific_experience_llm"] = True
     updated["specific_experience_source"] = source
+    if source in {"pages", "section"}:
+        updated["experience_section_version"] = EXPERIENCE_SECTION_VERSION
     if stored.get("experience_subject") is True:
         updated["specific_experience_subject"] = True
     return updated
@@ -196,6 +209,20 @@ def finish_specific_reading(
     existing: Optional[dict],
 ) -> Optional[dict]:
     """None means the image call failed and the stored row should stay as it is."""
+    text = _read_pliego_text(pliego)
+    excerpt = experience_section_excerpt(text)
+    if len(excerpt) >= 40 and "experiencia" in normalize_text(excerpt):
+        fields = extract_specific_experience_with_llm(
+            tender_external_id=tender_external_id,
+            excerpt=excerpt,
+        )
+        if fields is None:
+            return None
+        fields = reconcile_specific_fields(fields, excerpt)
+        section = _specific_section(specific_experience_items_from_fields(fields, pliego.id))
+        section["experience_subject"] = True
+        base = existing or {"tender_external_id": tender_external_id, "sections": []}
+        return apply_focused_specific_experience_section(base, section, "section")
     images = _render_specific_experience_pages(pliego)
     if not images:
         logger.info("Specific experience page was not found for %s", tender_external_id)

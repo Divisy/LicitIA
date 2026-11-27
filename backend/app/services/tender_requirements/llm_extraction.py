@@ -907,21 +907,20 @@ def _general_experience_prompt(tender_external_id: str, excerpt: str) -> str:
         "- Lee solo la experiencia general. Ignora experiencia específica, indicadores, puntaje y requisitos legales.\n"
         "- Devuelve siempre las claves. Si el pliego escribe el párrafo, el porcentaje, el monto en SMMLV, la ventana, la duración de la persona jurídica, el número de contratos y la tabla, guarda cada uno. No pongas null en una clave porque otra ya tenga valor.\n"
         "- Si un dato no está escrito en el fragmento, pon null. No completes con un porcentaje, una ventana o un número de contratos habitual.\n"
-        "- min_percentage_budget es un número. min_amount_smmlv es un número de SMMLV solo cuando el pliego escribe la cifra. "
-        "La frase «expresado en SMMLV» sin cifra va null.\n"
+        "- requirement_description es lo que hay que acreditar como experiencia general, con las notas que dicen qué contratos cuentan y cuáles no. "
+        "Cópialo completo y detente antes de la experiencia específica. "
+        "La actividad que se va a contratar, el objeto de esta licitación y el número de una matriz no son ese requisito.\n"
+        "- min_percentage_budget es un número cuando hay un solo porcentaje del presupuesto oficial. "
+        "min_amount_smmlv es un número de SMMLV solo cuando el texto dice que hay que acreditar esa cantidad. "
+        "Un rango «entre X y Y SMMLV» que clasifica el valor o la complejidad de este proyecto va null. "
+        "La frase «expresado en SMMLV» sin cifra va null. Un valor en pesos no es min_amount_smmlv.\n"
+        "- Si el valor a certificar cambia según el número de contratos, va en experience_value_tiers y min_amount_smmlv va null. "
+        "contract_range con la forma mínimo-máximo, por ejemplo 1-2.\n"
         "- time_window_years es el entero de años solo cuando los contratos de la experiencia deben haberse ejecutado o terminado en los últimos N años.\n"
         "- company_duration copia la frase de cuánto debe durar la persona jurídica. "
         "«Cinco (5) años más» después del plazo del contrato y su liquidación es duración de la empresa, no time_window_years.\n"
-        "- contracts_minimum lleva minimum y maximum solo si el texto los dice.\n"
-        "- experience_value_tiers solo cuando el porcentaje del presupuesto cambia según el número de contratos. "
-        "contract_range con la forma mínimo-máximo, por ejemplo 1-2.\n"
-        "- requirement_description es el párrafo que dice en qué hay que tener la experiencia general: "
-        "las actividades, el objeto o el tipo de obras. Cópialo tal cual, también si está en una tabla junto a «General». "
-        "No lo resumas y no lo reemplaces por la frase que solo dice cuántos contratos se presentan, "
-        "la excepción de Mipyme, el porcentaje o la duración de la persona jurídica.\n"
-        "- contracts_minimum sale solo de la frase que dice cuántos contratos se presentan. "
+        "- contracts_minimum incluye minimum y maximum cuando el texto dice los dos. "
         "Un número de códigos del RUP no es el máximo de contratos.\n"
-        "- Un valor en pesos no es min_amount_smmlv.\n"
         "- evidence cita como máximo 200 caracteres del fragmento por campo presente."
     )
 
@@ -943,16 +942,17 @@ def _general_experience_vision_prompt(tender_external_id: str) -> str:
         '  "evidence": {}\n'
         "}\n\n"
         "Reglas:\n"
-        "- requirement_description es el párrafo impreso que dice en qué hay que tener la experiencia general: "
-        "las actividades, el objeto o el tipo de obras. Cópialo tal cual, también cuando esté en la celda de «General» "
-        "o de «Tipo de experiencia». No lo resumas. Una frase que solo dice cuántos contratos se presentan, "
-        "la excepción de Mipyme o el porcentaje del presupuesto no es ese párrafo: eso va en contracts_minimum "
-        "o en experience_value_tiers. Si el mismo párrafo trae el objeto y el número de contratos, consérvalo completo.\n"
+        "- requirement_description es lo que hay que acreditar como experiencia general, con las notas que dicen qué contratos cuentan y cuáles no. "
+        "Cópialo completo. La actividad que se va a contratar, el objeto de esta licitación y el número de una matriz no son ese requisito. "
+        "Una frase que solo dice cuántos contratos se presentan va en contracts_minimum.\n"
         "- Devuelve las claves. No pongas null en una porque otra ya tenga valor.\n"
         "- Si un dato no está impreso en esas páginas, pon null.\n"
-        "- contracts_minimum sale de la frase que dice cuántos contratos o certificaciones se presentan, "
-        "por ejemplo uno (1) o hasta dos (2). Un «cinco (5)» de códigos del RUP no es el máximo de contratos.\n"
-        "- min_percentage_budget es un número. min_amount_smmlv es un número de SMMLV solo cuando la página de experiencia general escribe la cifra. "
+        "- contracts_minimum incluye minimum y maximum cuando las páginas dicen los dos. "
+        "Un «cinco (5)» de códigos del RUP no es el máximo de contratos.\n"
+        "- min_percentage_budget es un número cuando hay un solo porcentaje del presupuesto oficial. "
+        "min_amount_smmlv es un número de SMMLV solo cuando las páginas dicen que hay que acreditar esa cantidad. "
+        "Un rango «entre X y Y SMMLV» que clasifica el valor o la complejidad de este proyecto va null. "
+        "Si el valor cambia según el número de contratos, va en experience_value_tiers y min_amount_smmlv va null. "
         "«Expresado en SMMLV» sin cifra, un valor en pesos y el monto de la experiencia específica van null.\n"
         "- time_window_years es el entero de años solo cuando los contratos de la experiencia deben haberse ejecutado o terminado en los últimos N años.\n"
         "- company_duration copia la frase de cuánto debe durar la persona jurídica, por ejemplo el plazo del contrato, su liquidación y cinco (5) años más. "
@@ -973,7 +973,7 @@ def extract_general_experience_with_llm(
     fragment = (excerpt or "").strip()
     if not fragment:
         return None
-    fragment = fragment[: settings.TENDER_REQUIREMENTS_LLM_MAX_CHARS]
+    fragment = fragment[:14_000]
     try:
         response = _openai_client.chat.completions.create(
             model=settings.OPENAI_MODEL_NAME,
@@ -1010,7 +1010,7 @@ def extract_general_experience_from_page_images(
 
     if not settings.TENDER_REQUIREMENTS_USE_LLM or not _openai_client:
         return None
-    images = [image for image in page_images if image][:3]
+    images = [image for image in page_images if image][:8]
     if not images:
         return None
     content: list[dict[str, Any]] = [
@@ -1050,13 +1050,29 @@ def extract_general_experience_from_page_images(
     return parse_general_experience_llm_payload(payload)
 
 
-def _specific_experience_vision_prompt(tender_external_id: str) -> str:
+def _specific_experience_rules() -> str:
+    return (
+        "Reglas:\n"
+        "- specific_scope es lo que hay que acreditar como experiencia específica: el texto que sigue a esa etiqueta "
+        "o a la celda «Específica», con cada condición. Cópialo completo.\n"
+        "- No copies la experiencia general, la actividad que se va a contratar, el objeto de esta licitación "
+        "ni el número de una matriz.\n"
+        "- Si un dato no está en ese apartado, pon null.\n"
+        "- specific_min_percentage es el porcentaje del presupuesto oficial que pide la experiencia específica.\n"
+        "- min_amount_smmlv es un número de SMMLV solo cuando ese apartado dice que hay que acreditar esa cantidad. "
+        "Un rango que clasifica el valor de este proyecto, y un valor en pesos, van null.\n"
+        "- contracts_minimum incluye minimum y maximum cuando el apartado dice los dos. "
+        "Un número de códigos del RUP no es el máximo.\n"
+        "- evidence cita como máximo 200 caracteres por campo presente."
+    )
+
+
+def _specific_experience_prompt(tender_external_id: str, excerpt: str) -> str:
     return (
         f"Licitación: {tender_external_id}\n\n"
-        "La imagen es la página del apartado de experiencia específica del pliego. "
-        "Si hay una segunda imagen, es solo la continuación de ese apartado. "
-        "Copia lo impreso de «Experiencia específica habilitante» y detente en el siguiente título.\n\n"
-        "Devuelve únicamente este JSON, con null en cada dato que ese apartado no escriba:\n"
+        "Fragmento del apartado de experiencia del pliego:\n"
+        f"{excerpt}\n\n"
+        "Devuelve únicamente este JSON, con null en cada dato que el fragmento no escriba para la experiencia específica:\n"
         "{\n"
         '  "specific_scope": null,\n'
         '  "specific_min_percentage": null,\n'
@@ -1064,19 +1080,24 @@ def _specific_experience_vision_prompt(tender_external_id: str) -> str:
         '  "contracts_minimum": null,\n'
         '  "evidence": {}\n'
         "}\n\n"
-        "Reglas:\n"
-        "- specific_scope es el párrafo impreso que dice en qué hay que tener la experiencia específica: "
-        "las actividades, el objeto o el tipo de obras. Cópialo tal cual, también cuando esté en la celda de «Específica». "
-        "No lo resumas. Ignora la experiencia general, el personal mínimo, el membrete, el correo y el pie de página. "
-        "La nota de que la magnitud se acredita con un contrato o con la suma de máximo dos no es ese párrafo: "
-        "el número de contratos va en contracts_minimum. Si el mismo párrafo trae el objeto y el número, consérvalo completo.\n"
-        "- Si un dato no está impreso en ese apartado, pon null.\n"
-        "- specific_min_percentage es el porcentaje del presupuesto oficial que pide la experiencia específica.\n"
-        "- min_amount_smmlv es un número de SMMLV solo cuando ese apartado escribe la cifra. "
-        "Un valor en pesos no es min_amount_smmlv.\n"
-        "- contracts_minimum sale de la frase que dice cuántos contratos se presentan para la experiencia específica. "
-        "Un número de códigos del RUP no es el máximo.\n"
-        "- evidence cita como máximo 200 caracteres de lo impreso por campo presente."
+        f"{_specific_experience_rules()}"
+    )
+
+
+def _specific_experience_vision_prompt(tender_external_id: str) -> str:
+    return (
+        f"Licitación: {tender_external_id}\n\n"
+        "Las imágenes son las páginas del apartado de experiencia del pliego. "
+        "Lee la experiencia específica y detente en el siguiente capítulo.\n\n"
+        "Devuelve únicamente este JSON, con null en cada dato que esas páginas no escriban:\n"
+        "{\n"
+        '  "specific_scope": null,\n'
+        '  "specific_min_percentage": null,\n'
+        '  "min_amount_smmlv": null,\n'
+        '  "contracts_minimum": null,\n'
+        '  "evidence": {}\n'
+        "}\n\n"
+        f"{_specific_experience_rules()}"
     )
 
 
@@ -1122,6 +1143,44 @@ def parse_specific_experience_llm_payload(payload: Any) -> dict[str, Any]:
     return parsed
 
 
+def extract_specific_experience_with_llm(
+    *,
+    tender_external_id: str,
+    excerpt: str,
+) -> Optional[dict[str, Any]]:
+    """One specific-experience reading of the chapter text. None means the call failed."""
+    if not settings.TENDER_REQUIREMENTS_USE_LLM or not _openai_client:
+        return None
+    fragment = (excerpt or "").strip()
+    if not fragment:
+        return None
+    fragment = fragment[:14_000]
+    try:
+        response = _openai_client.chat.completions.create(
+            model=settings.OPENAI_MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Eres un analista de pliegos de condiciones de Colombia. "
+                        "Extraes solo la experiencia específica que el texto escribe. "
+                        "Responde únicamente JSON válido."
+                    ),
+                },
+                {"role": "user", "content": _specific_experience_prompt(tender_external_id, fragment)},
+            ],
+            temperature=0,
+            max_tokens=2200,
+            timeout=45,
+            response_format={"type": "json_object"},
+        )
+        payload = _parse_json_content(response.choices[0].message.content or "{}")
+    except Exception as exc:
+        logger.warning("Specific experience LLM failed for %s: %s", tender_external_id, exc)
+        return None
+    return parse_specific_experience_llm_payload(payload)
+
+
 def extract_specific_experience_from_page_images(
     *,
     tender_external_id: str,
@@ -1132,7 +1191,7 @@ def extract_specific_experience_from_page_images(
 
     if not settings.TENDER_REQUIREMENTS_USE_LLM or not _openai_client:
         return None
-    images = [image for image in page_images if image][:3]
+    images = [image for image in page_images if image][:8]
     if not images:
         return None
     content: list[dict[str, Any]] = [
