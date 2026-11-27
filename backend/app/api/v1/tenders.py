@@ -958,9 +958,12 @@ async def get_tender_requirements(
         else db.query(TenderRequirements).filter(TenderRequirements.tender_id == tender_id).first()
     )
     if not refresh and cached and cached.requirements_json:
+        payload = cached.requirements_json
+        if not general_experience_reading_is_final(payload) or not specific_experience_reading_is_final(payload):
+            _schedule_tender_detail_read(tender.id)
         return _requirements_response_from_payload(
             tender,
-            cached.requirements_json,
+            payload,
             extracted_at=cached.extracted_at,
             cached=True,
         )
