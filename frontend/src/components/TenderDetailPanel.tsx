@@ -749,7 +749,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
     setSummaryLoading(true)
     setSummaryError(null)
     try {
-      const response = await getTenderSummary(tenderId, true)
+      const response = await getTenderSummary(tenderId, false)
       setSummary(response)
     } catch (err: any) {
       setSummaryError(
@@ -817,7 +817,7 @@ const TenderDetailPanel: React.FC<TenderDetailPanelProps> = ({
       if (cancelled) return
       await Promise.all([
         reloadSummary(tender.id),
-        reloadRequirements(tender.id, true),
+        reloadRequirements(tender.id, false),
       ])
     }
 

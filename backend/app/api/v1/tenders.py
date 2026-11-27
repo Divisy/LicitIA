@@ -1,5 +1,6 @@
 """Tender API endpoints."""
 import asyncio
+import threading
 
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
@@ -7,7 +8,7 @@ from typing import List, Optional
 from datetime import date, datetime, time, timedelta
 from uuid import UUID
 
-from app.core.db import get_db
+from app.core.db import SessionLocal, get_db
 from app.core.logging import get_logger
 from app.models.tender import Tender
 from app.models.tender_document import TenderDocument
@@ -53,7 +54,12 @@ from app.services.tender_requirements.service import (
 from app.services.experience_matching import match_tender_against_experiences
 from app.services.tender_lifecycle import filter_active_dashboard_tenders
 from app.services.project_typology import parse_typology_params, typologies_intersect
-from app.services.tender_summary.contract_kind import apply_contract_kind_filter, parse_contract_kind
+from app.services.tender_summary.contract_kind import (
+    apply_contract_kind_filter,
+    contract_kind_label,
+    detect_contract_kind,
+    parse_contract_kind,
+)
 from app.services.tender_summary.service import (
     SUMMARY_EXTRACTION_VERSION,
     build_tender_summary,
@@ -63,6 +69,58 @@ from app.services.manual_document_upload import save_manual_tender_document, val
 
 router = APIRouter()
 logger = get_logger(__name__)
+_detail_reads_lock = threading.Lock()
+_detail_reads_started: set[str] = set()
+_PENDING_READING = "El pliego se está leyendo. Vuelve a abrir el detalle en unos minutos."
+
+
+def _read_tender_detail(tender_id: UUID) -> None:
+    """Read summary and experience off the request so the panel does not wait on the pliego."""
+    db = SessionLocal()
+    try:
+        tender = db.query(Tender).filter(Tender.id == tender_id).first()
+        if tender is None:
+            return
+        if settings.TENDER_SUMMARY_EXTRACTION_ENABLED:
+            summary = (
+                db.query(TenderSummary).filter(TenderSummary.tender_id == tender_id).first()
+            )
+            if summary is None or not summary.summary_json:
+                persist_tender_summary(db, tender, build_tender_summary(tender))
+        if settings.TENDER_REQUIREMENTS_EXTRACTION_ENABLED:
+            record = (
+                db.query(TenderRequirements)
+                .filter(TenderRequirements.tender_id == tender_id)
+                .first()
+            )
+            payload = record.requirements_json if record is not None else None
+            if not payload:
+                payload = build_tender_requirements(tender)
+            if not general_experience_reading_is_final(payload):
+                payload = refresh_focused_general_experience(db, tender, payload)
+            if not specific_experience_reading_is_final(payload):
+                payload = refresh_focused_specific_experience(db, tender, payload)
+            persist_tender_requirements(db, tender, payload)
+    except Exception:
+        logger.exception("Background detail read failed for tender %s", tender_id)
+    finally:
+        db.close()
+        with _detail_reads_lock:
+            _detail_reads_started.discard(str(tender_id))
+
+
+def _schedule_tender_detail_read(tender_id: UUID) -> None:
+    key = str(tender_id)
+    with _detail_reads_lock:
+        if key in _detail_reads_started:
+            return
+        _detail_reads_started.add(key)
+    threading.Thread(
+        target=_read_tender_detail,
+        args=(tender_id,),
+        name=f"tender-detail-{key[:8]}",
+        daemon=True,
+    ).start()
 
 
 def _fit_experience_rows(db: Session, owner_email: Optional[str], company_name: Optional[str]) -> list:
@@ -755,17 +813,36 @@ async def get_tender_summary(
 
     cached = None if refresh else db.query(TenderSummary).filter(TenderSummary.tender_id == tender_id).first()
     if cached and cached.summary_json:
-        cached_version = cached.summary_json.get("extraction_version")
-        if cached_version == SUMMARY_EXTRACTION_VERSION:
-            payload = cached.summary_json
-            return TenderSummaryResponse(
-                tender_id=tender.id,
-                contract_kind=payload["contract_kind"],
-                contract_kind_label=payload["contract_kind_label"],
-                extracted_at=cached.extracted_at,
-                fields=[TenderSummaryFieldResponse(**field) for field in payload["fields"]],
-                cached=True,
-            )
+        payload = cached.summary_json
+        return TenderSummaryResponse(
+            tender_id=tender.id,
+            contract_kind=payload["contract_kind"],
+            contract_kind_label=payload["contract_kind_label"],
+            extracted_at=cached.extracted_at,
+            fields=[TenderSummaryFieldResponse(**field) for field in payload["fields"]],
+            cached=True,
+        )
+
+    if not refresh:
+        _schedule_tender_detail_read(tender.id)
+        kind = detect_contract_kind(tender)
+        return TenderSummaryResponse(
+            tender_id=tender.id,
+            contract_kind=kind.value,
+            contract_kind_label=contract_kind_label(kind),
+            extracted_at=datetime.utcnow(),
+            fields=[
+                TenderSummaryFieldResponse(
+                    key="lots_groups",
+                    label="Lotes o grupos",
+                    priority="P1",
+                    source="computed",
+                    status="unavailable",
+                    display_value=_PENDING_READING,
+                )
+            ],
+            cached=False,
+        )
 
     payload = build_tender_summary(tender)
     record = persist_tender_summary(db, tender, payload)
@@ -862,23 +939,42 @@ async def get_tender_requirements(
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found")
 
-    try:
-        if ensure_missing_key_documents_for_tender(db, tender):
-            db.commit()
-            db.refresh(tender)
-    except Exception as exc:
-        logger.warning(
-            "Missing key document sync failed before requirements for tender %s: %s",
-            tender.external_id,
-            exc,
-        )
-        db.rollback()
+    if refresh:
+        try:
+            if ensure_missing_key_documents_for_tender(db, tender):
+                db.commit()
+                db.refresh(tender)
+        except Exception as exc:
+            logger.warning(
+                "Missing key document sync failed before requirements for tender %s: %s",
+                tender.external_id,
+                exc,
+            )
+            db.rollback()
 
     cached = (
         None
         if refresh
         else db.query(TenderRequirements).filter(TenderRequirements.tender_id == tender_id).first()
     )
+    if not refresh and cached and cached.requirements_json:
+        return _requirements_response_from_payload(
+            tender,
+            cached.requirements_json,
+            extracted_at=cached.extracted_at,
+            cached=True,
+        )
+    if not refresh:
+        _schedule_tender_detail_read(tender.id)
+        return TenderRequirementsResponse(
+            tender_id=tender.id,
+            tender_external_id=tender.external_id,
+            extraction_version=EXTRACTION_VERSION,
+            extracted_at=datetime.utcnow(),
+            sections=[],
+            warnings=[_PENDING_READING],
+            cached=False,
+        )
     saved_section = None
     saved_source = None
     saved_specific_section = None
