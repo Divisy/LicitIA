@@ -372,3 +372,5 @@ Para el MVP, la autenticación es opcional. Si configuras `API_KEY` en `.env`, p
 ## 📄 Licencia
 
 Este es un proyecto MVP. Úsalo como base para tu desarrollo.
+
+Prueba Cloud Agent 2026-11-26. Borrar esta línea al cerrar el pull request.
