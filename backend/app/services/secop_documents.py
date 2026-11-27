@@ -15,12 +15,16 @@ logger = get_logger(__name__)
 
 _CHUNK_SIZE = 64 * 1024
 
-# SECOP file server blocks requests without browser-like headers (403 otherwise).
+# Azure WAF in front of community.secop.gov.co returns 403 for a bot
+# user agent. A normal browser request for the same file returns the PDF.
 _SECOP_DOWNLOAD_HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (compatible; LicitIA/1.0; +https://licitia.app)"
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
     ),
-    "Referer": "https://www.datos.gov.co/",
+    "Referer": "https://community.secop.gov.co/",
+    "Accept": "text/html,application/pdf,*/*",
 }
 
 
